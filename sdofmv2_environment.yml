@@ -1,0 +1,74 @@
+name: sdofmv2
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+
+dependencies:
+  # ── Python ────────────────────────────────────────────────────
+  - python=3.11
+
+  # ── PyTorch stack ─────────────────────────────────────────────
+  - pytorch-cuda=12.1
+  - cudnn
+  - nccl
+
+  # ── Lightning ecosystem ───────────────────────────────────────
+  - lightning=2.6.0
+  - torchmetrics=1.8.2
+
+  # ── Scientific core ───────────────────────────────────────────
+  - numpy
+  - pandas
+  - scipy
+  - scikit-learn
+  - scikit-image
+  - matplotlib
+  - xarray
+
+  # ── Solar / domain specific ───────────────────────────────────
+  - sunpy
+  - zarr=2.18.3
+  - python-blosc
+  - h5py
+  - astropy-base
+
+  # ── Model architectures ───────────────────────────────────────
+  - transformers
+  - tokenizers
+  - timm
+  - einops
+  - safetensors
+
+  # ── Experiment tracking & config ──────────────────────────────
+  - wandb
+  - hydra-core
+  - omegaconf
+  - optuna
+  - loguru
+  - rich
+  - pyyaml
+
+  # ── Utilities ─────────────────────────────────────────────────
+  - joblib
+  - overrides
+  - tqdm
+  - dask
+  - datasets
+
+  # ── Dev / notebook ────────────────────────────────────────────
+  - ipykernel
+  - ipython
+
+  # ── Pip-only packages ─────────────────────────────────────────
+  - pip:
+    - torch==2.5.1+cu121
+    - torchvision==0.20.1+cu121
+    - torchaudio==2.5.1+cu121
+    - torchcodec==0.8.1
+    - torchvision-extra-decoders==0.0.2
+    - segmentation-models-pytorch==0.5.0
+    - efficientnet-pytorch==0.6.3
+    - pretrainedmodels
+    - -e .

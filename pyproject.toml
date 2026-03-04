@@ -1,0 +1,38 @@
+[project]
+name = "sdofmv2"
+version = "0.1.0"
+description = "Solar phenomena prediction models"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Joseph Gallego",     email = "joaggi@gmail.com"},
+    {name = "Daniela Martin",     email = "dmartinvega@gmail.com"},
+    {name = "Jinsu Hong",         email = "jinsuhong.knight@gmail.com"},
+    {name = "Conor O'Brien",      email = "connor.joseph.obrien@gmail.com"},
+    {name = "Jasmine Kobayashi",  email = "jasmine.kobayashi@swri.org"},
+    {name = "Valmir Moraes",      email = "valmir.filho1@gmail.com"},
+    {name = "Evangelia Samara",   email = "evangelia.sam@gmail.com"},
+]
+keywords = ["foundation model", "solar physics", "deep learning", "space weather"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+
+[project.urls]
+Repository = "https://github.com/Joaggi/sdofmv2"
+Issues = "https://github.com/Joaggi/sdofmv2/issues"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -9,15 +9,16 @@ from loguru import logger
 
 import dask
 import dask.array as da
+from dask.array import stats
+from dask.diagnostics import ProgressBar
+
 import lightning.pytorch as pl
 import numpy as np
 import pandas as pd
 import torch
-import zarr
-from dask.array import stats
-from dask.diagnostics import ProgressBar
 from torch.utils.data import Dataset
-from tqdm import tqdm
+import tqdm
+import zarr
 
 from ..constants import ALL_COMPONENTS, ALL_IONS, ALL_WAVELENGTHS
 
@@ -220,7 +221,6 @@ class SDOMLDataset(Dataset):
         image_stack = torch.from_numpy(image_stack)
         image_stack = image_stack.to(get_dtype_from_precision(self.precision))
         timestamps = self.aligndata.index[idx : idx + self.num_frames].astype("int")
-        # timestamps = timestamps.astype("int")
         timestamps = timestamps[0] if self.num_frames <= 1 else timestamps
 
         if not self.get_header:
@@ -318,7 +318,6 @@ class SDOMLDataset(Dataset):
                 idx_row_element = self.aligndata.iloc[idx + frame]
                 idx_wavelength = idx_row_element[f"idx_{wavelength}"].astype(int)
                 year = str(idx_row_element.name.year)
-                # img = self.aia_data[year][wavelength][idx_wavelength, :, :]
                 img = self.loading_data_retry(
                     self.aia_data, year, wavelength, idx_wavelength, 10, 0.5
                 )
@@ -329,7 +328,6 @@ class SDOMLDataset(Dataset):
                 aia_image_dict[wavelength].append(img)
 
                 if self.get_header:
-                    # aia_header_dict[wavelength].append(self.aia_data[year][wavelength].attrs[self.attrs][idx_wavelength])
                     try:
                         aia_header_dict[wavelength].append(
                             {
@@ -371,7 +369,6 @@ class SDOMLDataset(Dataset):
                 idx_row_element = self.aligndata.iloc[idx + frame]
                 idx_component = idx_row_element[f"idx_{component}"].astype(int)
                 year = str(idx_row_element.name.year)
-                # img = self.hmi_data[year][component][idx_component, :, :]
                 img = self.loading_data_retry(
                     self.hmi_data, year, component, idx_component, 10, 0.5
                 )

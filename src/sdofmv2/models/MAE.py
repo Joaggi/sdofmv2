@@ -6,12 +6,12 @@ import pandas as pd
 import lightning.pytorch as pl
 import torch.nn.functional as F
 from skimage.measure import block_reduce
-from sdofm.constants import ALL_WAVELENGTHS
 
-from ..BaseModule import BaseModule
+from .BaseModule import BaseModule
 from ..benchmarks import reconstruction as bench_recon
 from ..models import MaskedAutoencoderViT3D
 from ..utils import unpatchify, patchify
+from sdofmv2.constants import ALL_WAVELENGTHS
 
 
 class MAE(BaseModule):

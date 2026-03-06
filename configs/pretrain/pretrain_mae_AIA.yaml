@@ -1,23 +1,8 @@
-# default.yaml
-
-# MODEL SUMMARY
-#   | Name        | Type                   | Params
-# -------------------------------------------------------
-# 0 | autoencoder | MaskedAutoencoderViT3D | 333 M 
-# -------------------------------------------------------
-# 329 M     Trainable params
-# 4.7 M     Non-trainable params
-# 333 M     Total params
-# 1,335.838 Total estimated model params size (MB)
-
 # general
-log_level: DEBUG
 experiment:
   name: mae-pretrain-aia # generate random name in wandb
   project: sdofm
-  task: pretrain # options: train, evaluate (not implemented)
   model: mae
-  resuming: false
   backbone:
     model: mae
     is_backbone: true
@@ -29,12 +14,13 @@ experiment:
   
   wandb:
     enable: true
+    run_id: null
     entity: allshaman
     group: ""
     job_type: pretrain
     tags: []
-    notes: Training model with AIA images, MSE loss
-    output_directory: ../../assets/wandb
+    notes: AIA-pretrain
+    output_directory: ../assets/wandb
     log_model: False # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
     offline: false
   

@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-import tqdm
+from tqdm import tqdm
 import zarr
 
 from ..constants import ALL_COMPONENTS, ALL_IONS, ALL_WAVELENGTHS

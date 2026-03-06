@@ -10,6 +10,8 @@ import numpy as np
 import torch
 import wandb
 from loguru import logger as lgr_logger
+from omegaconf import DictConfig, OmegaConf
+
 
 # PyTorch Lightning imports
 import lightning.pytorch as pl
@@ -91,7 +93,7 @@ def main(cfg: DictConfig) -> None:
             config=flatten_dict(cfg),
             id=cfg.experiment.wandb.run_id,
             resume="allow",
-            offline=cfg.experiment.wandb.offline,
+            mode="offline" if cfg.experiment.wandb.offline else "online",
         )
 
     else:

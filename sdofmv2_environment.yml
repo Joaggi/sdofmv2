@@ -10,7 +10,6 @@ dependencies:
   - python=3.11
 
   # ── PyTorch stack ─────────────────────────────────────────────
-  - pytorch-cuda=12.1
   - cudnn=9.10.2.21
   - nccl=2.28.9.1
 
@@ -63,12 +62,13 @@ dependencies:
 
   # ── Pip-only packages ─────────────────────────────────────────
   - pip:
-    - torch==2.5.1+cu121
-    - torchvision==0.20.1+cu121
-    - torchaudio==2.5.1+cu121
+    - "--extra-index-url https://download.pytorch.org/whl/cu128"
+    - torch==2.7.0+cu128  # Or whichever specific 2.x version you just installed
+    - torchvision==0.22.0+cu128
+    - torchaudio==2.7.0+cu128
     - torchcodec==0.8.1
     - torchvision-extra-decoders==0.0.2
     - segmentation-models-pytorch==0.5.0
     - efficientnet-pytorch==0.6.3
     - pretrainedmodels==0.7.4
-    - -e .
+    - "-e ."

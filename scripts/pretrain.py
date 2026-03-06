@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import wandb
 from loguru import logger as lgr_logger
+from omegaconf import DictConfig, OmegaConf
 
 # PyTorch Lightning imports
 import lightning.pytorch as pl
@@ -30,13 +31,9 @@ from sdofmv2.constants import ALL_COMPONENTS, ALL_WAVELENGTHS
 
 
 class Pretrainer(object):
-    def __init__(self, cfg, logger=None, is_backbone=False, data_module=None):
+    def __init__(self, cfg, logger=None, is_backbone=False):
         self.cfg = cfg
         self.logger = logger
-        self.data_module = data_module
-        self.model = None
-        self.model_class = None
-        self.data_module_class = SDOMLDataModule
 
         self.callbacks = [
             ModelCheckpoint(
@@ -106,7 +103,7 @@ class Pretrainer(object):
         )
 
         # data module
-        self.data_module = self.data_module_class(
+        self.data_module = SDOMLDataModule(
             hmi_path=(
                 os.path.join(
                     self.cfg.data.sdoml.base_directory,
@@ -286,7 +283,7 @@ def main(cfg: DictConfig) -> None:
             config=flatten_dict(cfg),
             id=cfg.experiment.wandb.run_id,
             resume="allow",
-            offline=cfg.experiment.wandb.offline,
+            mode="offline" if cfg.experiment.wandb.offline else "online",
         )
 
     else:

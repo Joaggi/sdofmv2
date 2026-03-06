@@ -1,3 +1,10 @@
 *.ckpt
 *.pdf
+*.egg-info
+*.log
+
 .vscode/
+assets/
+.hydra/
+wandb/
+__pycache__/

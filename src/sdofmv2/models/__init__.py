@@ -1,4 +1,3 @@
-from .autocalibration import *
 from .mae3d import MaskedAutoencoderViT3D
 from .MAE import MAE
 from .wrap_encoder import *

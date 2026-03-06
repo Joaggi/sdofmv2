@@ -14,7 +14,8 @@ from segmentation_models_pytorch import Unet
 from segmentation_models_pytorch.decoders.unet.decoder import UnetDecoder
 
 from .. import utils
-from . import ConvTransformerTokensToEmbeddingNeck, MaskedAutoencoderViT3D
+from .necks import ConvTransformerTokensToEmbeddingNeck
+from .mae3d import MaskedAutoencoderViT3D
 
 
 class WrapEncoder(nn.Module):

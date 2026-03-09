@@ -7,4 +7,5 @@
 assets/
 .hydra/
 wandb/
+lightning_logs/
 __pycache__/

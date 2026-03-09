@@ -84,9 +84,7 @@ class MAE_old(BaseModule):
         # training_step defines the train loop.
         x = batch
         loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
-        x_hat = self.autoencoder.unpatchify(
-            x_hat, self.img_size, self.patch_size, self.tubelet_size
-        )
+        x_hat = unpatchify(x_hat, self.img_size, self.patch_size, self.tubelet_size)
         loss = F.mse_loss(x_hat, x)
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
@@ -94,9 +92,7 @@ class MAE_old(BaseModule):
     def validation_step(self, batch, batch_idx):
         x = batch
         loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
-        x_hat = self.autoencoder.unpatchify(
-            x_hat, self.img_size, self.patch_size, self.tubelet_size
-        )
+        x_hat = unpatchify(x_hat, self.img_size, self.patch_size, self.tubelet_size)
         loss = F.mse_loss(x_hat, x)
         for i in range(x.shape[0]):
             for frame in range(x.shape[2]):
@@ -110,9 +106,7 @@ class MAE_old(BaseModule):
 
     def forward(self, x):
         loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
-        x_hat = self.autoencoder.unpatchify(
-            x_hat, self.img_size, self.patch_size, self.tubelet_size
-        )
+        x_hat = unpatchify(x_hat, self.img_size, self.patch_size, self.tubelet_size)
         return loss, x_hat, mask
 
     def forward_encoder(self, x, mask_ratio):

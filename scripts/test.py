@@ -12,24 +12,13 @@ import wandb
 from loguru import logger as lgr_logger
 from omegaconf import DictConfig, OmegaConf
 
-
-# PyTorch Lightning imports
 import lightning.pytorch as pl
 from lightning.pytorch import seed_everything
 from lightning.pytorch.loggers.wandb import WandbLogger
-from lightning.pytorch.callbacks import (
-    LearningRateMonitor,
-    ModelCheckpoint,
-    RichProgressBar,
-    Timer,
-)
 
 from sdofmv2 import utils
 from sdofmv2.utils import flatten_dict
-from sdofmv2.models import MAE
-from sdofmv2.datasets import SDOMLDataModule
-from sdofmv2.constants import ALL_COMPONENTS, ALL_WAVELENGTHS
-from .pretrain import Pretrainer
+from pretrain import Pretrainer
 
 
 @hydra.main(
@@ -102,7 +91,6 @@ def main(cfg: DictConfig) -> None:
     pretrainer = Pretrainer(
         cfg,
         logger=logger,
-        profiler=profiler,
         is_backbone=cfg.experiment.backbone.is_backbone,
     )
     pretrainer.test()

@@ -1,30 +1,24 @@
 import gc
-import wandb
 from collections import Counter
 
 import torch
 import torch.nn.functional as F
+import wandb
+
+from lightning.pytorch.utilities import grad_norm
 from torchmetrics import (
+    Accuracy,
+    AUROC,
+    CohenKappa,
     F1Score,
+    MatthewsCorrCoef,
     Precision,
     Recall,
-    AUROC,
-    # AveragePrecision,
-    MatthewsCorrCoef,
-    CohenKappa,
-    Accuracy,
 )
-from lightning.pytorch.utilities import grad_norm
 
-from sdofm import BaseModule
-from spp.visualization import (
-    find_images_labels,
-    plot_images_grid,
-    plot_disk_distribution,
-    plot_ecliptic,
-)
-from .head import SimpleLinear, TransformerHead, SkipLinearHead, ClsLinear
-from .loss import focal_loss_multiclass
+from sdofmv2.core import BaseModule
+from .focal_loss import focal_loss_multiclass
+from .head_networks import ClsLinear, SimpleLinear, SkipLinearHead, TransformerHead
 
 
 class SWClassifier(BaseModule):

@@ -1,12 +1,6 @@
 import torch
 import torch.nn.functional as F
 
-from torchvision.utils import _log_api_usage_once
-
-
-import torch
-import torch.nn.functional as F
-
 
 def focal_loss_multiclass(
     inputs: torch.Tensor,

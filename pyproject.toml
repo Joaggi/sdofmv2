@@ -9,10 +9,6 @@ authors = [
     {name = "Joseph Gallego",     email = "joaggi@gmail.com"},
     {name = "Daniela Martin",     email = "dmartinvega@gmail.com"},
     {name = "Jinsu Hong",         email = "jinsuhong.knight@gmail.com"},
-    {name = "Conor O'Brien",      email = "connor.joseph.obrien@gmail.com"},
-    {name = "Jasmine Kobayashi",  email = "jasmine.kobayashi@swri.org"},
-    {name = "Valmir Moraes",      email = "valmir.filho1@gmail.com"},
-    {name = "Evangelia Samara",   email = "evangelia.sam@gmail.com"},
 ]
 keywords = ["foundation model", "solar physics", "deep learning", "space weather"]
 classifiers = [

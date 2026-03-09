@@ -24,16 +24,19 @@ from lightning.pytorch.callbacks import (
 )
 
 from sdofmv2 import utils
-from sdofmv2.utils import flatten_dict
-from sdofmv2.models import MAE
-from sdofmv2.datasets import SDOMLDataModule
-from sdofmv2.constants import ALL_COMPONENTS, ALL_WAVELENGTHS
+from sdofmv2.utils import flatten_dict, ALL_COMPONENTS, ALL_WAVELENGTHS
+from sdofmv2.core import MAE
+from sdofmv2.core import SDOMLDataModule
 
 
 class Pretrainer(object):
     def __init__(self, cfg, logger=None, is_backbone=False):
         self.cfg = cfg
         self.logger = logger
+        self.ckpt_path = os.path.join(
+            self.cfg.experiment.backbone.ckpt_dir,
+            self.cfg.experiment.backbone.weight_name,
+        )
 
         self.callbacks = [
             ModelCheckpoint(
@@ -57,10 +60,7 @@ class Pretrainer(object):
 
         if self.cfg.experiment.distributed.enabled:
             self.trainer = pl.Trainer(
-                accumulate_grad_batches=(
-                    self.cfg.model.misc.target_grad_batches
-                    // self.cfg.model.misc.batch_size
-                ),
+                accumulate_grad_batches=self.cfg.model.misc.accumulate_grad_batches,
                 devices=self.cfg.experiment.distributed.devices,
                 accelerator=self.cfg.experiment.accelerator,
                 max_epochs=self.cfg.model.misc.epochs,
@@ -69,7 +69,7 @@ class Pretrainer(object):
                 enable_checkpointing=True,
                 log_every_n_steps=self.cfg.experiment.log_every_n_steps,
                 callbacks=self.callbacks,
-                limit_train_batches=self.cfg.experiment.limit_train_batches,
+                limit_train_batches=self.cfg.model.misc.limit_train_batches,
             )
         else:
             self.trainer = pl.Trainer(
@@ -164,11 +164,6 @@ class Pretrainer(object):
         # load backbone weights if specified
         # NOTE: weights_only=False is required because we need hyper_parameters
         if self.cfg.experiment.backbone.is_backbone:
-            self.ckpt_path = os.path.join(
-                self.cfg.experiment.backbone.ckpt_dir,
-                self.cfg.experiment.backbone.weight_name,
-            )
-
             if self.cfg.experiment.backbone.weights_only:
 
                 ckpt = torch.load(

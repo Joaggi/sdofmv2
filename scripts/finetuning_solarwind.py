@@ -7,47 +7,30 @@ from omegaconf.base import ContainerMetadata
 from loguru import logger as loguru_logger
 
 # pytorch lightining
-# import torch.nn.functional as F
 from lightning.pytorch import Trainer
-
-# import lightning.pytorch as pl
 from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.callbacks import (
     ModelCheckpoint,
     RichProgressBar,
     LearningRateMonitor,
-    # StochasticWeightAveraging,
-    # BaseFinetuning,
 )
-from spp.classification.models import SWClassifier
-from spp.datasets import SWDataModule
 
-# from SDO FM
-from sdofm.pretraining import MAE
-from sdofm.experiments.pretrain import Pretrainer
-from sdofm.utils import flatten_dict
-from sdofm.constants import ALL_COMPONENTS, ALL_IONS, ALL_WAVELENGTHS
-
-# from spp.utils.unfreeze_callback import UnfreezeMAECallback
+# from SDOFMv2
+from sdofmv2.core import MAE
+from sdofmv2.utils import flatten_dict, ALL_COMPONENTS, ALL_IONS, ALL_WAVELENGTHS
+from sdofmv2.tasks.solar_wind import SWClassifier, SWDataModule
 
 
 @hydra.main(
     version_base=None,
-    config_path="../../../../configs",
+    config_path="../configs/downstream/",
     config_name="finetune_solarwind_config.yaml",
 )
 def main(cfg):
 
-    # # Set tensor core precision
-    # torch.set_float32_matmul_precision('medium')
-    # Add to safe globals
     torch.serialization.add_safe_globals([ListConfig, ContainerMetadata])
 
     # set logger
-    # Propagation type(prop): We now only have ballistic, but we'll soon have WSA
-    # Label types(lbl): xb2015 (for now, but Valmir's clustering labels will come later)
-    # Ground truth instrument(inst): PSP, OMNI, etc
-    # Cadence: Maybe we have this one, not sure.
     print("Wandb login status:", wandb.login())
     logger = WandbLogger(
         # WandbLogger params
@@ -81,6 +64,7 @@ def main(cfg):
         job_type=cfg.experiment.wandb.job_type,
         config=flatten_dict(cfg),
         resume="never",
+        mode="offline" if cfg.experiment.wandb.offline else "online",
         id=None,
     )
 
@@ -209,14 +193,13 @@ def main(cfg):
                 "{epoch}-{val_loss:.2f}-{val_f1:.2f}"
             ),
             verbose=True,
-            monitor=cfg.experiment.trainer.ckpt_monitor,  # Specify which metric to monitor
-            mode="min",  # Use "min" for loss (lower is better)
-            save_top_k=3,  # Keep top 3 checkpoints with lowest val_loss
-            save_weights_only=False,  # Change to True if you only want weights
+            monitor=cfg.experiment.trainer.ckpt_monitor,
+            mode="min",
+            save_top_k=3,
+            save_weights_only=False,
             save_last=True,
             enable_version_counter=False,
         ),
-        # UnfreezeMAECallback(unfreeze_epoch=cfg.experiment.backbone.unfreeze_epoch),
         RichProgressBar(),
         LearningRateMonitor(logging_interval="step"),
     ]
@@ -236,9 +219,7 @@ def main(cfg):
         limit_val_batches=cfg.experiment.trainer.limit_val_batches,
         limit_test_batches=cfg.experiment.trainer.limit_test_batches,
         limit_predict_batches=cfg.experiment.trainer.limit_predict_batches,
-        accumulate_grad_batches=(
-            cfg.model.misc.target_grad_batches // cfg.model.misc.batch_size
-        ),
+        accumulate_grad_batches=cfg.model.misc.accumulate_grad_batches,
     )
 
     if (

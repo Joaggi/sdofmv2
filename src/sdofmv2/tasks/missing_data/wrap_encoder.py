@@ -1,21 +1,7 @@
 # Modified from: https://github.com/isaaccorley/prithvi-pytorch/blob/main/prithvi_pytorch/model.py
-
-import os
-from typing import Optional
-
-import lightning.pytorch as pl
-import segmentation_models_pytorch as smp
+from einops import rearrange
 import torch
 import torch.nn as nn
-import wandb
-from einops import rearrange
-from omegaconf import DictConfig, OmegaConf
-from segmentation_models_pytorch import Unet
-from segmentation_models_pytorch.decoders.unet.decoder import UnetDecoder
-
-from .. import utils
-from .necks import ConvTransformerTokensToEmbeddingNeck
-from .mae3d import MaskedAutoencoderViT3D
 
 
 class WrapEncoder(nn.Module):

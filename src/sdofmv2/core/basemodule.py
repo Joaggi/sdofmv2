@@ -1,6 +1,5 @@
 from loguru import logger as lgr_logger
 import lightning.pytorch as pl
-import math
 import torch
 from transformers import get_cosine_schedule_with_warmup
 

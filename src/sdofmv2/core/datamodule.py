@@ -7,9 +7,7 @@ from pathlib import Path
 from typing import Optional
 from loguru import logger
 
-import dask
 import dask.array as da
-from dask.array import stats
 from dask.diagnostics import ProgressBar
 
 import lightning.pytorch as pl
@@ -20,7 +18,7 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 import zarr
 
-from ..constants import ALL_COMPONENTS, ALL_IONS, ALL_WAVELENGTHS
+from ..utils import ALL_COMPONENTS, ALL_IONS, ALL_WAVELENGTHS
 
 
 def get_dtype_from_precision(precision):

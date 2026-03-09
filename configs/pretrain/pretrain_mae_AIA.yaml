@@ -7,7 +7,7 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ../assets/check_point/backbone/AIA/
-    weight_name: null
+    weight_name: AIA_MSEloss_epoch=171-val_loss=0.00.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
@@ -34,8 +34,7 @@ experiment:
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
   # lightining pretrainer
   precision: 32 #-true'       # (32, 64) for cuda, ('32-true', '16-true', 'bf16-true') for tpu
-  log_every_n_steps: 50
-  limit_train_batches: null
+  log_every_n_steps: 1
   accelerator: gpu  # options are "auto", "gpu", "tpu", "ipu", or "cpu"
   distributed:
     enabled: true
@@ -79,7 +78,6 @@ data:
       type: log #log, zscore, min-max
       scaler_factor: 1
       scaler_div_factor: null
-      # clipping: false # this is only for log
 
 # model configurations
 model:
@@ -99,50 +97,7 @@ model:
     mlp_ratio: 4.0
     norm_layer: LayerNorm
     masking_ratio: 0.5
-  samae:
-    # uses all parameters as in mae plus these
-    masking_type: solar_aware  # 'random' or 'solar_aware'
-    active_region_mu_degs: 15.73
-    active_region_std_degs: 6.14
-    active_region_scale: 1.0
-    active_region_abs_lon_max_degs: 60
-    active_region_abs_lat_max_degs: 60
-  nvae:
-    use_se: true
-    res_dist: true
-    num_x_bits: 8
-    num_latent_scales: 3  # 5
-    num_groups_per_scale: 1  # 16
-    num_latent_per_group: 1  # 10
-    ada_groups: true
-    min_groups_per_scale: 1
-    num_channels_enc: 30
-    num_channels_dec: 30
-    num_preprocess_blocks: 2   # 1
-    num_preprocess_cells: 2
-    num_cell_per_cond_enc: 2
-    num_postprocess_blocks: 2  # 1
-    num_postprocess_cells: 2
-    num_cell_per_cond_dec: 2
-    num_mixture_dec: 1
-    num_nf: 2
-    kl_anneal_portion: 0.3
-    kl_const_portion: 0.0001
-    kl_const_coeff: 0.0001
-    # learning_rate: 1e-2
-    # weight_decay: 3e-4
-    weight_decay_norm_anneal: true
-    weight_decay_norm_init: 1.
-    weight_decay_norm: 1e-2        
-    
-  # FINE-TUNERS
-  degragation:
-    num_neck_filters: 32
-    output_dim: 1 # not sure why this is implemented for autocorrelation, should be a scalar
-    loss: mse # options: "mse", "heteroscedastic"
-    freeze_encoder: true
-    
-  # ML optimization arguments:
+
   # for loss
   loss:
     space: patch # pixel, patch
@@ -192,18 +147,15 @@ model:
   misc:
     limb_mask: true
     epochs: 300
-    batch_size: 8
-    target_grad_batches: 256
-    accumulate_grad_batches: 32 # accumulate grad for 32 steps
+    batch_size: 16
+    accumulate_grad_batches: 16 # accumulate grad for 32 steps
+    limit_train_batches: null
 
-# hydra configuration
-# hydra:
-#   sweeper:
-#     params:
-#       model.mae.embed_dim: 256, 512
-#       model.mae.masking_ratio: 0.5, 0.75
-#       model.samae.masking_type: "random", "solar_aware"
+defaults:
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled
 
 hydra:
+  output_subdir: null
   run:
-      dir: .
+    dir: .

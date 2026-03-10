@@ -1,0 +1,11 @@
+*.ckpt
+*.pdf
+*.egg-info
+*.log
+
+.vscode/
+assets/
+.hydra/
+wandb/
+lightning_logs/
+__pycache__/

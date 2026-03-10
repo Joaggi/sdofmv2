@@ -6,7 +6,7 @@ experiment:
   backbone:
     model: mae
     is_backbone: false
-    ckpt_dir: ../assets/check_point/backbone/HMI/
+    ckpt_dir: ./assets/check_point/backbone/HMI/
     weight_name: id_mycczy8p_mae_epoch=299-val_loss=0.03.ckpt
     weights_only: false
   seed: 0
@@ -20,7 +20,7 @@ experiment:
     job_type: pretrain
     tags: []
     notes: HMI-pretrain
-    output_directory: ../assets/wandb
+    output_directory: ./assets/wandb
     log_model: False # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
     offline: true
 
@@ -57,7 +57,7 @@ data:
   drop_frame_dim: false
   # output_directory: "wandb_output"
   sdoml:
-    save_directory: ../assets/
+    save_directory: ./assets/
     base_directory: /mnt/baobab
     sub_directory:
       hmi: HMI.zarr

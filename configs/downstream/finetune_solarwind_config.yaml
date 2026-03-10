@@ -21,7 +21,7 @@ experiment:
   resuming: false # for foundation mode, be carefule with is_backbone
   backbone:
     is_backbone: false
-    ckpt_dir: ../assets/check_point/backbone/AIA
+    ckpt_dir: ./assets/check_point/backbone/AIA
     ckpt_name: null
     weights_only: false
     model: mae
@@ -32,7 +32,7 @@ experiment:
   # save condition
   downstream_model:
     resuming: false
-    ckpt_dir: ../assets/check_point/classification/
+    ckpt_dir: ./assets/check_point/classification/
     ckpt_name: null
     weights_only: false
   
@@ -120,7 +120,7 @@ data:
   
   # SDOML - SDO multi-channel data
   sdoml:
-    save_directory: ../assets/
+    save_directory: ./assets/
     base_directory: /mnt/baobab
     sub_directory:
       hmi: null # "HMI.zarr"  # null if you are not using it

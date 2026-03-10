@@ -9,7 +9,7 @@ experiment:
   backbone:
     model: "mae_old"
     is_backbone: true
-    ckpt_dir: ../../assets/check_point/backbone/
+    ckpt_dir: ./assets/check_point/backbone/
     weight_name: pretrained_mae_e128.ckpt
     weights_only: true
   seed: 0
@@ -21,7 +21,7 @@ experiment:
     job_type: "pretrain"
     tags: []
     notes: "Training model with AIA images, MSE loss"
-    output_directory: "../../assets/wandb"
+    output_directory: "./assets/wandb"
     log_model: False # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
     offline: true
   gcp_storage: # this will checkpoint all epoches, perhaps clean up this config
@@ -59,7 +59,7 @@ data:
   drop_frame_dim: false
   # output_directory: "wandb_output"
   sdoml:
-    save_directory: ../../assets/
+    save_directory: ./assets/
     base_directory: /mnt/baobab
     sub_directory:
       hmi: null

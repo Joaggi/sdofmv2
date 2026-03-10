@@ -3,7 +3,7 @@ name = "sdofmv2"
 version = "0.1.0"
 description = "Solar phenomena prediction models"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
     {name = "Joseph Gallego",     email = "joaggi@gmail.com"},

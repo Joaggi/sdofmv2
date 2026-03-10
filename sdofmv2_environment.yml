@@ -62,8 +62,11 @@ dependencies:
 
   # ── Pip-only packages ─────────────────────────────────────────
   - pip:
+    # IMPORTANT: The packages below are configured for CUDA 12.8. 
+    # If your GPU requires a different version (e.g., CUDA 11.8), change 
+    # 'cu128' to 'cu118' in the URLs and package versions below.
     - "--extra-index-url https://download.pytorch.org/whl/cu128"
-    - torch==2.7.0+cu128  # Or whichever specific 2.x version you just installed
+    - torch==2.7.0+cu128
     - torchvision==0.22.0+cu128
     - torchaudio==2.7.0+cu128
     - torchcodec==0.8.1

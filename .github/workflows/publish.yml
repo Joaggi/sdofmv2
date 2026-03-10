@@ -7,8 +7,8 @@ on:
 jobs:
   build-n-publish:
     runs-on: ubuntu-latest
+    environment: pypi
     permissions:
-      # This permission is REQUIRED for Trusted Publishers
       id-token: write
     steps:
       - uses: actions/checkout@v4

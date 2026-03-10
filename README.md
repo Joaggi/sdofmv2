@@ -1,4 +1,4 @@
-# SDO FM v2: [Full Title of the Project/Model]
+# SDO FM v2: A Multi-Instrument Foundation Model for the Solar Dynamics Observatory with Transferable Downstream Applications
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=flat&logo=PyTorch&logoColor=white)](https://pytorch.org/)
@@ -8,7 +8,7 @@
 ## Introduction
 **SDOFMv2** is an advanced multi-instrument foundation model designed to analyze Solar Dynamics Observatory (SDO) data and drive large-scale, data-driven heliophysics research. Building upon the original SDOFM framework, this version addresses previous limitations like restricted temporal coverage and reconstruction artifacts to significantly improve spatial coherence and global consistency.
 
-![Model architecture](sdofmv2.svg) 
+![Model architecture](https://raw.githubusercontent.com/Joaggi/sdofmv2/main/sdofmv2.svg)
 *A Masked Autoencoder (MAE) based on a Vision Transformer (ViT) architecture is utilized for pretraining. During this phase, a% of the image patches are masked, while the remaining (100 - a)% are processed by the encoder. The decoder block then reconstructs all patches, optimized via a customized loss function.*
 
 ---
@@ -95,7 +95,7 @@ python scripts/finetuning_solarwind.py --config-name finetune_solarwind_config.y
 ## Results & Visualizations
 [Include a brief summary of the model's performance. You can add a table of metrics or a sample plot showing predictions vs. ground truth.]
 
-![Sample Visualization](notebooks/analysis/SDOFMv2_AIA_results_exp.png) 
+![Sample Visualization](https://raw.githubusercontent.com/Joaggi/sdofmv2/main/notebooks/analysis/SDOFMv2_AIA_results_exp.png) 
 *The first row displays the original ground-truth images. The second and third rows show the model's reconstructed images using masking ratios of 0% and 50%, respectively.*
 
 ---

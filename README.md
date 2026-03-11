@@ -7,7 +7,7 @@
 
 **SDOFMv2** is an advanced multi-instrument foundation model for analyzing [Solar Dynamics Observatory (SDO)](https://sdo.gsfc.nasa.gov/) data, designed to drive large-scale, data-driven heliophysics research. Building on the original SDOFM framework, this version improves spatial coherence and global consistency by addressing limitations in temporal coverage and reconstruction artifacts.
 
-![Model architecture](https://raw.githubusercontent.com/Joaggi/sdofmv2/main/sdofmv2_model_architecture.png)
+![Model architecture](https://raw.githubusercontent.com/Joaggi/sdofmv2/main/sdofmv2.png)
 
 *A Masked Autoencoder (MAE) built on a Vision Transformer (ViT) backbone is used for pretraining. During training, `a%` of image patches are masked; the remaining `(100 - a)%` are processed by the encoder. The decoder then reconstructs all patches, optimized via a customized loss function.*
 

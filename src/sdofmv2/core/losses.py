@@ -64,6 +64,31 @@ def pixel_weight_loss(
 
 
 def patch_weight_loss(pred, target, loss_dict, filtered_mask):
+    """Calculates a weighted reconstruction loss based on patch visibility.
+
+    This loss function applies different weights to patches depending on whether
+    they were masked or visible during the forward pass. It supports 'mse',
+    'mae', and 'huber' as the underlying base loss metrics.
+
+    Args:
+        pred (torch.Tensor): The predicted patch values from the model.
+        target (torch.Tensor): The ground truth patch values.
+        loss_dict (dict or object): Configuration dictionary containing:
+            - base_loss (dict): Contains the 'type' of base loss (e.g., 'mse')
+              and optional parameters like 'delta' for huber loss.
+            - weight_on_patches (list[float], optional): A two-element list where
+              the first element is the weight for masked patches and the second
+              is the weight for visible patches. Defaults to [0.7, 0.3].
+        filtered_mask (torch.Tensor): A binary tensor where 1 (or True) indicates
+            a masked patch and 0 (or False) indicates a visible patch.
+
+    Returns:
+        torch.Tensor: A scalar tensor containing the weighted mean loss over
+            all patches.
+
+    Raises:
+        AttributeError: If `loss_dict` does not contain a `base_loss` attribute.
+    """
     base_loss_type = loss_dict.base_loss.get("type", "mse")
     weight_on_patches = loss_dict.get("weight_on_patches", [0.7, 0.3])
 

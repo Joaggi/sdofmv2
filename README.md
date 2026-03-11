@@ -88,7 +88,6 @@ SDOFMv2 uses the **SDOMLv2** dataset — a curated, multi-instrument dataset for
 | :--- | :--- | :--- | :--- | :--- |
 | `aia` | AIA | EUV Images | ~7.2 TB | 9 extreme ultraviolet channels capturing the solar atmosphere |
 | `hmi` | HMI | Magnetograms | ~713 GB | 3-component vector magnetic field (Bx, By, Bz) for the solar photosphere |
-|
 
 > **Storage:** Zarr datasets require significant local disk space. Verify your target drive has sufficient capacity before downloading.
 

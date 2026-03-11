@@ -1,4 +1,12 @@
-# This model is modified from https://github.com/facebookresearch/mae/blob/main/models_mae.py
+"""Module containing the 3D Masked Autoencoder (MAE) architecture.
+
+This module implements a Vision Transformer (ViT) based Masked Autoencoder
+adapted for 3D spatiotemporal data (e.g., sequences of solar images). It
+includes tools for 3D patch embedding and masked reconstruction using
+custom solar limb masks.
+
+Adapted from: https://github.com/facebookresearch/mae/blob/main/models_mae.py
+"""
 
 import torch
 import torch.nn as nn
@@ -16,8 +24,32 @@ from .losses import (
 
 
 class PatchEmbed(nn.Module):
-    """Frames of 2D Images to Patch Embedding
-    The 3D version of timm.models.vision_transformer.PatchEmbed
+    """Frames of 2D Images to 3D Patch Embedding.
+
+    This is a 3D spatiotemporal version of `timm.models.vision_transformer.PatchEmbed`.
+    It divides a sequence of frames into 3D tubelets (patches across space and time)
+    and projects them into an embedding space.
+
+    Args:
+        img_size (int or tuple): Spatial dimensions of the input images. If an int
+            is provided, it assumes a square image (height, width).
+        patch_size (int or tuple): Spatial dimensions of each patch. If an int
+            is provided, it assumes square patches.
+        num_frames (int): Number of frames in the input sequence.
+        tubelet_size (int): Temporal dimension of each patch.
+        in_chans (int): Number of channels in the input images.
+        embed_dim (int): Output (token) dimension after the 3D convolution layer.
+        norm_layer (torch.nn.Module, optional): Normalization layer applied after
+            the convolution. Defaults to None.
+        flatten (bool): Whether to flatten the spatial and temporal dimensions
+            into a single sequence.
+        bias (bool): Whether to use a bias term in the 3D convolution layer.
+
+    Attributes:
+        grid_size (tuple): The calculated grid dimensions of the patches
+            (time, height, width).
+        num_patches (int): Total number of patches generated per sequence.
+        proj (nn.Conv3d): The 3D convolution layer used for projection.
     """
 
     def __init__(
@@ -71,7 +103,48 @@ class PatchEmbed(nn.Module):
 
 
 class MaskedAutoencoderViT3D(nn.Module):
-    """Masked Autoencoder with VisionTransformer backbone"""
+    """Masked Autoencoder with a 3D Vision Transformer backbone.
+
+    This model encodes a fraction of visible image patches and predicts
+    the missing (masked) patches. It incorporates specialized masking logic
+    to handle solar limb boundaries, ensuring the model focuses on the solar disk.
+
+    Args:
+        img_size (int): Spatial dimensions of the input images.
+            Defaults to 224.
+        patch_size (int): Spatial dimensions of each patch.
+            Defaults to 16.
+        num_frames (int): Number of frames in the input temporal sequence.
+            Defaults to 3.
+        tubelet_size (int): Temporal dimension of each patch (tubelet).
+            Defaults to 1.
+        in_chans (int): Number of input channels (e.g., wavelengths).
+            Defaults to 3.
+        embed_dim (int): Dimensionality of the token embeddings in the
+            encoder. Defaults to 1024.
+        depth (int): Number of Transformer blocks in the encoder.
+            Defaults to 24.
+        num_heads (int): Number of attention heads in the encoder's
+            Transformer blocks. Defaults to 16.
+        decoder_embed_dim (int): Dimensionality of the token embeddings
+            in the decoder. Defaults to 512.
+        decoder_depth (int): Number of Transformer blocks in the decoder.
+            Defaults to 8.
+        decoder_num_heads (int): Number of attention heads in the decoder's
+            Transformer blocks. Defaults to 16.
+        mlp_ratio (float): Ratio of the hidden dimension to the embedding
+            dimension in the MLP of the Transformer blocks. Defaults to 4.0.
+        norm_layer (str): The type of normalization layer to use.
+            Currently supports "LayerNorm". Defaults to "LayerNorm".
+        limb_mask (torch.Tensor): A 2D spatial mask tensor outlining the
+            solar limb, used for pixel-level loss computation. Defaults to None.
+        ids_limb_mask (torch.Tensor or list): 1D array of patch indices
+            that fall outside the solar disk. These are always masked out during
+            training. Defaults to None.
+        loss_dict (dict): Configuration dictionary specifying the loss
+            space (e.g., "patch" or "pixel"), loss type (e.g., "mse", "mae"), and
+            other loss-specific hyperparameters. Defaults to an empty dict.
+    """
 
     def __init__(
         self,
@@ -229,7 +302,21 @@ class MaskedAutoencoderViT3D(nn.Module):
         """
         Perform per-sample random masking by per-sample shuffling.
         Per-sample shuffling is done by argsort random noise.
-        x: [N, L, D], sequence
+
+        Args:
+            x (torch.Tensor): Input sequence of embedded patches. Expected shape
+                is [N, L, D], where N is batch size, L is sequence length
+                (number of patches), and D is embedding dimension.
+            mask_ratio (float): The fraction of patches to mask out (e.g., 0.75).
+                If a limb mask is provided, this fraction only applies to patches
+                inside the solar disk.
+
+        Returns:
+            tuple: A tuple containing:
+                - x_masked (torch.Tensor): The sequence of kept, visible patches.
+                - mask (torch.Tensor): Binary mask indicating kept (0) vs. removed (1) patches.
+                - ids_restore (torch.Tensor): Indices needed to unshuffle the patches
+                  back to their original spatial order.
         """
         N, L, D = x.shape  # batch, length, dim
         device = x.device
@@ -451,7 +538,32 @@ class MaskedAutoencoderViT3D(nn.Module):
         reshape: bool = True,
         norm: bool = False,
     ):
-        """Modified from timm.VisionTransformer.get_intermediate_layers"""
+        """Extracts features from specified intermediate encoder layers.
+
+        This method passes the input through the encoder and captures the
+        output of the Transformer blocks requested in the list `n`. It is
+        highly useful for downstream tasks (like classification or segmentation)
+        that require hierarchical feature representations. Modified from
+        `timm.VisionTransformer.get_intermediate_layers`.
+
+        Args:
+            x (torch.Tensor): Input batch of image sequences. Expected shape
+                is (B, C, T, H, W).
+            n (list[int]): Indices of the layers to return features from.
+                Index 0 corresponds to the initial patch embeddings (before blocks),
+                while 1 through `depth` correspond to the Transformer blocks.
+            mask_ratio (float, optional): The fraction of patches to mask
+                out during extraction. Defaults to 0.0 (no masking).
+            reshape (bool, optional): If True, reshapes the flat sequence
+                of patches back into a spatial grid layout (B, D, H, W) based
+                on the patch grid size. Defaults to True.
+            norm (bool, optional): If True, applies the model's layer normalization
+                to the extracted features before returning them. Defaults to False.
+
+        Returns:
+            list[torch.Tensor]: A list of feature tensors extracted from the
+                layers specified in `n`.
+        """
         # embed patches
         x = self.patch_embed(x)
 

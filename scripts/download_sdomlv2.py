@@ -21,19 +21,21 @@ def download_s3_folder(s3_folder: str, local_folder: str, component: str = "both
     target_zarrs = component_files.get(component.lower(), [])
     for zarr_name in target_zarrs:
         s3_src = f"{s3_folder.rstrip('/')}/{zarr_name}"
-        print(f"Scanning {zarr_name}...")
+        print(f"Scanning {zarr_name} (this may take a minute for large Zarrs)...")
 
-        all_files = fs.find(s3_src)
+        # Use detail=True to get file sizes upfront!
+        all_files_info = fs.find(s3_src, detail=True)
         skipped, downloaded, failed = 0, 0, 0
 
-        for s3_file in all_files:
+        for s3_file, info in all_files_info.items():
+            # info is a dictionary that includes 'size'
             relative = s3_file[len(s3_src) :].lstrip("/")
             local_file = local_path / zarr_name / relative
             local_file.parent.mkdir(parents=True, exist_ok=True)
 
-            # Skip if file exists and size matches
+            # Check existence and size without making a new network call
             if local_file.exists():
-                remote_size = fs.info(s3_file)["size"]
+                remote_size = info["size"]
                 if local_file.stat().st_size == remote_size:
                     skipped += 1
                     continue

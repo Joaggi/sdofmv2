@@ -5,6 +5,27 @@ from transformers import get_cosine_schedule_with_warmup
 
 
 class BaseModule(pl.LightningModule):
+    """A foundational PyTorch Lightning module for standardized training.
+
+    This base class handles the boilerplate configuration for optimizers
+    and learning rate schedulers. Other models in the pipeline should inherit
+    from this class and implement their specific `training_step` and
+    `validation_step` logic.
+
+    Args:
+        optimizer_dict (dict): Configuration dictionary for the optimizer.
+            Expected keys include "use" (e.g., "adamw", "sgd", "adam"),
+            "learning_rate", and "weight_decay".
+        scheduler_dict (dict): Configuration dictionary for the learning rate
+            scheduler. Expected keys include "use" (e.g., "cosine", "cosine_warmup",
+            "plateau", "exp"), "monitor" (metric to track), and any scheduler-specific
+            hyperparameters.
+        hyperparam_ignore (list[str], optional): List of parameter names to
+            exclude from Lightning's automatic hyperparameter saving. Defaults to [].
+        *args: Variable length argument list passed to `pl.LightningModule`.
+        **kwargs: Arbitrary keyword arguments passed to `pl.LightningModule`.
+    """
+
     def __init__(
         self,
         optimizer_dict,

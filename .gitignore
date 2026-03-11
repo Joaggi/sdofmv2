@@ -9,3 +9,5 @@ assets/
 wandb/
 lightning_logs/
 __pycache__/
+docs/build/
+docs/_build/

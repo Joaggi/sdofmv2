@@ -109,6 +109,51 @@ def inverse_log_norm(
 
 
 class SDOMLDataset(Dataset):
+    """A PyTorch Dataset for Solar Dynamics Observatory (SDO) Machine Learning data.
+
+    This dataset aligns and loads multimodal solar observations from the AIA, HMI,
+    and EVE instruments. It supports temporal sequencing, masking, and on-the-fly
+    normalization for training deep learning models on solar data.
+
+    Args:
+        aligndata (pd.DataFrame): Aligned temporal indexes used
+            for matching inputs and outputs across different instruments.
+        hmi_data (zarr.hierarchy.Group): Zarr dataset
+            HMI magnetogram observations.
+        aia_data (zarr.hierarchy.Group): Zarr dataset
+            AIA EUV/UV image observations.
+        eve_data (zarr.hierarchy.Group): Zarr dataset
+            EVE irradiance observations.
+        components (list[str]): List of magnetic components to load for HMI
+            (e.g., ['Bx', 'By', 'Bz']).
+        wavelengths (list[str] or list[int]): List of channels to load for AIA
+            (e.g., [94, 131, 171, 193, 211, 304, 335, 1600, 1700]).
+        ions (list[str]): List of spectral lines/ions to load for EVE
+            (e.g., from MEGS-A and MEGS-B).
+        freq (str): The temporal cadence used for rounding and aligning the
+            time series (e.g., '12min').
+        months (list[int]): List of valid months (1-12) to include in the dataset.
+            Useful for creating train/validation/test splits by time.
+        normalization (dict): The normalization strategy to apply
+            during data loading (e.g., 'zscore', 'minmax'). Defaults to None.
+        normalization_stat (dict): Pre-computed statistics (like mean
+            and standard deviation) required for the chosen normalization.
+            Defaults to None.
+        mask (torch.Tensor): Whether to apply the HMI limb
+            mask to the AIA and HMI spatial data. Defaults to None.
+        num_frames (int, optional): The number of consecutive temporal frames
+            to load per sequence sample. Defaults to 1.
+        drop_frame_dim (bool, optional): If True and `num_frames` is 1, drops
+            the temporal dimension. Defaults to False.
+        min_date (str or datetime, optional): The earliest date boundary to
+            include in the dataset. Defaults to None.
+        max_date (str or datetime, optional): The latest date boundary to
+            include in the dataset. Defaults to None.
+        get_header (bool or list, optional): Whether to retrieve and return header metadata alongside the image tensors. Defaults to False.
+        precision (str, optional): The floating-point precision for the output
+            tensors (e.g., "32" for float32, "16" for float16). Defaults to "32".
+    """
+
     def __init__(
         self,
         aligndata,
@@ -130,19 +175,6 @@ class SDOMLDataset(Dataset):
         get_header=False,  # Optional[list] = [],
         precision="32",
     ):
-        """
-        aligndata --> aligned indexes for input-output matching
-        aia_data --> zarr: aia data in zarr format
-        eve_path --> zarr: eve data in zarr format
-        hmi_path --> zarr: hmi data in zarr format
-        components --> list: list of magnetic components for hmi (Bx, By, Bz)
-        wavelengths   --> list: list of channels for aia (94, 131, 171, 193, 211, 304, 335, 1600, 1700)
-        ions          --> list: list of ions for eve (MEGS A and MEGS B)
-        freq          --> str: cadence used for rounding time series
-        transformation: to be applied to aia in theory, but can stay None here
-        use_normalizations: to use or not use normalizations, e.g. if this is test data, we don't want to use normalizations
-        mask: to apply or not apply the HMI mask to AIA and HMI data
-        """
         super().__init__()
 
         self.aligndata = aligndata
@@ -426,19 +458,57 @@ class SDOMLDataset(Dataset):
 
 
 class SDOMLDataModule(pl.LightningDataModule):
-    """Loads paired data samples of AIA EUV images and EVE irradiance measures.
+    """A PyTorch Lightning DataModule for paired SDO machine learning data.
 
-    Note: Input data needs to be paired.
-    Parameters
-    ----------
-    hmi_path: path to hmi zarr file
-    aia_path: path to aia zarr file
-    eve_path: path to the EVE zarr data file
-    components: list of magnetic field components
-    batch_size: batch size (default is 32)
-    num_workers: number of workers (needed for the training)
-    val_months/test_months/holdout_monts: list of onths used to split the data
-    cache_dir: path to directory for cashing data
+    This module orchestrates the downloading, setup, splitting, and batching of
+    paired AIA EUV images, HMI magnetograms, and EVE irradiance measures. It
+    handles train/val/test splits based on specified months to prevent temporal
+    data leakage.
+
+    Note:
+        Input data across the different instruments needs to be temporally aligned
+        and paired.
+
+    Args:
+        hmi_path (str): Path to the HMI Zarr data file.
+        aia_path (str): Path to the AIA Zarr data file.
+        eve_path (str): Path to the EVE Zarr data file.
+        components (list[str]): List of magnetic field components to load from HMI.
+        wavelengths (list[int] or list[str]): List of AIA wavelengths to load.
+        ions (list[str]): List of EVE ions or spectral lines to load.
+        frequency (str): Temporal cadence used to align the data (e.g., '12min').
+        batch_size (int, optional): Number of samples per batch. Defaults to 32.
+        num_workers (int, optional): Number of subprocesses to use for data
+            loading. Defaults to None.
+        pin_memory (bool, optional): If True, the data loader will copy Tensors
+            into CUDA pinned memory before returning them. Defaults to False.
+        persistent_workers (bool, optional): If True, the data loader will not
+            shutdown worker processes after a dataset has been consumed once.
+            Defaults to False.
+        val_months (list[int], optional): List of months (1-12) used to create
+            the validation split. Defaults to [10, 1].
+        test_months (list[int], optional): List of months (1-12) used to create
+            the testing split. Defaults to [11, 12].
+        holdout_months (list[int], optional): List of months reserved as a strict
+            holdout set. Defaults to {}.
+        predict_months (list[int], optional): List of months used specifically
+            for the Lightning prediction stage. Defaults to [].
+        normalization (dict): specific normalization strategy to use. Defaults to False.
+        cache_dir (str, optional): Path to the directory for caching aligned data
+            indices and normalization statistics. Defaults to "".
+        norm_stat_tag (str, optional): Tag/suffix used to identify the specific
+            pre-computed normalization statistics file in the cache. Defaults to "".
+        apply_mask (bool, optional): Whether to apply the solar limb mask to the
+            spatial data. Defaults to True.
+        num_frames (int, optional): The number of consecutive temporal frames
+            to load per sequence sample. Defaults to 1.
+        drop_frame_dim (bool, optional): If True and `num_frames` is 1. Defaults to False.
+        min_date (str, optional): The earliest date boundary to include in the
+            splits (e.g., '2010-05-01'). Defaults to None.
+        max_date (str, optional): The latest date boundary to include in the
+            splits. Defaults to None.
+        precision (str, optional): The floating-point precision for the output
+            tensors (e.g., "32", "16"). Defaults to "32".
     """
 
     def __init__(
@@ -458,7 +528,7 @@ class SDOMLDataModule(pl.LightningDataModule):
         test_months=[11, 12],
         holdout_months=[],
         predict_months=[],
-        normalization=False,
+        normalization={},
         cache_dir="",
         norm_stat_tag="",
         apply_mask=True,

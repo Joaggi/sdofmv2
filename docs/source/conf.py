@@ -1,8 +1,9 @@
 import os
 import sys
+from pathlib import Path
 
 # Point Sphinx to the src directory so it can read your package
-sys.path.insert(0, os.path.abspath("../../src"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 # Configuration file for the Sphinx documentation builder.
 #

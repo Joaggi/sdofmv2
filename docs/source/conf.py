@@ -34,10 +34,56 @@ exclude_patterns = [
     "**/*_old.py",
 ]
 
-
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
 # Change the theme to the Read the Docs style
 html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
+
+autodoc_mock_imports = [
+    # Core & Math
+    "numpy",
+    "pandas",
+    "scipy",
+    "sklearn",
+    "skimage",
+    "matplotlib",
+    "xarray",
+    # Domain Specific
+    "sunpy",
+    "zarr",
+    "blosc",
+    "h5py",
+    "astropy",
+    # Deep Learning & Models
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "torchcodec",
+    "lightning",
+    "torchmetrics",
+    "transformers",
+    "tokenizers",
+    "timm",
+    "einops",
+    "safetensors",
+    "segmentation_models_pytorch",
+    "efficientnet_pytorch",
+    "pretrainedmodels",
+    # Config & Tracking
+    "wandb",
+    "hydra",
+    "omegaconf",
+    "optuna",
+    "loguru",
+    "rich",
+    "yaml",
+    # Utilities
+    "joblib",
+    "overrides",
+    "tqdm",
+    "dask",
+    "datasets",
+    "s3fs",
+]

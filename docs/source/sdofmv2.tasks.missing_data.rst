@@ -1,37 +1,34 @@
-sdofmv2.tasks.missing\_data package
-===================================
+Downstream App: Missing Data
+============================
 
-Submodules
-----------
-
-sdofmv2.tasks.missing\_data.missing\_data\_module module
---------------------------------------------------------
+Data Module
+------------
 
 .. automodule:: sdofmv2.tasks.missing_data.missing_data_module
    :members:
    :show-inheritance:
    :undoc-members:
 
-sdofmv2.tasks.missing\_data.necks module
-----------------------------------------
+Neck Module
+-----------
 
 .. automodule:: sdofmv2.tasks.missing_data.necks
    :members:
    :show-inheritance:
    :undoc-members:
 
-sdofmv2.tasks.missing\_data.wrap\_encoder module
-------------------------------------------------
+Wrap Encoder
+------------
 
 .. automodule:: sdofmv2.tasks.missing_data.wrap_encoder
    :members:
    :show-inheritance:
    :undoc-members:
 
-Module contents
----------------
+.. Module contents
+.. ---------------
 
-.. automodule:: sdofmv2.tasks.missing_data
-   :members:
-   :show-inheritance:
-   :undoc-members:
+.. .. automodule:: sdofmv2.tasks.missing_data
+..    :members:
+..    :show-inheritance:
+..    :undoc-members:

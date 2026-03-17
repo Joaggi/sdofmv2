@@ -1,3 +1,5 @@
+from typing import Union
+
 import torch
 import torch.nn.functional as F
 
@@ -5,7 +7,7 @@ import torch.nn.functional as F
 def focal_loss_multiclass(
     inputs: torch.Tensor,
     targets: torch.Tensor,
-    alpha: float | torch.Tensor = 0.25,
+    alpha: Union[float, torch.Tensor] = 0.25,
     gamma: float = 2.0,
     reduction: str = "none",
 ) -> torch.Tensor:

@@ -27,6 +27,7 @@ extensions = [
     "sphinx.ext.napoleon",  # Supports Google/NumPy-style docstrings
     "sphinx.ext.viewcode",  # Adds links to highlighted source code
     "myst_parser",  # Allows you to use Markdown (like your README)
+    "sphinx.ext.autosummary",
 ]
 
 templates_path = ["_templates"]

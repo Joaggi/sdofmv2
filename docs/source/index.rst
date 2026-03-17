@@ -18,3 +18,9 @@ documentation for details.
    Core Models & Data <sdofmv2.core>
    Downstream Tasks <sdofmv2.tasks>
    Utilities <sdofmv2.utils>
+
+.. .. toctree::
+..    :maxdepth: 2
+..    :caption: API Reference
+
+..    sdofmv2

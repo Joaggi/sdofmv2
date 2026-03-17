@@ -1,29 +1,26 @@
-sdofmv2.tasks.f107 package
-==========================
+Downstream App: F10.7
+=====================
 
-Submodules
-----------
-
-sdofmv2.tasks.f107.f107\_datamodule module
-------------------------------------------
+Data Module
+-----------
 
 .. automodule:: sdofmv2.tasks.f107.f107_datamodule
    :members:
    :show-inheritance:
    :undoc-members:
 
-sdofmv2.tasks.f107.f107\_module module
---------------------------------------
+Model Module
+------------
 
 .. automodule:: sdofmv2.tasks.f107.f107_module
    :members:
    :show-inheritance:
    :undoc-members:
 
-Module contents
----------------
+.. Module contents
+.. ---------------
 
-.. automodule:: sdofmv2.tasks.f107
-   :members:
-   :show-inheritance:
-   :undoc-members:
+.. .. automodule:: sdofmv2.tasks.f107
+..    :members:
+..    :show-inheritance:
+..    :undoc-members:

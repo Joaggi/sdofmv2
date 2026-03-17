@@ -1,9 +1,6 @@
 Core Models & Data
 ====================
 
-Submodules
-----------
-
 Attention Map
 -------------
 
@@ -39,10 +36,17 @@ Losses
 Masked Autoencoder (MAE)
 ------------------------
 
-.. automodule:: sdofmv2.core.mae3d
+.. autoclass:: sdofmv2.core.mae3d.MaskedAutoencoderViT3D
    :members:
-   :show-inheritance:
-   :undoc-members:
+   :no-undoc-members:
+
+   .. rubric:: Methods
+
+   .. autosummary::
+      
+      forward
+      get_intermediate_layers
+      random_masking
 
 MAE Module
 ----------

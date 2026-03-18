@@ -15,6 +15,58 @@ from sdofmv2.utils.constants import ALL_WAVELENGTHS
 
 
 class MAE(BaseModule):
+    """Masked Autoencoder (MAE) for 3D/Spatiotemporal data reconstruction.
+
+    This module implements a Vision Transformer-based autoencoder that learns
+    representations by reconstructing masked patches of volumetric data. It
+    supports custom ROI masking (limb masking) and automated metric tracking
+    across training, validation, and testing phases.
+
+    Args:
+        img_size: Side length of the input image (assumed square).
+        chan_types: List of channel names/wavelengths for logging.
+        patch_size: Spatial size of the 2D patches.
+        num_frames: Total number of frames (temporal depth) in the input sequence.
+        tubelet_size: Temporal size of the 3D tubelets.
+        in_chans: Number of input data channels.
+        embed_dim: Embedding dimension for the encoder.
+        depth: Number of transformer layers in the encoder.
+        num_heads: Number of attention heads in the encoder.
+        decoder_embed_dim: Embedding dimension for the decoder.
+        decoder_depth: Number of transformer layers in the decoder.
+        decoder_num_heads: Number of attention heads in the decoder.
+        mlp_ratio: Expansion ratio for the MLP hidden dimension.
+        norm_layer: Type of normalization layer to use (e.g., "LayerNorm").
+        masking_ratio: Fraction of patches to mask (0.0 to 1.0).
+        limb_mask: An optional binary ROI mask.
+        loss_dict: Configuration for reconstruction losses.
+        optimizer_dict: Configuration for the optimizer.
+        scheduler_dict: Configuration for the learning rate scheduler.
+        *args: Variable length argument list passed to BaseModule.
+        **kwargs: Arbitrary keyword arguments passed to BaseModule.
+
+    Attributes:
+        img_size (int): Spatial resolution of the input images (Height and Width).
+        patch_size (int): The side length of the square patches extracted from
+            each frame.
+        tubelet_size (int): The temporal depth of each 3D patch (number of frames).
+        masking_ratio (float): The fraction of patches to be masked out during
+            the forward pass (typically 0.75).
+        chan_types (list[str]): A list of identifiers for each input channel
+            (e.g., specific wavelengths), used for per-channel metric logging.
+        limb_mask (Optional[torch.Tensor]): A binary spatial mask of shape
+            (H, W) used to restrict the model's focus to specific ROIs.
+        loss_dict (dict): Configuration parameters and weights for the
+            reconstruction loss functions.
+        validation_metrics (list[dict]): A transient buffer that accumulates
+            metric dictionaries from each `validation_step` to be processed
+            at the epoch end.
+        test_results (list[dict]): A transient buffer that accumulates metric
+            dictionaries from each `test_step`.
+        autoencoder (MaskedAutoencoderViT3D): The core transformer architecture
+            consisting of the encoder and decoder blocks.
+    """
+
     def __init__(
         self,
         # MAE specific

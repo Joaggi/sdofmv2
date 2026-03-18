@@ -24,6 +24,64 @@ def parse_cadence(cadence):
 
 
 class SWDataset(SDOMLDataset):
+    """Solar Wind dataset for SDOML (Solar Dynamics Observatory Machine Learning).
+
+    This class extends the base SDOMLDataset to handle solar wind-specific
+    features, including radial and latitudinal/longitudinal parameters. It
+    supports temporal filtering by year/month, class-based undersampling for
+    training sets, and automated column index mapping for coordinate features.
+
+    Args:
+        aligndata (pd.DataFrame): DataFrame containing aligned timestamps, input data paths, and target labels.
+        hmi_data (zarr.Group): SDO/HMI (magnetic field) data source.
+        aia_data (zarr.Group): SDO/AIA (extreme ultraviolet) data source.
+        eve_data (zarr.Group): SDO/EVE (irradiance) data source.
+        components (list[str]): List of HMI magnetic field components to include.
+        wavelengths (list[int]): List of AIA wavelengths (e.g., 171, 193) to include.
+        ions (list[str]): List of EVE ions or spectral lines to include.
+        freq (str): Data cadence string (e.g., '12min' or '1h').
+        months (list[int]): List of months (1-12) to include in this data split.
+        years (list[int]): List of years (e.g., 2010-2018) to include in this data split.
+        mask (torch.Tensor, optional): A precomputed spatial mask to be applied to
+            the AIA and HMI image data. Defaults to None.
+        num_frames (int): Number of consecutive temporal frames per sample. Defaults to 1.
+        drop_frame_dim (bool): If True, removes the temporal dimension (F)
+            for single-frame samples. Defaults to False.
+        min_date (str, optional): Minimum timestamp boundary for filtering data.
+        max_date (str, optional): Maximum timestamp boundary for filtering data.
+        get_header (bool): Whether to retrieve and return FITS headers with the data.
+            Defaults to False.
+        normalization (dict): Mapping of instrument keys to their respective
+            normalization methods.
+        normalization_stat (dict): Precomputed statistics (e.g., mean and standard
+            deviation) used for data scaling.
+        label_type (str): The column name in ``aligndata`` used as the prediction target.
+        radial_parameters (list[str], optional): Column names representing
+            radial distance features.
+        latlon_parameters (list[str], optional): Column names representing
+            spatial coordinates (latitude/longitude).
+        sampling_ratio (list[float], optional): Fractions used to undersample
+            specific classes (only applied when ``datasplit`` is "train").
+        random_state (int, optional): Seed for the random number generator to
+            ensure reproducible undersampling.
+        datasplit (str): The intended use of this instance; one of "train",
+            "val", or "test". Defaults to "train".
+
+    Attributes:
+        radial_parameters (list[str]): List of column names representing
+            radial distance features.
+        latlon_parameters (list[str]): List of column names representing
+            latitude and longitude features.
+        aligndata (pd.DataFrame): The filtered and potentially undersampled
+            DataFrame containing alignment and label information.
+        id_label (int): The integer column index of the target label within
+            ``aligndata``.
+        position_list (list[int]): List of integer column indices corresponding
+            to the latitudinal and longitudinal parameters.
+        r_dist_list (list[int]): List of integer column indices corresponding
+            to the normalized radial distance parameters.
+    """
+
     def __init__(
         self,
         aligndata,
@@ -146,6 +204,61 @@ class SWDataset(SDOMLDataset):
 
 
 class SWDataModule(SDOMLDataModule):
+    """PyTorch Lightning DataModule for Solar Wind (SW) prediction.
+
+    This module handles the end-to-end data pipeline for SDOML datasets, including
+    loading alignment indices from Zarr, filtering by temporal boundaries (years/months),
+    applying spatial longitude cutoffs for solar footpoints, and managing
+    normalization for radial distance parameters.
+
+    Args:
+        hmi_path (str): Path to HMI Zarr data.
+        aia_path (str): Path to AIA Zarr data.
+        eve_path (str): Path to EVE Zarr data.
+        components (list[str]): HMI magnetic components to use.
+        wavelengths (list[int]): AIA wavelengths to use.
+        ions (list[str]): EVE spectral lines to use.
+        frequency (str): The sampling frequency of the instruments.
+        batch_size: Number of samples per batch. Defaults to 32.
+        num_workers: Number of subprocesses for data loading.
+        val_months: Months assigned to validation. Defaults to [10, 1].
+        test_months: Months assigned to testing. Defaults to [11, 12].
+        holdout_months: Months to be completely excluded from all splits.
+        radial_norm: Whether to apply Z-score normalization to radial features.
+        cache_dir: Directory for storing temporary or cached data.
+        apply_mask: If True, applies the limb mask to spatial data.
+        num_frames: Number of temporal frames per sample.
+        drop_frame_dim: Whether to squeeze the temporal dimension if it is 1.
+        min_date: Global start date boundary.
+        max_date: Global end date boundary.
+        precision: Numerical precision for tensors ("16", "32", or "64").
+        normalization: Dictionary of normalization settings.
+        cfg: Configuration object for data cutoffs and model settings.
+        train_months: Months assigned to training.
+        train_years: Year(s) assigned to training.
+        val_years: Year(s) assigned to validation.
+        test_years: Year(s) assigned to testing.
+        alignment_indices_path (str): Path to the Zarr file containing
+            alignment indices and metadata.
+        radial_parameters (list[str]): Column names for radial features.
+        latlon_parameters (list[str]): Column names for coordinate features.
+        cadence: Temporal resolution string (e.g., "1min").
+        label_type: The target column name for the model to predict.
+        sampling_ratio: Fraction of instances to sample per class.
+        random_state: Seed for reproducible sampling and shuffling.
+
+    Attributes:
+        aligndata (pd.DataFrame): The central alignment table indexed by SDO
+            observation time, containing indices of data and target labels.
+        radial_mean (float): Mean value of the radial parameters used for normalization.
+        radial_std (float): Standard deviation of the radial parameters.
+        train_years (int | list[int]): Years allocated for the training set.
+        val_years (int | list[int]): Years allocated for the validation set.
+        test_years (int | list[int]): Years allocated for the test set.
+        cfg (DictConfig | Any): Configuration object containing hyperparameters
+            and data cutoffs (e.g., ``cfg.data.in_situ.lon_cutoff``).
+    """
+
     def __init__(
         self,
         hmi_path,

@@ -22,6 +22,37 @@ from .head_networks import ClsLinear, SimpleLinear, SkipLinearHead, TransformerH
 
 
 class SWClassifier(BaseModule):
+    """Solar Wind Classifier using a backbone encoder and configurable head.
+
+    This module wraps a pretrained backbone encoder and adds a classification head
+    for solar wind prediction tasks. It supports multiple head types (linear,
+    transformer, skip_linear), handles coordinate embeddings, and tracks various
+    classification metrics during training, validation, and testing.
+
+    Args:
+        channels (list[str]): List of data channels to use.
+        num_classes (int): Number of output classes.
+        class_names (list[str]): Names of the classes for logging.
+        max_position_element (int): Maximum power for positional encoding.
+        backbone: The pretrained backbone model.
+        freeze_encoder (bool): Whether to freeze the backbone encoder.
+        plt_style: Plotting style configuration.
+        head_type (str): Type of classification head ("linear", "transformer", "skip_linear").
+        hidden_dim (int): Hidden dimension for the head network.
+        position_size (int): Number of position coordinates.
+        p_drop (float): Dropout probability.
+        nhead (int): Number of attention heads for transformer head.
+        embed_dim (int): Embedding dimension.
+        skips (list[int]): Layer indices for skip connections.
+        include_raw_coordinates (bool): Whether to include raw coordinates.
+        num_hidden_layers (int): Number of hidden layers for skip_linear head.
+        radial_mean (float): Mean for radial normalization.
+        radial_std (float): Standard deviation for radial normalization.
+        loss_dict (dict): Loss function configuration.
+        optimizer_dict (dict): Optimizer configuration.
+        scheduler_dict (dict): Scheduler configuration.
+    """
+
     def __init__(
         self,
         # for finetuning
@@ -218,6 +249,16 @@ class SWClassifier(BaseModule):
                 )
 
     def forward(self, x, position, r_distance):
+        """Perform a forward pass through the classifier.
+
+        Args:
+            x (torch.Tensor): Input images of shape (B, C, H, W).
+            position (torch.Tensor): Position coordinates of shape (B, position_size).
+            r_distance (torch.Tensor): Radial distance values of shape (B,).
+
+        Returns:
+            torch.Tensor: Class logits of shape (B, num_classes).
+        """
         latent, mask, ids_restore = self.backbone.forward_encoder(x, self.mask_ratio)
         # head layer
         y_hat = self.head(latent, position, r_distance)
@@ -225,15 +266,29 @@ class SWClassifier(BaseModule):
         return y_hat
 
     def forward_analysis(self, x):
-        # latent, mask, ids_restore = self.backbone.forward_encoder(x, self.mask_ratio)
-        # head layer
-        # y_hat = self.head(latent, position, r_distance)
+        """Perform analysis forward pass for reconstruction visualization.
+
+        Args:
+            x (torch.Tensor): Input images of shape (B, C, H, W).
+
+        Returns:
+            torch.Tensor: Reconstructed images.
+        """
         loss, x_hat, mask = self.backbone.autoencoder(x, self.mask_ratio)
         x_hat = self.backbone.autoencoder.unpatchify(x_hat)
 
         return x_hat
 
     def predict_step(self, batch, batch_idx):
+        """Perform a prediction step for inference.
+
+        Args:
+            batch: A tuple containing (images, timestamps, position, r_distance, target).
+            batch_idx: The index of the current batch.
+
+        Returns:
+            dict: A dictionary containing predictions, targets, embeddings, etc.
+        """
         imgs, timestamps, position, r_distance, target = batch
         with torch.no_grad():
             y_hat = self(imgs, position, r_distance)
@@ -256,6 +311,15 @@ class SWClassifier(BaseModule):
         }
 
     def training_step(self, batch, batch_idx):
+        """Perform a single training step.
+
+        Args:
+            batch: A tuple containing (images, timestamps, position, r_distance, target).
+            batch_idx: The index of the current batch.
+
+        Returns:
+            torch.Tensor: The training loss value.
+        """
         imgs, timestamps, position, r_distance, target = batch  # [batch, c, 512, 512]
         y_hat = self(imgs, position, r_distance)
 
@@ -301,6 +365,15 @@ class SWClassifier(BaseModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
+        """Perform a single validation step.
+
+        Args:
+            batch: A tuple containing (images, timestamps, position, r_distance, target).
+            batch_idx: The index of the current batch.
+
+        Returns:
+            torch.Tensor: The validation loss value.
+        """
         imgs, timestamps, position, r_distance, target = batch
         y_hat = self(imgs, position, r_distance)
 
@@ -341,6 +414,15 @@ class SWClassifier(BaseModule):
         return val_loss
 
     def test_step(self, batch, batch_idx):
+        """Perform a single test step.
+
+        Args:
+            batch: A tuple containing (images, timestamps, position, r_distance, target).
+            batch_idx: The index of the current batch.
+
+        Returns:
+            dict: A dictionary containing predictions, targets, logits, and test loss.
+        """
         imgs, timestamps, position, r_distance, target = batch  # [batch, c, 512, 512]
         y_hat = self(imgs, position, r_distance)
         test_loss = self.loss_fn(y_hat, target)
@@ -382,6 +464,11 @@ class SWClassifier(BaseModule):
         }
 
     def on_validation_epoch_end(self):
+        """Called at the end of the validation epoch.
+
+        Computes and logs all validation metrics, generates WandB plots
+        (confusion matrix, class distributions), and clears stored buffers.
+        """
         # Compute and log all accumulated metrics
         self.log(
             "val_f1",
@@ -520,10 +607,19 @@ class SWClassifier(BaseModule):
         torch.cuda.empty_cache()
 
     def on_train_epoch_end(self):
+        """Called at the end of the training epoch.
+
+        Performs garbage collection and clears CUDA cache to free memory.
+        """
         gc.collect()
         torch.cuda.empty_cache()
 
     def on_test_epoch_end(self):
+        """Called at the end of the test epoch.
+
+        Computes and logs all test metrics including F1, precision, recall,
+        accuracy, AUROC, MCC, and Cohen's Kappa.
+        """
         # Log all test metrics
         self.log(
             "test_f1",
@@ -576,6 +672,11 @@ class SWClassifier(BaseModule):
         )
 
     def on_before_optimizer_step(self, optimizer):
+        """Called before each optimizer step to log gradient norms.
+
+        Args:
+            optimizer: The optimizer about to perform an update step.
+        """
         # Compute the 2-norm for each layer
         # If using mixed precision, the gradients are already unscaled here
         norms = grad_norm(self.head, norm_type=2)

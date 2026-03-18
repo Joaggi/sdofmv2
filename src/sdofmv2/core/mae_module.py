@@ -144,6 +144,15 @@ class MAE(BaseModule):
         )
 
     def training_step(self, batch, batch_idx):
+        """Perform a single training step.
+
+        Args:
+            batch: A tuple containing (images, timestamps).
+            batch_idx: The index of the current batch.
+
+        Returns:
+            torch.Tensor: The training loss value.
+        """
         # training_step defines the train loop.
         x, timestamps = batch
         loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
@@ -153,6 +162,12 @@ class MAE(BaseModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
+        """Perform a single validation step.
+
+        Args:
+            batch: A tuple containing (images, timestamps).
+            batch_idx: The index of the current batch.
+        """
         x, timestamps = batch
         x_patchified = patchify(x, self.patch_size, self.tubelet_size)
         loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
@@ -203,6 +218,18 @@ class MAE(BaseModule):
         )
 
     def forward(self, x, mask_ratio=None):
+        """Perform a forward pass through the MAE.
+
+        Args:
+            x (torch.Tensor): Input images of shape (B, C, H, W).
+            mask_ratio (float, optional): Fraction of patches to mask. If None,
+                uses the default masking_ratio. Defaults to None.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: A tuple containing:
+                - x_hat: Reconstructed images.
+                - mask: The applied mask tensor.
+        """
         if mask_ratio is None:
             mask_ratio = self.masking_ratio
         loss, x_hat, mask = self.autoencoder(x, mask_ratio=mask_ratio)
@@ -210,15 +237,27 @@ class MAE(BaseModule):
         return x_hat, mask
 
     def forward_encoder(self, x, mask_ratio):
+        """Perform a forward pass through the encoder only.
+
+        Args:
+            x (torch.Tensor): Input images.
+            mask_ratio (float): Fraction of patches to mask.
+
+        Returns:
+            torch.Tensor: Encoded features from the encoder.
+        """
         return self.autoencoder.forward_encoder(x, mask_ratio=mask_ratio)
 
     def on_validation_epoch_end(self):
+        """Called at the end of the validation epoch.
 
+        Aggregates validation metrics, logs them to the logger (WandB or default),
+        and clears the metrics buffer.
+        """
         merged_metrics = bench_recon.merge_metrics(self.validation_metrics)
         batch_metrics = bench_recon.mean_metrics(merged_metrics)
 
         if isinstance(self.logger, pl.loggers.wandb.WandbLogger):
-
             # this only occurs on rank zero only
             df = pd.DataFrame(batch_metrics)
             df["mean"] = df.mean(numeric_only=True, axis=1)
@@ -243,7 +282,12 @@ class MAE(BaseModule):
         self.validation_metrics.clear()
 
     def test_step(self, batch, batch_idx):
+        """Perform a single test step.
 
+        Args:
+            batch: A tuple containing (images, timestamps).
+            batch_idx: The index of the current batch.
+        """
         x, timestamps = batch
         x_patchified = patchify(x, self.patch_size, self.tubelet_size)
         loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
@@ -286,6 +330,11 @@ class MAE(BaseModule):
         self.test_results.extend(step_metrics)
 
     def on_test_epoch_end(self):
+        """Called at the end of the test epoch.
+
+        Aggregates test metrics, saves them to a CSV file, logs to the logger,
+        and clears the results buffer.
+        """
         if not self.test_results:
             return
 

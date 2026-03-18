@@ -41,19 +41,43 @@ class BaseModule(pl.LightningModule):
         self.save_hyperparameters(ignore=hyperparam_ignore)
 
     def training_step(self, batch, batch_idx):
+        """Perform a single training step.
+
+        Args:
+            batch: The training batch data.
+            batch_idx: The index of the current batch.
+
+        Raises:
+            NotImplementedError: Subclasses must implement this method.
+        """
         raise NotImplementedError
 
     def validation_step(self, batch, batch_idx):
+        """Perform a single validation step.
+
+        Args:
+            batch: The validation batch data.
+            batch_idx: The index of the current batch.
+
+        Raises:
+            NotImplementedError: Subclasses must implement this method.
+        """
         raise NotImplementedError
 
     def configure_optimizers(self):
+        """Configure optimizers and learning rate schedulers.
+
+        Returns:
+            Union[torch.optim.Optimizer, Dict]: Either a single optimizer or a dict
+                containing optimizer and lr_scheduler configuration.
+        """
         opt_type = self.optimizer_dict.get("use", "adamw")
         lr = self.optimizer_dict.get("learning_rate", 1e-4)
         weight_decay = self.optimizer_dict.get("weight_decay", 0.01)
 
         lgr_logger.debug(f"Initial/Peak LR: {lr}")
         lgr_logger.debug(f"Weight decay: {weight_decay}")
-        match (opt_type):
+        match opt_type:
             case "adam":
                 optimizer = torch.optim.Adam(
                     self.parameters(),

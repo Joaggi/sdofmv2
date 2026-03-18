@@ -26,6 +26,15 @@ def _convTranspose2dOutput(
 
 
 class Norm2d(nn.Module):
+    """Applies Layer Normalization over 4D inputs (channels-last).
+
+    This module reshapes the input from (B, C, H, W) to (B, H, W, C),
+    applies LayerNorm, and then reshapes it back to (B, C, H, W).
+
+    Args:
+        embed_dim (int): The number of features in the input (C).
+    """
+
     def __init__(self, embed_dim: int):
         super().__init__()
         self.ln = nn.LayerNorm(embed_dim, eps=1e-6)

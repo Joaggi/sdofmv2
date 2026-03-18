@@ -3,12 +3,37 @@ import torch.nn.functional as F
 
 
 def mae_loss(pred, target) -> torch.Tensor:
+    """Calculates the mean absolute error between predictions and targets.
+
+    Args:
+        pred (torch.Tensor): Predicted values from the model.
+        target (torch.Tensor): Ground truth values to compare against.
+
+    Returns:
+        torch.Tensor: The calculated mean absolute error as a scalar tensor.
+    """
     err = pred - target
     return torch.mean(torch.abs(err))
 
 
 def vector_aware_loss(pred, target, base_loss) -> torch.Tensor:
+    """Calculates a loss that combines magnitude and orientation for vector fields.
 
+    This method computes a base loss (MSE or MAE) and adds a weighted cosine
+    similarity term. The cosine similarity component enforces directional
+    alignment between the predicted and target vectors.
+
+    Args:
+        pred (torch.Tensor): Predicted vector field of shape (B, 3, F, H, W).
+        target (torch.Tensor): Ground truth vector field of shape (B, 3, F, H, W).
+        base_loss (str): The type of base loss to compute, either "mse" or "mae".
+
+    Returns:
+        torch.Tensor: A scalar tensor representing the combined loss.
+
+    Raises:
+        ValueError: If the provided base_loss type isn't supported.
+    """
     if base_loss == "mse":
         baseloss = ((pred - target) ** 2).mean()
     elif base_loss == "mae":
@@ -102,6 +127,8 @@ def patch_weight_loss(pred, target, loss_dict, filtered_mask):
     elif base_loss_type == "huber":
         delta = loss_dict.base_loss.get("delta", 1.0)
         loss = F.huber_loss(pred, target, reduction="none", delta=delta)
+    else:
+        raise ValueError(f"Not supported loss type: {base_loss_type}")
 
     # Weight application
     w_sum = sum(weight_on_patches)

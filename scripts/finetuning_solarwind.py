@@ -27,7 +27,21 @@ from sdofmv2.tasks.solar_wind import SWClassifier, SWDataModule
     config_name="finetune_solarwind_config.yaml",
 )
 def main(cfg):
+    """Executes the fine-tuning pipeline for the solar wind classification task.
 
+    It sets up the experiment environment by initializing WandB logging,
+    configuring the solar wind data module, and loading the SDO-FM backbone.
+    The function constructs the downstream classifier, defines training
+    callbacks, and manages the PyTorch Lightning trainer to start the model
+    fitting process.
+
+    Args:
+        cfg (DictConfig): The Hydra configuration object containing experiment,
+            data, and model parameters.
+
+    Returns:
+        None
+    """
     torch.serialization.add_safe_globals([ListConfig, ContainerMetadata])
 
     # set logger

@@ -12,18 +12,48 @@ Attention Map
 Base Module
 -----------
 
-.. automodule:: sdofmv2.core.basemodule
+.. autoclass:: sdofmv2.core.basemodule.BaseModule
    :members:
    :show-inheritance:
-   :undoc-members:
+   :no-undoc-members:
+
+   .. rubric:: Methods
+
+   .. autosummary::
+      
+      configure_optimizers
+      training_step
+      validation_step
 
 Data Module
 -----------
 
-.. automodule:: sdofmv2.core.datamodule
+.. autoclass:: sdofmv2.core.datamodule.SDOMLDataset
    :members:
    :show-inheritance:
-   :undoc-members:
+   :no-undoc-members:
+
+   .. rubric:: Methods
+
+   .. autosummary::
+      
+      get_aia_image
+      get_eve
+      get_hmi_image
+
+.. autoclass:: sdofmv2.core.datamodule.SDOMLDataModule
+   :members:
+   :show-inheritance:
+   :no-undoc-members:
+
+   .. rubric:: Methods
+
+   .. autosummary::
+      
+      setup
+      test_dataloader
+      train_dataloader
+      val_dataloader
 
 Losses
 ------
@@ -51,10 +81,22 @@ Masked Autoencoder (MAE)
 MAE Module
 ----------
 
-.. automodule:: sdofmv2.core.mae_module
+.. autoclass:: sdofmv2.core.mae_module.MAE
    :members:
    :show-inheritance:
-   :undoc-members:
+   :no-undoc-members:
+
+   .. rubric:: Methods
+
+   .. autosummary::
+      
+      forward
+      forward_encoder
+      on_test_epoch_end
+      on_validation_epoch_end
+      test_step
+      training_step
+      validation_step
 
 Principal Component Analysis
 ----------------------------

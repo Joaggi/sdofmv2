@@ -17,6 +17,14 @@ from sunpy.coordinates.frames import HeliographicStonyhurst
 
 # GENERAL
 def days_hours_mins_secs_str(total_seconds):
+    """Convert a duration in seconds to a human-readable string.
+
+    Args:
+        total_seconds (int or float): The total number of seconds.
+
+    Returns:
+        str: A formatted string in the format 'Dd:Hh:Mm:Ss'.
+    """
     d, r = divmod(total_seconds, 86400)
     h, r = divmod(r, 3600)
     m, s = divmod(r, 60)
@@ -24,6 +32,16 @@ def days_hours_mins_secs_str(total_seconds):
 
 
 def flatten_dict(d, parent_key="", sep="_"):
+    """Flatten a nested dictionary into a single-level dictionary.
+
+    Args:
+        d (dict): The input dictionary to flatten.
+        parent_key (str, optional): The prefix for nested keys. Defaults to "".
+        sep (str, optional): The separator between parent and child keys. Defaults to "_".
+
+    Returns:
+        dict: A flattened dictionary with keys joined by the separator.
+    """
     items = []
     for k, v in d.items():
         new_key = parent_key + sep + k if parent_key else k
@@ -35,6 +53,18 @@ def flatten_dict(d, parent_key="", sep="_"):
 
 
 def unflatten_dict(dictionary, sep="_", wandb_mode=True):
+    """Unflatten a dictionary back into a nested dictionary structure.
+
+    Args:
+        dictionary (dict): The flattened dictionary to unflatten.
+        sep (str, optional): The separator used to join keys. Defaults to "_".
+        wandb_mode (bool, optional): If True, extracts values from 'value' keys
+            in nested dicts. Defaults to True.
+
+    Returns:
+        AttributeDict: A nested dictionary with keys split by the separator.
+    """
+
     def grab_values(d):
         resultDict = AttributeDict()
         for k, v in d.items():
@@ -64,10 +94,14 @@ def unflatten_dict(dictionary, sep="_", wandb_mode=True):
 
 #### MAE FUNCTIONS
 def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
-    """
-    embed_dim: output dimension for each position
-    pos: a list of positions to be encoded: size (M,)
-    out: (M, D)
+    """Generate 1D sine-cosine positional embeddings.
+
+    Args:
+        embed_dim (int): The output dimension for each position (must be even).
+        pos (ndarray): A list or array of positions to be encoded, shape (M,).
+
+    Returns:
+        ndarray: Positional embeddings of shape (M, embed_dim).
     """
     assert embed_dim % 2 == 0
     omega = np.arange(embed_dim // 2, dtype=np.float32)
@@ -91,10 +125,18 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 # MoCo v3: https://github.com/facebookresearch/moco-v3
 # --------------------------------------------------------
 def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):
-    """
-    grid_size: int of the grid height and width
-    return:
-    pos_embed: [grid_size*grid_size, embed_dim] or [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
+    """Generate 2D sine-cosine positional embeddings.
+
+    Args:
+        embed_dim (int): The embedding dimension for each position.
+        grid_size (int): The grid height and width (assumed square).
+        cls_token (bool, optional): If True, prepends a zero vector for CLS token.
+            Defaults to False.
+
+    Returns:
+        ndarray: Positional embeddings of shape
+            [grid_size*grid_size, embed_dim] or
+            [1+grid_size*grid_size, embed_dim] (with cls_token).
     """
     grid_h = np.arange(grid_size, dtype=np.float32)
     grid_w = np.arange(grid_size, dtype=np.float32)
@@ -109,6 +151,15 @@ def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):
 
 
 def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
+    """Generate 2D sine-cosine positional embeddings from a grid.
+
+    Args:
+        embed_dim (int): The embedding dimension (must be even).
+        grid (ndarray): A 2xHxW array containing the 2D grid coordinates.
+
+    Returns:
+        ndarray: The positional embeddings of shape (H*W, embed_dim).
+    """
     assert embed_dim % 2 == 0
 
     # use half of dimensions to encode grid_h
@@ -120,12 +171,18 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
 
 
 def get_3d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):
-    """
-    grid_size: 3d tuple of grid size: t, h, w
-    return:
-    pos_embed: L, D
-    """
+    """Generate 3D sine-cosine positional embeddings.
 
+    Args:
+        embed_dim (int): The embedding dimension (must be divisible by 16).
+        grid_size (tuple): A 3-tuple of (t, h, w) representing the grid dimensions.
+        cls_token (bool, optional): If True, prepends a zero vector for CLS token.
+            Defaults to False.
+
+    Returns:
+        ndarray: Positional embeddings of shape (L, embed_dim) where
+            L = t * h * w (or L = 1 + t * h * w with cls_token).
+    """
     assert embed_dim % 16 == 0
 
     t_size, h_size, w_size = grid_size
@@ -152,10 +209,36 @@ def get_3d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):
 # HMI MASKING
 # From various FDL piror works (sdolatent, solar-vae, etc.)
 def hmi_mask(hmi_data):
+    """Generate a binary mask for HMI solar disk data.
+
+    Creates a binary mask where 1 indicates pixels within the solar disk
+    (non-zero magnetic field values) and 0 indicates pixels outside.
+
+    Args:
+        hmi_data (torch.Tensor): The HMI magnetogram data tensor.
+
+    Returns:
+        torch.Tensor: A binary mask tensor of the same shape as input.
+    """
     return (torch.abs(hmi_data) > 0.0).to(dtype=torch.uint8)
 
 
 def apply_hmi_mask(data, hmi_mask, value):
+    """Apply an HMI mask to solar image data.
+
+    Replaces pixels outside the solar disk (where hmi_mask is 0) with a
+    specified scalar value. The mask is applied only to HMI channels;
+    AIA channels remain unchanged.
+
+    Args:
+        data (torch.Tensor): The input data tensor of shape (B, C, H, W) or (C, H, W).
+        hmi_mask (torch.Tensor): A binary mask where 1 represents pixels inside
+            the solar disk and 0 represents pixels outside.
+        value (float): The scalar value to replace masked pixels with.
+
+    Returns:
+        torch.Tensor: The masked data tensor with the same shape as input.
+    """
     # hmi mask is a binary mask of 0 and 1 values
     # 1 represents that the pixel is within the solar disk, 0 represents that the pixel is outside the solar disk
     # this function replaces the pixels outside the solar disk with the given scalar value
@@ -207,6 +290,25 @@ aiamap = sunpy.map.Map(
 
 
 def stonyhurst_to_patch_index(lat, lon, patch_size, img_w=512, img_h=512):
+    """Convert Heliographic Stonyhurst coordinates to patch indices.
+
+    Transforms latitude and longitude coordinates in the Heliographic Stonyhurst
+    frame to corresponding patch indices in an image grid.
+
+    Args:
+        lat (float): Latitude in degrees.
+        lon (float): Longitude in degrees.
+        patch_size (int): The size of each patch in pixels.
+        img_w (int, optional): Image width in pixels. Defaults to 512.
+        img_h (int, optional): Image height in pixels. Defaults to 512.
+
+    Returns:
+        torch.Tensor: A tensor of shape (2,) containing the patch indices [x, y].
+
+    Warns:
+        UserWarning: If image dimensions exceed 1024, indicating potential
+            precision loss in coordinate conversion.
+    """
     # Heliographic Stonyhurst coordinates to patch index
     coord = SkyCoord(lat * u.deg, lon * u.deg, frame=HeliographicStonyhurst)
     x, y = aiamap.wcs.world_to_pixel(coord)  # (x, y) in pixels
@@ -221,9 +323,19 @@ def stonyhurst_to_patch_index(lat, lon, patch_size, img_w=512, img_h=512):
 
 
 def patchify(imgs, patch_size, tubelet_size):
-    """
-    imgs: B, C, T, H, W
-    x: B, L, D
+    """Convert image tensors into sequences of patches.
+
+    Takes a 5D image tensor and reorganizes it into a sequence of flattened
+    patches suitable for Vision Transformer (ViT) processing.
+
+    Args:
+        imgs (torch.Tensor): Input images of shape (B, C, T, H, W).
+        patch_size (int): The spatial size of each square patch.
+        tubelet_size (int): The temporal size of each tubelet.
+
+    Returns:
+        torch.Tensor: Patched tensor of shape (B, L, D) where L is the
+            number of patches and D is the flattened patch dimension.
     """
     p = patch_size
     tub = tubelet_size
@@ -235,9 +347,19 @@ def patchify(imgs, patch_size, tubelet_size):
 
 
 def unpatchify(x, img_size, patch_size, tubelet_size):
-    """
-    x: B, L, D
-    imgs: B, C, T, H, W
+    """Reconstruct image tensors from sequences of patches.
+
+    Takes a sequence of flattened patches and reorganizes them back into
+    a 5D image tensor.
+
+    Args:
+        x (torch.Tensor): Patched tensor of shape (B, L, D).
+        img_size (int): The spatial size of the original images (assumed square).
+        patch_size (int): The spatial size of each patch.
+        tubelet_size (int): The temporal size of each tubelet.
+
+    Returns:
+        torch.Tensor: Reconstructed images of shape (B, C, T, H, W).
     """
     p = patch_size
     num_p = img_size // p
@@ -255,6 +377,17 @@ def unpatchify(x, img_size, patch_size, tubelet_size):
 
 
 def norm_target(target) -> torch.Tensor:
+    """Normalize target values using z-score normalization.
+
+    Applies z-score normalization to the target tensor along the last dimension,
+    computing mean and variance per sample in the batch.
+
+    Args:
+        target (torch.Tensor): The input tensor to normalize.
+
+    Returns:
+        torch.Tensor: The normalized tensor with the same shape as input.
+    """
     mean = target.mean(dim=-1, keepdim=True)
     var = target.var(dim=-1, keepdim=True)
     target = (target - mean) / (var + 1.0e-6) ** 0.5

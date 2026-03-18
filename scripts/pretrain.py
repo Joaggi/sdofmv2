@@ -30,6 +30,31 @@ from sdofmv2.core import SDOMLDataModule
 
 
 class Pretrainer(object):
+    """Coordinates the pre-training workflow for Masked Autoencoder (MAE) models.
+
+    This class sets up the training infrastructure by initializing the data
+    module, model, and trainer. It manages checkpoint loading and configures
+    callbacks for logging and performance monitoring. It's built to handle
+    SDOML data and supports both single-gpu and distributed setups.
+
+    Args:
+        cfg (DictConfig): The configuration tree for the experiment.
+        logger (WandbLogger, optional): Logger for experiment tracking.
+            Defaults to None.
+        is_backbone (bool, optional): Whether the model is a backbone.
+            Defaults to False.
+
+    Attributes:
+        cfg (DictConfig): The experiment configuration.
+        logger (WandbLogger): The assigned logger.
+        ckpt_path (str): Path to the model checkpoint.
+        callbacks (list): List of Lightning callbacks.
+        trainer (pl.Trainer): The Lightning trainer instance.
+        chan_types (list): List of active data channels.
+        data_module (SDOMLDataModule): The data handling component.
+        model (MAE): The initialized MAE model.
+    """
+
     def __init__(self, cfg, logger=None, is_backbone=False):
         self.cfg = cfg
         self.logger = logger
@@ -46,11 +71,11 @@ class Pretrainer(object):
                     "{epoch}-{val_loss:.2f}"
                 ),
                 verbose=True,
-                monitor="val_loss",  # Specify which metric to monitor
-                mode="min",  # Use "min" for loss (lower is better)
-                save_top_k=3,  # Keep top 3 checkpoints with lowest val_loss
+                monitor="val_loss",
+                mode="min",
+                save_top_k=3,
                 save_last=True,
-                save_weights_only=False,  # Change to True if you only want weights
+                save_weights_only=False,
                 enable_version_counter=True,
             ),
             Timer(),
@@ -77,10 +102,9 @@ class Pretrainer(object):
                 max_epochs=self.cfg.model.misc.epochs,
                 logger=self.logger,
                 callbacks=self.callbacks,
-                limit_train_batches=self.cfg.experiment.limit_train_batches,
+                limit_train_batches=self.cfg.model.misc.limit_train_batches,
             )
 
-        # check input channels
         aia_list = (
             ALL_WAVELENGTHS
             if cfg.data.sdoml.sub_directory.aia and cfg.data.sdoml.wavelengths is None
@@ -97,12 +121,6 @@ class Pretrainer(object):
         hmi_list.sort()
         self.chan_types = aia_list + hmi_list
 
-        # check model name
-        model_name = (
-            cfg.experiment.model if not is_backbone else cfg.experiment.backbone.model
-        )
-
-        # data module
         self.data_module = SDOMLDataModule(
             hmi_path=(
                 os.path.join(
@@ -160,12 +178,190 @@ class Pretrainer(object):
         self.model = self.load_from_ckpt(model_hyperparams)
 
     def load_from_ckpt(self, model_hyperparams):
+        """Loads the model from a checkpoint or initializes it from scratch.
 
+        Args:
+            model_hyperparams (dict): Hyperparameters for the MAE model.
+
+        Returns:
+            MAE: The initialized model instance.
+        """
+        if self.cfg.experiment.backbone.is_backbone:
+            if self.cfg.experiment.backbone.weights_only:
+                ckpt = torch.load(
+                    self.ckpt_path,
+                    weights_only=False,
+                    map_location="cpu",
+                )
+                lgr_logger.info("Loading weights only from checkpoint...")
+                model = MAE(**model_hyperparams)
+                model.load_state_dict(ckpt["state_dict"], strict=False)
+            else:
+                lgr_logger.info("Resuming training from checkpoint...")
+        else:
+            lgr_logger.info("No checkpoint, training from scratch")
+
+        model = MAE(**model_hyperparams)
+        return model
+
+    def run(self):
+        """Executes the pre-training loop.
+
+        Returns:
+            pl.Trainer: The trainer instance after completing the fit process.
+        """
+        print("\nPRE-TRAINING\n")
+        self.trainer.fit(
+            model=self.model,
+            datamodule=self.data_module,
+            ckpt_path=(
+                self.ckpt_path
+                if self.cfg.experiment.backbone.is_backbone
+                and not self.cfg.experiment.backbone.weights_only
+                else None
+            ),
+            weights_only=False,
+        )
+        return self.trainer
+
+    def evaluate(self):
+        """Runs the evaluation loop on the validation set."""
+        self.trainer.evaluate()
+
+    def test(self):
+        """Runs the test loop on the test set."""
+        self.trainer.test(
+            model=self.model,
+            datamodule=self.data_module,
+            ckpt_path=self.ckpt_path,
+            weights_only=False,
+        )
+
+        self.callbacks = [
+            ModelCheckpoint(
+                dirpath=self.cfg.experiment.backbone.ckpt_dir,
+                filename=(
+                    f"id_{self.logger.experiment.id}_{self.cfg.experiment.model}_"
+                    "{epoch}-{val_loss:.2f}"
+                ),
+                verbose=True,
+                monitor="val_loss",  # Specify which metric to monitor
+                mode="min",  # Use "min" for loss (lower is better)
+                save_top_k=3,  # Keep top 3 checkpoints with lowest val_loss
+                save_last=True,
+                save_weights_only=False,  # Change to True if you only want weights
+                enable_version_counter=True,
+            ),
+            Timer(),
+            RichProgressBar(),
+            LearningRateMonitor(logging_interval="step"),
+        ]
+
+        if self.cfg.experiment.distributed.enabled:
+            self.trainer = pl.Trainer(
+                accumulate_grad_batches=self.cfg.model.misc.accumulate_grad_batches,
+                devices=self.cfg.experiment.distributed.devices,
+                accelerator=self.cfg.experiment.accelerator,
+                max_epochs=self.cfg.model.misc.epochs,
+                precision=self.cfg.experiment.precision,
+                logger=self.logger,
+                enable_checkpointing=True,
+                log_every_n_steps=self.cfg.experiment.log_every_n_steps,
+                callbacks=self.callbacks,
+                limit_train_batches=self.cfg.model.misc.limit_train_batches,
+            )
+        else:
+            self.trainer = pl.Trainer(
+                accelerator=self.cfg.experiment.accelerator,
+                max_epochs=self.cfg.model.misc.epochs,
+                logger=self.logger,
+                callbacks=self.callbacks,
+                limit_train_batches=self.cfg.experiment.limit_train_batches,
+            )
+
+        # check input channels
+        aia_list = (
+            ALL_WAVELENGTHS
+            if self.cfg.data.sdoml.sub_directory.aia
+            and self.cfg.data.sdoml.wavelengths is None
+            else self.cfg.data.sdoml.wavelengths or []
+        )
+
+        hmi_list = (
+            ALL_COMPONENTS
+            if self.cfg.data.sdoml.sub_directory.hmi
+            and self.cfg.data.sdoml.components is None
+            else self.cfg.data.sdoml.components or []
+        )
+
+        aia_list.sort()
+        hmi_list.sort()
+        self.chan_types = aia_list + hmi_list
+
+        # data module
+        self.data_module = SDOMLDataModule(
+            hmi_path=(
+                os.path.join(
+                    self.cfg.data.sdoml.base_directory,
+                    self.cfg.data.sdoml.sub_directory.hmi,
+                )
+                if self.cfg.data.sdoml.sub_directory.hmi
+                else None
+            ),
+            aia_path=(
+                os.path.join(
+                    self.cfg.data.sdoml.base_directory,
+                    self.cfg.data.sdoml.sub_directory.aia,
+                )
+                if self.cfg.data.sdoml.sub_directory.aia
+                else None
+            ),
+            eve_path=None,
+            components=self.cfg.data.sdoml.components,
+            wavelengths=self.cfg.data.sdoml.wavelengths,
+            ions=self.cfg.data.sdoml.ions,
+            frequency=self.cfg.data.sdoml.frequency,
+            batch_size=self.cfg.model.misc.batch_size,
+            num_workers=self.cfg.data.num_workers,
+            pin_memory=self.cfg.data.pin_memory,
+            persistent_workers=self.cfg.data.persistent_workers,
+            val_months=self.cfg.data.month_splits.val,
+            test_months=self.cfg.data.month_splits.test,
+            holdout_months=self.cfg.data.month_splits.holdout,
+            cache_dir=os.path.join(
+                self.cfg.data.sdoml.save_directory,
+                self.cfg.data.sdoml.sub_directory.cache,
+            ),
+            min_date=self.cfg.data.min_date,
+            max_date=self.cfg.data.max_date,
+            num_frames=self.cfg.model.mae.num_frames,
+            drop_frame_dim=self.cfg.data.drop_frame_dim,
+            apply_mask=self.cfg.data.sdoml.apply_mask,
+            precision=self.cfg.experiment.precision,
+            normalization=self.cfg.data.sdoml.normalization,
+        )
+        self.data_module.setup()
+
+        model_hyperparams = {
+            **self.cfg.model.mae,
+            "chan_types": self.chan_types,
+            "limb_mask": (
+                self.data_module.hmi_mask
+                if self.cfg.model.misc.limb_mask is True
+                else None
+            ),
+            "loss_dict": self.cfg.model.loss,
+            "optimizer_dict": self.cfg.model.optimizer,
+            "scheduler_dict": self.cfg.model.scheduler,
+        }
+
+        self.model = self.load_from_ckpt(model_hyperparams)
+
+    def load_from_ckpt(self, model_hyperparams):
         # load backbone weights if specified
         # NOTE: weights_only=False is required because we need hyper_parameters
         if self.cfg.experiment.backbone.is_backbone:
             if self.cfg.experiment.backbone.weights_only:
-
                 ckpt = torch.load(
                     self.ckpt_path,
                     weights_only=False,
@@ -222,7 +418,6 @@ class Pretrainer(object):
     config_name="pretrain_mae_HMI.yaml",
 )
 def main(cfg: DictConfig) -> None:
-
     # set seed
     torch.manual_seed(cfg.experiment.seed)
     np.random.seed(cfg.experiment.seed)
@@ -294,7 +489,6 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-
     time_start = time.time()
 
     # errors

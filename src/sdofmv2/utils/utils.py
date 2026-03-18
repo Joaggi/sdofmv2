@@ -1,13 +1,10 @@
 # Assortment of variously useful functions
-import collections
-import os
-import shutil
+import collections.abc
 import warnings
 
 # Third-party libraries
 import numpy as np
 import torch
-import wandb
 from einops import rearrange
 
 # Astronomy / SunPy libraries
@@ -38,7 +35,6 @@ def flatten_dict(d, parent_key="", sep="_"):
 
 
 def unflatten_dict(dictionary, sep="_", wandb_mode=True):
-
     def grab_values(d):
         resultDict = AttributeDict()
         for k, v in d.items():
@@ -185,6 +181,21 @@ def apply_hmi_mask(data, hmi_mask, value):
 
 
 class AttributeDict(dict):
+    """A dictionary subclass that allows attribute-style access to its keys.
+
+    This class lets you use dot notation like obj.key to get and set
+    dictionary items. It keeps all standard dictionary methods and uses
+    __slots__ to save memory by preventing the creation of an instance
+    dictionary.
+
+    Args:
+        *args: Positional arguments passed to the dict constructor.
+        **kwargs: Keyword arguments passed to the dict constructor.
+
+    Returns:
+        A new AttributeDict instance.
+    """
+
     __slots__ = ()
     __getattr__ = dict.__getitem__
     __setattr__ = dict.__setitem__

@@ -29,7 +29,17 @@ MASK_DISK = True
 
 
 def get_metrics_for_masked_patches(real, generated, channels):
+    """Calculates evaluation metrics for flattened image patches across channels.
 
+    Args:
+        real (np.ndarray): Flattened array of real image data.
+        generated (np.ndarray): Flattened array of generated image data.
+        channels (list[str]): List of names for the image channels.
+
+    Returns:
+        dict: A nested dictionary where keys are channel names and values are
+            dictionaries mapping metric names to lists of calculated values.
+    """
     metrics = {}
     for channel in channels:
         metrics[channel] = {}
@@ -47,6 +57,20 @@ def get_metrics_for_masked_patches(real, generated, channels):
 
 
 def get_metrics(real, generated, channels, mask_disk=MASK_DISK):
+    """Computes metrics for single images with optional circular masking.
+
+    Expects input in CxHxW format. Applies a disk mask to the first three
+    channels if mask_disk is enabled.
+
+    Args:
+        real (torch.Tensor | np.ndarray): The ground truth image data.
+        generated (torch.Tensor | np.ndarray): The predicted or generated image data.
+        channels (list[str]): List of names for the image channels.
+        mask_disk (bool): Whether to apply a circular mask to the first three channels.
+
+    Returns:
+        dict: A nested dictionary containing calculated metrics for each channel.
+    """
     ## Expect CxHxW
     if torch.is_tensor(real):
         real = real.cpu().detach().numpy()
@@ -76,6 +100,16 @@ def get_metrics(real, generated, channels, mask_disk=MASK_DISK):
 
 
 def get_batch_metrics(real_batch, generated_batch, channels):
+    """Calculates the average metrics across a batch of images.
+
+    Args:
+        real_batch (np.ndarray): Batch of real images in BxCxHxW format.
+        generated_batch (np.ndarray): Batch of generated images in BxCxHxW format.
+        channels (list[str]): List of names for the image channels.
+
+    Returns:
+        dict: A dictionary containing the mean value for each metric per channel.
+    """
     ## Expect BxCxHxW
     batch_size = real_batch.shape[0]
     metrics_list = []
@@ -94,6 +128,15 @@ def get_batch_metrics(real_batch, generated_batch, channels):
 
 @lru_cache(maxsize=10)
 def disk_mask(image_size):
+    """Generates a circular binary mask centered in a square array.
+
+    Args:
+        image_size (int): The height and width of the square mask.
+
+    Returns:
+        np.ndarray: A 2D array of shape (image_size, image_size) where pixels
+            inside the circle are 1 and pixels outside are 0.
+    """
     img_half = image_size / 2
     radius = int(RADIUS_FRACTION_OF_IMAGE * float(image_size))
     disk_mask = np.zeros((image_size, image_size))
@@ -106,6 +149,16 @@ def disk_mask(image_size):
 
 
 def merge_metrics(metrics_list):
+    """Aggregates a list of metric dictionaries into a single dictionary.
+
+    Args:
+        metrics_list (list[dict]): A list of dictionaries, where each dictionary
+            contains metrics for a single sample.
+
+    Returns:
+        dict: A dictionary where each metric for each channel contains a list
+            of values from all samples in the input list.
+    """
     # print(metrics_list)
     channels = list(metrics_list[0].keys())
     merged_metrics = {}
@@ -122,6 +175,14 @@ def merge_metrics(metrics_list):
 
 
 def mean_metrics(metrics):
+    """Computes the mean for each metric in a merged metrics dictionary.
+
+    Args:
+        metrics (dict): A dictionary where values are lists of metric results.
+
+    Returns:
+        dict: A dictionary containing the arithmetic mean of each metric list.
+    """
     mean_metrics = {}
     for channel, channel_metrics in metrics.items():
         mean_metrics[channel] = {}
@@ -132,6 +193,16 @@ def mean_metrics(metrics):
 
 
 def pixel_percentage_error(real, generated, threshold_ptc):
+    """Calculates the fraction of pixels with a relative error below a threshold.
+
+    Args:
+        real (np.ndarray): Array of ground truth pixel values.
+        generated (np.ndarray): Array of predicted pixel values.
+        threshold_ptc (float): The relative error threshold (e.g., 0.1 for 10%).
+
+    Returns:
+        float: The mean pixel percentage error across the arrays.
+    """
     difference = real - generated
     fraction = np.divide(difference, real, where=real != 0)
     absolute_fraction = np.abs(fraction)
@@ -142,11 +213,30 @@ def pixel_percentage_error(real, generated, threshold_ptc):
 
 
 def pixel_correlation_coefficient(real, generated):
+    """Computes the Pearson correlation coefficient between two arrays.
+
+    Args:
+        real (np.ndarray): Array of ground truth pixel values.
+        generated (np.ndarray): Array of predicted pixel values.
+
+    Returns:
+        float: The correlation coefficient between the two inputs.
+    """
     correlation = np.corrcoef(real, generated)[0, 1]
     return correlation
 
 
 def rms_contrast_measure(real, generated):
+    """Calculates the RMS difference between the real mean and generated pixels.
+
+    Args:
+        real (np.ndarray): Array of ground truth pixel values.
+        generated (np.ndarray): Array of predicted pixel values.
+
+    Returns:
+        float: The root mean square of the difference between the real mean
+            and the generated values.
+    """
     difference_squared = np.power(real.mean() - generated, 2)
     mean_difference = difference_squared.mean()
     rms = np.sqrt(mean_difference)
@@ -154,10 +244,29 @@ def rms_contrast_measure(real, generated):
 
 
 def relative_total_flux_error(real, generated):
+    """Calculates the relative difference in total flux (sum of pixel values).
+
+    Args:
+        real (np.ndarray): Array of ground truth pixel values.
+        generated (np.ndarray): Array of predicted pixel values.
+
+    Returns:
+        float: The relative error of the total sum of generated pixels
+            compared to real pixels.
+    """
     return (generated.sum() - real.sum()) / real.sum()
 
 
 def rmse_intensity(real, generated):
+    """Calculates the root mean square error (RMSE) between two arrays.
+
+    Args:
+        real (np.ndarray): Array of ground truth pixel values.
+        generated (np.ndarray): Array of predicted pixel values.
+
+    Returns:
+        float: The root mean square error of the pixel intensities.
+    """
     difference_squared = np.power(real - generated, 2)
     mean_difference = difference_squared.mean()
     rms = np.sqrt(mean_difference)

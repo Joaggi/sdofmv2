@@ -4,9 +4,17 @@ import argparse
 
 
 def download_s3_folder(s3_folder: str, local_folder: str, component: str = "both"):
-    """
-    Download SDOMLv2 Zarr data from a public S3 bucket, skipping files that
-    already exist locally with the correct size (resumable).
+    """Downloads SDOMLv2 Zarr data from a public S3 bucket.
+
+    This function transfers Zarr datasets from an S3 location to a local directory,
+    handling AIA and HMI components separately or together. It supports resumable
+    downloads by skipping files that already exist locally with the correct size.
+
+    Args:
+        s3_folder (str): The base S3 path of the Zarr data (e.g., 'bucket/path').
+        local_folder (str): The local directory where the Zarr data should be saved.
+        component (str, optional): The component to download. Options are 'aia',
+            'hmi', or 'both'. Defaults to 'both'.
     """
     fs = s3fs.S3FileSystem(anon=True)
     local_path = Path(local_folder)

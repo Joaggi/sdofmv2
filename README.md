@@ -32,7 +32,6 @@ For full documentation, please visit [sdofmv2.readthedocs.io](https://sdofmv2.re
 
 ### Prerequisites
 
-- Linux or macOS
 - Python 3.11+
 - NVIDIA GPU + CUDA toolkit (recommended for training)
 

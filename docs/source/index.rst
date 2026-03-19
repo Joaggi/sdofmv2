@@ -50,6 +50,12 @@ Key Features
 
 .. toctree::
    :maxdepth: 2
+   :caption: Guide
+
+   getting_started
+
+.. toctree::
+   :maxdepth: 2
    :caption: API Reference
 
    Core Models & Data <sdofmv2.core>

@@ -4,6 +4,7 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-%23EE4C2C.svg?style=flat&logo=PyTorch&logoColor=white)](https://pytorch.org/)
 [![PyTorch Lightning](https://img.shields.io/badge/PyTorch_Lightning-%23792EE5.svg?style=flat&logo=pytorchlightning&logoColor=white)](https://lightning.ai/docs/pytorch/stable/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Documentation Status](https://readthedocs.org/projects/sdofmv2/badge/?version=latest)](https://sdofmv2.readthedocs.io/en/latest/?badge=latest)
 
 **SDOFMv2** is an advanced multi-instrument foundation model for analyzing [Solar Dynamics Observatory (SDO)](https://sdo.gsfc.nasa.gov/) data, designed to drive large-scale, data-driven heliophysics research. Building on the original SDOFM framework, this version improves spatial coherence and global consistency by addressing limitations in temporal coverage and reconstruction artifacts.
 
@@ -26,6 +27,8 @@
 ---
 
 ## Getting Started
+
+For full documentation, please visit [sdofmv2.readthedocs.io](https://sdofmv2.readthedocs.io/en/latest/).
 
 ### Prerequisites
 

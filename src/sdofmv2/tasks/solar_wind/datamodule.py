@@ -424,7 +424,7 @@ class SWDataModule(SDOMLDataModule):
             right_on="Time",
             direction="nearest",
             allow_exact_matches=True,
-            tolerance=pd.Timedelta(minutes=int(self.cfg.data.match_tolerance)),
+            tolerance=pd.Timedelta(minutes=int(self.cfg.data.in_situ.match_tolerance)),
             suffixes=("", "_sdoml"),
         )
 

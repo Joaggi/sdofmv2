@@ -2,6 +2,7 @@
 *.pdf
 *.egg-info
 *.log
+*.csv
 
 .vscode/
 assets/

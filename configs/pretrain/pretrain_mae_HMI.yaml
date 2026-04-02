@@ -7,7 +7,7 @@ experiment:
     model: mae
     is_backbone: false
     ckpt_dir: ./assets/check_point/backbone/HMI/
-    weight_name: id_mycczy8p_mae_epoch=299-val_loss=0.03.ckpt
+    weight_name: id_23znhw58_mae_epoch=244-val_loss=0.00.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
@@ -22,7 +22,7 @@ experiment:
     notes: HMI-pretrain
     output_directory: ./assets/wandb
     log_model: False # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
-    offline: true
+    offline: false
 
   gcp_storage: # this will checkpoint all epoches, perhaps clean up this config
     enabled: False

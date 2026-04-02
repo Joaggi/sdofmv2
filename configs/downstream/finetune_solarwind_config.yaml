@@ -108,9 +108,8 @@ data:
     radial_parameters: ["sc_pos_SH_r"]
     latlon_parameters: ["sc_pos_SH_lon", "sc_pos_SH_lat", "lon_footpoint", "lat_footpoint"] # , "lon_footpoint", "lat_footpoint"
     lon_cutoff: 85 # Degrees of longitude of WSA footpoint after which data is not used. Numbers larger than 90 not recommended. Set to None to turn off
-  
-  cadence: 1min # cadence of in-situ data, "1min", "30sec", "1h", etc 
-  match_tolerance: 12 # acceptable time difference when matching the dataframe between psp and sdoml
+    cadence: 1min # cadence of in-situ data, "1min", "30sec", "1h", etc 
+    match_tolerance: 12 # acceptable time difference when matching the dataframe between psp and sdoml
   label_type: label_xb2015 # xb2015 (Xu and Borovsky (2015)), isax # column name: label_xb2015 in combined data
   class_names: ["Ejecta", "Coronal Hole", "Sector Reversal", "Streamer Belt"]
   instrument: psp

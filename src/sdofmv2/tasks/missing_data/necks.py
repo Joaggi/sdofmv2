@@ -12,9 +12,21 @@ def _convTranspose2dOutput(
     kernel_size: int,
     output_padding: int,
 ):
-    """
-    Calculate the output size of a ConvTranspose2d.
-    Taken from: https://pytorch.org/docs/stable/generated/torch.nn.ConvTranspose2d.html
+    """Calculate the output size of a ConvTranspose2d layer.
+
+    Args:
+        input_size (int): The input size.
+        stride (int): The stride of the convolution.
+        padding (int): The padding added to the input.
+        dilation (int): The spacing between kernel elements.
+        kernel_size (int): The size of the kernel.
+        output_padding (int): Additional size added to one side of the output.
+
+    Returns:
+        int: The output size after the transposed convolution.
+
+    Reference:
+        https://pytorch.org/docs/stable/generated/torch.nn.ConvTranspose2d.html
     """
     return (
         (input_size - 1) * stride
@@ -26,11 +38,28 @@ def _convTranspose2dOutput(
 
 
 class Norm2d(nn.Module):
+    """Applies Layer Normalization over 4D inputs (channels-last).
+
+    This module reshapes the input from (B, C, H, W) to (B, H, W, C),
+    applies LayerNorm, and then reshapes it back to (B, C, H, W).
+
+    Args:
+        embed_dim (int): The number of features in the input (C).
+    """
+
     def __init__(self, embed_dim: int):
         super().__init__()
         self.ln = nn.LayerNorm(embed_dim, eps=1e-6)
 
     def forward(self, x):
+        """Apply layer normalization to the input.
+
+        Args:
+            x (torch.Tensor): Input tensor of shape (B, C, H, W).
+
+        Returns:
+            torch.Tensor: Output tensor of shape (B, C, H, W) with normalized features.
+        """
         x = x.permute(0, 2, 3, 1)
         x = self.ln(x)
         x = x.permute(0, 3, 1, 2).contiguous()
@@ -134,6 +163,15 @@ class ConvTransformerTokensToEmbeddingNeck(nn.Module):
         )
 
     def forward(self, x, ids_restore):
+        """Transform transformer tokens back to spatial embeddings.
+
+        Args:
+            x (torch.Tensor): Token embeddings of shape (batch, num_tokens, token_dim).
+            ids_restore (torch.Tensor): Indices for reordering tokens to original positions.
+
+        Returns:
+            torch.Tensor: Upsampled embeddings of shape (batch, out_channels, 16*H, 16*W).
+        """
         # x.shape --> [batch, num_tokken inner disk, token dim]
         if self.drop_cls_token:
             x = x[:, 1:, :]

@@ -146,7 +146,7 @@ class SWDataset(SDOMLDataset):
             return_df = []
             for class_id, class_ratio in enumerate(sampling_ratio):
                 logger.info(
-                    f"{class_ratio*100:.0f}% of class: {class_id} instances are sampled!"
+                    f"{class_ratio * 100:.0f}% of class: {class_id} instances are sampled!"
                 )
                 return_df.append(
                     self.aligndata.loc[self.aligndata[label_name] == class_id].sample(
@@ -424,7 +424,7 @@ class SWDataModule(SDOMLDataModule):
             right_on="Time",
             direction="nearest",
             allow_exact_matches=True,
-            tolerance=pd.Timedelta(minutes=int(self.cfg.data.match_tolerance)),
+            tolerance=pd.Timedelta(minutes=int(self.cfg.data.in_situ.match_tolerance)),
             suffixes=("", "_sdoml"),
         )
 
@@ -607,11 +607,20 @@ class SWDataModule(SDOMLDataModule):
     version_base=None, config_path="../configs", config_name="finetune_solarwind_config"
 )
 def main(cfg):
+    """Initializes the solar wind data module and validates dataset alignment.
 
-    # cfg = omegaconf.OmegaConf.load(
-    #     ("/home/jh/project/2025-HL-Solar-Wind/classification"
-    #      "/configs/finetune_solarwind_config.yaml")
-    # )
+    This function sets up the SWDataModule using parameters from the Hydra
+    configuration. It verifies the training dataset length, checks frame range
+    accessibility, and retrieves a sample to ensure the data pipeline works
+    correctly.
+
+    Args:
+        cfg (DictConfig): Hydra configuration object containing data paths,
+            split definitions, and experiment parameters.
+
+    Returns:
+        None
+    """
     datamodule = SWDataModule(
         hmi_path=(
             os.path.join(

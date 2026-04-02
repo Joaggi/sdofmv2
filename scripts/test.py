@@ -26,7 +26,20 @@ from pretrain import Pretrainer
     config_name="pretrain_mae_HMI.yaml",
 )
 def main(cfg: DictConfig) -> None:
+    """Sets up and executes the pretraining experiment using the Hydra configuration.
 
+    The function handles environment preparation, including random seed initialization
+    and tensor precision settings. It manages Weights & Biases logging setup by
+    creating directories and initializing the logger when specified in the config.
+    After preparation, it starts the pretrainer test process.
+
+    Args:
+        cfg (DictConfig): Configuration dictionary containing experiment, model,
+            and logging settings.
+
+    Returns:
+        None
+    """
     # set seed
     torch.manual_seed(cfg.experiment.seed)
     np.random.seed(cfg.experiment.seed)
@@ -97,7 +110,6 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-
     time_start = time.time()
 
     # errors

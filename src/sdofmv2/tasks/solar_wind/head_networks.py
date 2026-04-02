@@ -7,6 +7,18 @@ from loguru import logger
 def cos_sin_transformation(
     position: torch.Tensor, max_power: int = 4, include_raw_coordinates=False
 ) -> torch.Tensor:
+    """Generate harmonic (Fourier) positional encodings.
+
+    Args:
+        position (torch.Tensor): Position coordinates of shape (batch, position_size).
+        max_power (int, optional): Maximum power for the Fourier features. Defaults to 4.
+        include_raw_coordinates (bool, optional): Whether to include raw coordinates
+            in the output. Defaults to False.
+
+    Returns:
+        torch.Tensor: Positional encodings of shape (batch, 2 * position_size * (max_power + 1))
+            or with raw coordinates appended.
+    """
     if position.ndim == 1:
         position = position.unsqueeze(0)  # [1, 4]
 
@@ -83,8 +95,17 @@ class TransformerHead(nn.Module):
         self.dropout = nn.Dropout(p_drop)
         self.classifier = nn.Linear(input_token_dim, d_output)
 
-    def forward(self, x, position, r_distance):  # x: [B, 256, 512]
+    def forward(self, x, position, r_distance):
+        """Perform a forward pass through the transformer head.
 
+        Args:
+            x (torch.Tensor): Input features of shape (batch, num_tokens, embed_dim).
+            position (torch.Tensor): Position coordinates of shape (batch, position_size).
+            r_distance (torch.Tensor): Radial distance values of shape (batch,).
+
+        Returns:
+            torch.Tensor: Logits of shape (batch, d_output) for classification/regression.
+        """
         pos_enc = self.pos_encoder(position)
         pos_enc = torch.cat([pos_enc, r_distance.view(-1, 1)], dim=1)
         pos_token = self.projection(pos_enc)
@@ -173,6 +194,7 @@ class SimpleLinear(nn.Module):
         self._init_weights()
 
     def _init_weights(self):
+        """Initialize weights for linear layers using Xavier uniform initialization."""
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 torch.nn.init.xavier_uniform_(m.weight)
@@ -180,6 +202,16 @@ class SimpleLinear(nn.Module):
                     torch.nn.init.zeros_(m.bias)
 
     def forward(self, x, position, r_distance):
+        """Perform a forward pass through the MLP head.
+
+        Args:
+            x (torch.Tensor): Input features of shape (batch, ...).
+            position (torch.Tensor): Position coordinates of shape (batch, position_size).
+            r_distance (torch.Tensor): Radial distance values of shape (batch,).
+
+        Returns:
+            torch.Tensor: Output logits of shape (batch, d_output).
+        """
         batch_size = x.size(0)
 
         # Flatten input while preserving batch dimension
@@ -287,6 +319,7 @@ class SkipLinearHead(nn.Module):
         self._init_weights()
 
     def _init_weights(self):
+        """Initialize weights for linear layers using Xavier uniform initialization."""
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 torch.nn.init.xavier_uniform_(m.weight)
@@ -294,6 +327,16 @@ class SkipLinearHead(nn.Module):
                     torch.nn.init.zeros_(m.bias)
 
     def forward(self, x, position, r_distance):
+        """Perform a forward pass through the skip-connected MLP head.
+
+        Args:
+            x (torch.Tensor): Input features of shape (batch, ...).
+            position (torch.Tensor): Position coordinates of shape (batch, position_size).
+            r_distance (torch.Tensor): Radial distance values of shape (batch,).
+
+        Returns:
+            torch.Tensor: Output logits of shape (batch, d_output).
+        """
         batch_size = x.size(0)
 
         # Flatten input while preserving batch dimension
@@ -392,13 +435,25 @@ class ClsLinear(nn.Module):
         self._init_weights()
 
     def _init_weights(self):
+        """Initialize weights for linear layers using Xavier uniform initialization."""
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 torch.nn.init.xavier_uniform_(m.weight)
                 if m.bias is not None:
                     torch.nn.init.zeros_(m.bias)
 
-    def forward(self, x, position, r_distance):  # x: [B, 256, 512]
+    def forward(self, x, position, r_distance):
+        """Perform a forward pass using the CLS token.
+
+        Args:
+            x (torch.Tensor): Input sequence with CLS token at index 0,
+                shape (batch, num_tokens, embed_dim).
+            position (torch.Tensor): Position coordinates of shape (batch, position_size).
+            r_distance (torch.Tensor): Radial distance values of shape (batch,).
+
+        Returns:
+            torch.Tensor: Output logits of shape (batch, d_output).
+        """
         batch_size = x.size(0)
         cls_tokens = x[:, 0, :]  # [1, B]
 

@@ -4,6 +4,35 @@ from sdofmv2.core import BaseModule
 
 
 class MultiLayerPerceptron(BaseModule):
+    """Multi-layer perceptron head for processing backbone features.
+
+    This class implements a regression or classification head that sits on top of a
+    pre-trained backbone. It extracts latent representations from the backbone,
+    aggregates patch tokens using both mean and max pooling, and processes the
+    combined features through a series of fully connected layers.
+
+    Args:
+        backbone (nn.Module): The feature extraction model containing an autoencoder.
+        freeze (bool): Whether to freeze the backbone parameters to prevent training.
+        input_dim (int): The dimensionality of the backbone's latent features.
+            The internal MLP input dimension is twice this value due to the
+            concatenation of mean and max pooled features.
+        output_dim (int, optional): The number of output units. Defaults to 1.
+        hidden_layer_dims (list[int], optional): Dimensions of the hidden MLP layers.
+            Defaults to [512, 512, 512].
+        dropout (float, optional): Dropout probability for regularization.
+            Defaults to 0.0.
+        mask_ratio (float, optional): Fraction of input patches to mask during
+            the forward pass. Defaults to 0.0.
+        optimizer_dict (dict, optional): Configuration for the optimizer.
+            Defaults to None.
+        scheduler_dict (dict, optional): Configuration for the learning rate scheduler.
+            Defaults to None.
+
+    Returns:
+        torch.Tensor: The output logits or predictions from the final linear layer.
+    """
+
     def __init__(
         self,
         backbone,
@@ -53,7 +82,14 @@ class MultiLayerPerceptron(BaseModule):
         self.test_preds = {}
 
     def forward(self, x):
+        """Processes input through the backbone and MLP head.
 
+        Args:
+            x (torch.Tensor): Input image or data tensor.
+
+        Returns:
+            torch.Tensor: Output logits of shape (batch_size, output_dim).
+        """
         if self.freeze_backbone:
             with torch.no_grad():
                 # latent shape: [Batch, Num_Patches + 1, Hidden_Dim]
@@ -66,13 +102,10 @@ class MultiLayerPerceptron(BaseModule):
             )
 
         patch_tokens = latent[:, 1:, :]
-        # x_cls = patch_tokens.mean(dim=1)
 
         x_avg = patch_tokens.mean(dim=1)
         x_max = patch_tokens.max(dim=1).values
-        x_cls = torch.cat(
-            [x_avg, x_max], dim=-1
-        )  # (Requires changing input dim of self.fcs[0])
+        x_cls = torch.cat([x_avg, x_max], dim=-1)
 
         x_cls = self.norm(x_cls)
         for fc, act in zip(self.fcs, self.acts):
@@ -116,7 +149,6 @@ class MultiLayerPerceptron(BaseModule):
 
         # Save results per timestamp
         for t, label, pred in zip(timestamps, labels_real, preds_real):
-
             self.test_preds[t.item()] = [label.item(), pred.item()]
         return loss
 

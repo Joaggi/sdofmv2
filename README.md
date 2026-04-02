@@ -5,6 +5,7 @@
 [![PyTorch Lightning](https://img.shields.io/badge/PyTorch_Lightning-%23792EE5.svg?style=flat&logo=pytorchlightning&logoColor=white)](https://lightning.ai/docs/pytorch/stable/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Documentation Status](https://readthedocs.org/projects/sdofmv2/badge/?version=latest)](https://sdofmv2.readthedocs.io/en/latest/?badge=latest)
+[![Hugging Face](https://img.shields.io/badge/🤗%20Hugging%20Face-Model-yellow)](https://huggingface.co/joseph-gallego/SDOFMv2)
 
 **SDOFMv2** is an advanced multi-instrument foundation model for analyzing [Solar Dynamics Observatory (SDO)](https://sdo.gsfc.nasa.gov/) data, designed to drive large-scale, data-driven heliophysics research. Building on the original SDOFM framework, this version improves spatial coherence and global consistency by addressing limitations in temporal coverage and reconstruction artifacts.
 
@@ -52,6 +53,15 @@ mamba env create -f sdofmv2_environment.yml
 mamba activate sdofmv2
 ```
 
+### Pretrained Weights
+
+Pretrained model checkpoints are available on [Hugging Face](https://huggingface.co/your-org/sdofmv2):
+```bash
+# Using the Hugging Face Hub
+mamba install huggingface_hub -c conda-forge
+huggingface-cli download your-org/sdofmv2
+```
+
 ---
 
 ## Repository Structure
@@ -77,6 +87,8 @@ mamba activate sdofmv2
 ├── pyproject.toml              # Project metadata and build dependencies
 └── sdofmv2_environment.yml     # Mamba environment definition
 ```
+
+
 
 ---
 

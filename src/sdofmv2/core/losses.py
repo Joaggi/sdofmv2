@@ -83,9 +83,8 @@ def pixel_weight_loss(
     weights = torch.where(
         torch.abs(target) > threshold, weight_for_ar, weight_for_noise
     )
-    loss = (loss * weights).mean()
-
-    return loss
+    # loss = (loss * weights).mean()
+    return (loss * weights).sum() / weights.sum()
 
 
 def patch_weight_loss(pred, target, loss_dict, filtered_mask):

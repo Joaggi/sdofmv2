@@ -33,6 +33,13 @@ dependencies = [
     "wandb>=0.23.1",
 ]
 
+[project.optional-dependencies]
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+    "myst-parser",
+]
+
 [project.urls]
 Repository = "https://github.com/Joaggi/sdofmv2"
 Issues = "https://github.com/Joaggi/sdofmv2/issues"

@@ -7,7 +7,7 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/check_point/backbone/AIA/
-    weight_name: id_ohvgb7uh_mae_epoch=121-val_loss=0.00.ckpt
+    weight_name: AIA_MSEloss_epoch=171-val_loss=0.00.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
@@ -117,8 +117,8 @@ model:
     patch_weight_loss:
       base_loss:
         type: huber
-        delta: 1.0
-      weight_on_patches: [0.65, 0.35]
+        delta: 0.1
+      weight_on_patches: [0.35, 0.65]
 
   # for optimizer
   optimizer: 

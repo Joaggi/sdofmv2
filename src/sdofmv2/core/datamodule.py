@@ -50,20 +50,17 @@ def min_max_norm(data, instument, channel, normalization_stat):
     return data
 
 
-def log_norm(
-    data, normalization_stat, instrument, channel, scaler_factor, scaler_div_factor
-):
+def log_norm(data, normalization_stat, instrument, channel, scaler_factor):
 
     x = data * scaler_factor if scaler_factor is not None else data
 
     # Log transform
     x_log = np.sign(x) * np.log1p(np.abs(x))
 
-    # Divide by the SINGLE global scalar
-    if scaler_div_factor is None:
-        x_transformed = x_log / normalization_stat[instrument][channel]["max"]
-    else:
-        x_transformed = x_log / scaler_div_factor
+    # zscore norm
+    x_transformed = (x_log - normalization_stat[instrument][channel]["mean"]) / (
+        normalization_stat[instrument][channel]["std"] + 1e-8
+    )
 
     return x_transformed
 
@@ -83,23 +80,21 @@ def inverse_log_norm(
     normalization_stat,
     instrument,
     channel,
-    scaler_factor,
-    scaler_div_factor,
+    scaler_factor=None,
 ):
-    # Reverse the Division
-    if scaler_div_factor is None:
-        denom = normalization_stat[instrument][channel]["max"]
-    else:
-        denom = scaler_div_factor
+    # Retrieve the exact log-domain statistics used during forward normalization
+    mean = normalization_stat[instrument][channel]["mean"]
+    std = normalization_stat[instrument][channel]["std"]
 
-    x_log = data_transformed * denom
+    # Reverse the Z-score standardization
+    # x_transformed = (x_log - mean) / std  ->  x_log = (x_transformed * std) + mean
+    x_log = (data_transformed * (std + 1e-8)) + mean
 
-    # Inverse Log Transform
+    # Reverse the SymLog Transform
     # The inverse of y = sign(x) * log(1 + |x|) is x = sign(y) * (exp(|y|) - 1)
-    # np.expm1 calculates (e^x - 1) with higher precision for small values
     x = np.sign(x_log) * np.expm1(np.abs(x_log))
 
-    # Reverse the Scaling
+    # Reverse the Pre-scaling
     if scaler_factor is not None:
         data_original = x / scaler_factor
     else:
@@ -277,7 +272,6 @@ class SDOMLDataset(Dataset):
                 instrument,
                 channel,
                 self.normalization.scaler_factor,
-                self.normalization.scaler_div_factor,
             )
 
         elif self.normalization.type == "zscore":

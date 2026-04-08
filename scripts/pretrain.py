@@ -415,7 +415,7 @@ class Pretrainer(object):
 
 @hydra.main(
     config_path="../configs/pretrain/",
-    config_name="pretrain_mae_HMI.yaml",
+    config_name="pretrain_mae_AIA.yaml",
 )
 def main(cfg: DictConfig) -> None:
     # set seed
@@ -459,8 +459,7 @@ def main(cfg: DictConfig) -> None:
 
         logger = WandbLogger(
             # WandbLogger params
-            name=cfg.experiment.name
-            + f"_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            name=cfg.experiment.name,
             project=cfg.experiment.project,
             dir=cfg.experiment.wandb.output_directory,
             log_model=cfg.experiment.wandb.log_model,

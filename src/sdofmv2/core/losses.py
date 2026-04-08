@@ -83,58 +83,81 @@ def pixel_weight_loss(
     weights = torch.where(
         torch.abs(target) > threshold, weight_for_ar, weight_for_noise
     )
-    # loss = (loss * weights).mean()
-    return (loss * weights).sum() / weights.sum()
+    return (loss * weights).mean()
 
 
-def patch_weight_loss(pred, target, loss_dict, filtered_mask):
-    """Calculates a weighted reconstruction loss based on patch visibility.
+def patch_weight_loss(pred, target, loss_dict, mask_hidden, mask_off_limb):
+    """Calculates a three-tier weighted reconstruction loss for solar data.
 
-    This loss function applies different weights to patches depending on whether
-    they were masked or visible during the forward pass. It supports 'mse',
-    'mae', and 'huber' as the underlying base loss metrics.
+    This function separates patches into three categories (masked inner disk,
+    visible inner disk, and off-limb space) and applies independent weights
+    to each group's mean loss. This prevents the large population of space
+    pixels or masked patches from disproportionately biasing the gradients.
 
     Args:
-        pred (torch.Tensor): The predicted patch values from the model.
-        target (torch.Tensor): The ground truth patch values.
-        loss_dict (dict or object): Configuration dictionary containing:
-
-            * base_loss (dict): Contains the 'type' of base loss (e.g., 'mse')
-              and optional parameters like 'delta' for huber loss.
-            * weight_on_patches (list[float], optional): A two-element list where
-              the first element is the weight for masked patches and the second
-              is the weight for visible patches. Defaults to [0.7, 0.3].
-
-        filtered_mask (torch.Tensor): A binary tensor where 1 (or True) indicates
-            a masked patch and 0 (or False) indicates a visible patch.
+        pred (torch.Tensor): Predicted patch values [B, L, D].
+        target (torch.Tensor): Ground truth (potentially normalized) patches [B, L, D].
+        loss_dict (dict or object): Config object containing:
+            * base_loss (dict): Must have 'type' ('mse', 'mae', or 'huber')
+              and 'delta' (for huber).
+            * weight_on_patches (list[float]): A three-element list:
+              [weight_masked_inner, weight_visible_inner, weight_off_limb].
+              Example: [0.7, 0.2, 0.1].
+        mask_hidden (torch.Tensor): Binary/bool mask from encoder [B, L].
+            1 (True) indicates a masked/hidden patch.
+        mask_off_limb (torch.Tensor): Binary/bool spatial mask [B, L].
+            1 (True) indicates a patch outside the solar disk.
 
     Returns:
-        torch.Tensor: A scalar tensor containing the weighted mean loss over
-            all patches.
+        torch.Tensor: Scalar weighted mean loss.
 
     Raises:
-        AttributeError: If `loss_dict` does not contain a `base_loss` attribute.
+        ValueError: If an unsupported loss type is provided.
+        IndexError: If weight_on_patches does not contain exactly three elements.
     """
     base_loss_type = loss_dict.base_loss.get("type", "mse")
-    weight_on_patches = loss_dict.get("weight_on_patches", [0.7, 0.3])
 
-    # Base Loss calculation using vectorized operations
+    # Extract 3-tier weights
+    weights_raw = loss_dict.get("weight_on_patches", [0.7, 0.2, 0.1])
+    if len(weights_raw) < 3:
+        raise IndexError(
+            "weight_on_patches must have 3 elements for the 3-tier strategy."
+        )
+
+    # Base Loss Calculation
     if base_loss_type == "mse":
         loss = (pred - target) ** 2
     elif base_loss_type == "mae":
         loss = torch.abs(pred - target)
     elif base_loss_type == "huber":
         delta = loss_dict.base_loss.get("delta", 1.0)
-        loss = F.huber_loss(pred, target, reduction="none", delta=delta)
+        loss = torch.nn.functional.huber_loss(
+            pred, target, reduction="none", delta=delta
+        )
     else:
         raise ValueError(f"Not supported loss type: {base_loss_type}")
 
-    # Weight application
-    w_sum = sum(weight_on_patches)
-    w_m = weight_on_patches[0] / w_sum
-    w_v = weight_on_patches[1] / w_sum
+    # Define the three tiers using boolean logic
+    # Tier 1: Hidden patches inside the solar disk
+    is_masked_inner = mask_hidden.bool() & (~mask_off_limb.bool())
+    # Tier 2: Visible patches inside the solar disk
+    is_visible_inner = (~mask_hidden.bool()) & (~mask_off_limb.bool())
+    # Tier 3: All patches outside the solar disk (space)
+    is_space = mask_off_limb.bool()
 
-    # Ensure weights are on the correct device/dtype
-    weights = torch.where(filtered_mask.bool(), w_m, w_v).to(pred.device).unsqueeze(-1)
+    # Compute group means safely (avoiding NaN on empty tensors)
+    def get_group_mean(l, m):
+        # Indexing [B, L, D] with [B, L] mask results in [N_pixels, D]
+        return l[m].mean() if m.any() else torch.tensor(0.0, device=l.device)
 
-    return (loss * weights).mean()
+    mean_masked = get_group_mean(loss, is_masked_inner)
+    mean_visible = get_group_mean(loss, is_visible_inner)
+    mean_space = get_group_mean(loss, is_space)
+
+    # Apply Normalized Weights
+    w_sum = sum(weights_raw)
+    w_m, w_v, w_l = [w / w_sum for w in weights_raw]
+
+    final_loss = (w_m * mean_masked) + (w_v * mean_visible) + (w_l * mean_space)
+
+    return final_loss

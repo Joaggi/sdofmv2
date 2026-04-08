@@ -463,46 +463,35 @@ class MaskedAutoencoderViT3D(nn.Module):
 
             device = target.device
             batch_size, num_patches, dims = pred.shape
-            # Compute loss only on masked patches
-            if self.loss_dict.only_masked_patches:
-                active_mask = (mask == 1).clone().to(device).bool()
-            else:
-                active_mask = torch.ones(
-                    (batch_size, num_patches), device=device, dtype=torch.bool
-                )
 
-            # Exclude the limb patches from the active mask
-            # Compute loss only on inner patches
-            if self.loss_dict.exclude_limb:
-                active_mask[:, self.ids_limb_mask] = False
-
-            # redefine pred and target
-            pred_loss = pred[active_mask]
-            target_loss = target[active_mask]
-            target_norm_loss = target_norm[active_mask]
+            # Identify off-limb regions (Static spatial map)
+            is_off_limb = torch.zeros(
+                (batch_size, num_patches), device=device, dtype=torch.bool
+            )
+            is_off_limb[:, self.ids_limb_mask] = True
 
             if self.loss_dict.type == "pixel_weight_loss":
                 loss = self.loss_fn(
-                    pred_loss,
-                    target_norm_loss,
-                    target_loss,
+                    pred,
+                    target_norm,
+                    target,
                     self.loss_dict.pixel_weight_loss.base_loss,
                     self.loss_dict.pixel_weight_loss.threshold,
                     self.loss_dict.pixel_weight_loss.ar_weight_ratio,
                 )
             # patch weight loss only works when only_masked_patches: false and exclude limb: true/false
             elif self.loss_dict.type == "patch_weight_loss":
-                filtered_mask = mask[active_mask]
                 loss = self.loss_fn(
-                    pred_loss,
-                    target_norm_loss,
+                    pred,
+                    target_norm,
                     self.loss_dict.patch_weight_loss,
-                    filtered_mask,
+                    mask_hidden=mask,
+                    mask_off_limb=is_off_limb,
                 )
             else:
                 loss = self.loss_fn(
-                    pred_loss,
-                    target_norm_loss if self.loss_dict.norm_pix_loss else target_loss,
+                    pred,
+                    target_norm if self.loss_dict.norm_pix_loss else target,
                 )
 
         elif self.loss_dict.space == "pixel":

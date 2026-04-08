@@ -78,7 +78,6 @@ data:
       type: log #log, zscore, min-max
       # for log norm
       scaler_factor: 0.01
-      scaler_div_factor: null
       # for zscore norm and hmi
       clipping:
         enabled: false

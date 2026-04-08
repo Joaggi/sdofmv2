@@ -138,7 +138,7 @@ model:
   # for optimizer
   optimizer: 
     use: adamw
-    learning_rate: 2.0e-5
+    learning_rate: 1.0e-4
     weight_decay: 0.05
   
   # for scheduler
@@ -162,8 +162,8 @@ model:
   misc:
     limb_mask: true
     epochs: 300
-    batch_size: 16
-    accumulate_grad_batches: 16 # accumulate grad for 32 steps
+    batch_size: 32
+    accumulate_grad_batches: 8 # accumulate grad for 32 steps
     limit_train_batches: null
 
 defaults:

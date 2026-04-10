@@ -55,11 +55,11 @@ mamba activate sdofmv2
 
 ### Pretrained Weights
 
-Pretrained model checkpoints are available on [Hugging Face](https://huggingface.co/your-org/sdofmv2):
+Pretrained model checkpoints are available on [Hugging Face](joseph-gallego/SDOFMv2):
 ```bash
 # Using the Hugging Face Hub
 mamba install huggingface_hub -c conda-forge
-huggingface-cli download your-org/sdofmv2
+huggingface-cli download joseph-gallego/sdofmv2
 ```
 
 ---

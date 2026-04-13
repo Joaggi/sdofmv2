@@ -7,8 +7,12 @@ from pathlib import Path
 from typing import Optional
 from loguru import logger
 
+import torch
+
 import dask.array as da
 from dask.diagnostics import ProgressBar
+
+from ..utils import patchify
 
 import lightning.pytorch as pl
 import numpy as np
@@ -51,7 +55,6 @@ def min_max_norm(data, instument, channel, normalization_stat):
 
 
 def log_norm(data, normalization_stat, instrument, channel, scaler_factor):
-
     x = data * scaler_factor if scaler_factor is not None else data
 
     # Log transform
@@ -314,7 +317,7 @@ class SDOMLDataset(Dataset):
                 # Store error, log warning, and wait before retrying
                 last_error = e
                 logger.warning(
-                    f"Corrupted load (Attempt {attempt+1}/{num_try}) - "
+                    f"Corrupted load (Attempt {attempt + 1}/{num_try}) - "
                     f"channel: {wavelength}, year: {year}, idx: {id_of_img}. Error: {e}"
                 )
                 time.sleep(sleep_time)
@@ -532,7 +535,6 @@ class SDOMLDataModule(pl.LightningDataModule):
         max_date=None,
         precision="32",
     ):
-
         super().__init__()
         self.num_workers = (
             num_workers if num_workers is not None else os.cpu_count() // 2
@@ -659,6 +661,28 @@ class SDOMLDataModule(pl.LightningDataModule):
             self.__calc_normalizations() if normalization.enabled is True else None
         )
 
+        self._setup_off_limb_patch_mask()
+
+    def _setup_off_limb_patch_mask(self):
+        """Compute patch-level off-limb mask from hmi_mask.
+
+        Uses hmi_mask (2D binary: 1=solar disk, 0=space) to determine
+        which patches are completely outside the solar disk.
+        """
+        from ..utils import patchify
+
+        patch_size = 16
+        num_frames = getattr(self, "num_frames", 1)
+
+        hmi_mask_np = self.hmi_mask.cpu().numpy()
+        mask_3d = hmi_mask_np[np.newaxis, np.newaxis, :, :]
+        mask_3d = np.repeat(mask_3d, num_frames, axis=0)
+
+        patches = patchify(torch.from_numpy(mask_3d).float(), patch_size, 1)
+
+        all_zero = patches.sum(dim=-1) == 0
+        self.off_limb_patch_mask = all_zero.squeeze(0)
+
     def __str__(self):
         output = ""
         for k, v in self.__dict__.items():
@@ -712,7 +736,7 @@ class SDOMLDataModule(pl.LightningDataModule):
                         valid_indices = da.nonzero(valid_mask)[0].compute()
                     total_nan = len(valid_indices)
                     logger.info(
-                        f"Total {images.shape[0]-total_nan} {(images.shape[0]-total_nan)*100/images.shape[0]:.0f}% images have Nan."
+                        f"Total {images.shape[0] - total_nan} {(images.shape[0] - total_nan) * 100 / images.shape[0]:.0f}% images have Nan."
                     )
 
                     if j == 0:
@@ -784,9 +808,9 @@ class SDOMLDataModule(pl.LightningDataModule):
 
                 for year in self.training_years:
                     if (
-                        join_series.loc[join_series.index.year == year, idx_col]
-                    ).max() >= self.aia_data[str(year)][wavelength].shape[0]:
-
+                        (join_series.loc[join_series.index.year == year, idx_col]).max()
+                        >= self.aia_data[str(year)][wavelength].shape[0]
+                    ):
                         logger.warning(
                             f"Max id is greater than number instances in zarr file"
                         )
@@ -804,7 +828,6 @@ class SDOMLDataModule(pl.LightningDataModule):
                 for j, year in enumerate(
                     tqdm((self.training_years))
                 ):  # EVE data only goes up to 2014
-
                     hmi_channel = self.hmi_data[year][component]
 
                     # get observation time
@@ -834,7 +857,7 @@ class SDOMLDataModule(pl.LightningDataModule):
                         valid_indices = da.nonzero(valid_mask)[0].compute()
                     total_nan = len(valid_indices)
                     logger.info(
-                        f"Total {images.shape[0]-total_nan} {(images.shape[0]-total_nan)*100/images.shape[0]:.0f}% images have Nan."
+                        f"Total {images.shape[0] - total_nan} {(images.shape[0] - total_nan) * 100 / images.shape[0]:.0f}% images have Nan."
                     )
 
                     if j == 0:
@@ -934,7 +957,6 @@ class SDOMLDataModule(pl.LightningDataModule):
         return join_series
 
     def __calc_normalizations(self):
-
         normalizations = {}
         normalizations_align = self.aligndata.copy()
 
@@ -983,7 +1005,6 @@ class SDOMLDataModule(pl.LightningDataModule):
             raise ValueError(f"Invalid key type: {key}")
 
     def check_existing_stat_info(self, target_file_name):
-
         if os.path.exists(target_file_name):
             logger.info(f"Cache is found: {target_file_name}")
             with open(target_file_name, "r") as json_file:
@@ -995,10 +1016,8 @@ class SDOMLDataModule(pl.LightningDataModule):
     def _compute_data_statistic(
         self, normalizations_align, sdoml_data, instrument, channels
     ) -> dict[str, dict[str, float]]:
-
         normalizations_stat: dict[str, dict[str, float]] = {}
         for ch in channels:
-
             file_name = (
                 self.cache_dir
                 + f"/{instrument}/"
@@ -1110,7 +1129,6 @@ class SDOMLDataModule(pl.LightningDataModule):
         return hmi_mask
 
     def setup(self, stage=None):
-
         self.train_ds = SDOMLDataset(
             self.aligndata,
             self.hmi_data,

@@ -346,6 +346,54 @@ def patchify(imgs, patch_size, tubelet_size):
     return x
 
 
+def get_zero_patch_mask(imgs, patch_size, tubelet_size):
+    """Create binary mask indicating which patches are all-zero.
+
+    Args:
+        imgs (torch.Tensor): Images of shape (B, C, T, H, W) BEFORE normalization.
+        patch_size (int): Spatial size of each patch.
+        tubelet_size (int): Temporal size of each tubelet.
+
+    Returns:
+        torch.Tensor: Binary mask of shape (B, L) where 1 = all-zero patch.
+    """
+    p = patch_size
+    tub = tubelet_size
+
+    patches = rearrange(
+        imgs, "b c (t tub) (h p) (w q) -> b (t h w) (tub p q c)", tub=tub, p=p, q=p
+    )
+
+    patch_is_zero = patches.abs().sum(dim=-1) == 0
+    return patch_is_zero
+
+
+def spatial_to_patch_mask(
+    mask_2d: torch.Tensor, patch_size: int, num_frames: int = 1
+) -> torch.Tensor:
+    """Convert 2D spatial mask to patch-level mask.
+
+    Args:
+        mask_2d: 2D binary mask of shape (H, W).
+        patch_size: Spatial size of each patch.
+        num_frames: Number of frames (temporal). Default: 1.
+
+    Returns:
+        torch.Tensor: 1D boolean tensor of shape (L,) where True = off-limb patch.
+    """
+    H, W = mask_2d.shape
+    p = patch_size
+
+    h = H // p
+    w = W // p
+
+    mask_3d = mask_2d.unsqueeze(0).unsqueeze(0).expand(num_frames, 1, -1, -1)
+    patches = rearrange(mask_3d, "(t c) (h p) (w q) -> (t h w) (p q c)", p=p, q=p)
+
+    patch_is_zero = patches.sum(dim=(-1, -2)) == 0
+    return patch_is_zero
+
+
 def unpatchify(x, img_size, patch_size, tubelet_size):
     """Reconstruct image tensors from sequences of patches.
 

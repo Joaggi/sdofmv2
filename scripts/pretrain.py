@@ -55,6 +55,40 @@ class Pretrainer(object):
         model (MAE): The initialized MAE model.
     """
 
+    def _compute_ids_limb_mask(self, limb_mask_2d):
+        """Convert 2D limb mask to patch-level indices.
+
+        Args:
+            limb_mask_2d: 2D binary tensor (H, W) where 1=solar disk, 0=space.
+
+        Returns:
+            torch.Tensor: 1D tensor of patch indices outside the solar disk.
+        """
+        import torch
+        from einops import rearrange
+
+        patch_size = self.cfg.model.mae.patch_size
+        num_frames = self.cfg.model.mae.num_frames
+        img_size = self.cfg.model.mae.img_size
+
+        h = img_size // patch_size
+        w = img_size // patch_size
+
+        mask_3d = limb_mask_2d.unsqueeze(0).unsqueeze(0)
+        mask_3d = mask_3d.expand(num_frames, 1, img_size, img_size)
+
+        patches = rearrange(
+            mask_3d.float(),
+            "(t c) (h p) (w q) -> (t h w) (p q c)",
+            p=patch_size,
+            q=patch_size,
+        )
+
+        patch_sum = patches.sum(dim=(-1, -2))
+        off_limb_indices = (patch_sum == 0).nonzero(as_tuple=True)[0]
+
+        return off_limb_indices
+
     def __init__(self, cfg, logger=None, is_backbone=False):
         self.cfg = cfg
         self.logger = logger
@@ -164,12 +198,20 @@ class Pretrainer(object):
         )
         self.data_module.setup()
 
+        limb_mask_2d = (
+            self.data_module.hmi_mask if cfg.model.misc.limb_mask is True else None
+        )
+        ids_limb_mask = (
+            self._compute_ids_limb_mask(limb_mask_2d)
+            if limb_mask_2d is not None
+            else None
+        )
+
         model_hyperparams = {
             **cfg.model.mae,
             "chan_types": self.chan_types,
-            "limb_mask": (
-                self.data_module.hmi_mask if cfg.model.misc.limb_mask is True else None
-            ),
+            "limb_mask": limb_mask_2d,
+            "ids_limb_mask": ids_limb_mask,
             "loss_dict": self.cfg.model.loss,
             "optimizer_dict": self.cfg.model.optimizer,
             "scheduler_dict": self.cfg.model.scheduler,

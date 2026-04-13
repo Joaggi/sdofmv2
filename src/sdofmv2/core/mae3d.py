@@ -500,6 +500,7 @@ class MaskedAutoencoderViT3D(nn.Module):
                     beta=self.loss_dict.split_patch_loss.get("beta", 1.0),
                     base_type=self.loss_dict.split_patch_loss.get("base_type", "mse"),
                     huber_delta=self.loss_dict.split_patch_loss.get("huber_delta", 1.0),
+                    off_limb_mask=is_off_limb,
                 )
             elif self.loss_dict.type == "sparse_dense_loss":
                 loss = self.loss_fn(
@@ -511,6 +512,7 @@ class MaskedAutoencoderViT3D(nn.Module):
                     huber_delta=self.loss_dict.sparse_dense_loss.get(
                         "huber_delta", 1.0
                     ),
+                    off_limb_mask=is_off_limb,
                 )
             else:
                 loss = self.loss_fn(

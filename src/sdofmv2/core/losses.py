@@ -203,41 +203,29 @@ def split_patch_loss(
     beta: float = 1.0,
     base_type: Literal["mse", "mae", "huber"] = "mse",
     huber_delta: float = 1.0,
+    off_limb_mask: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Calculates weighted loss separating non-zero patches from all-zero patches.
-
-    This loss computes reconstruction error separately for:
-    - Patches that contain non-zero values in the target (data patches)
-    - Patches that are all zeros in the target (empty patches)
-
-    The total loss is: alpha * loss(non_zero_patches) + beta * loss(zero_patches)
+    """Separates non-zero patches from all-zero patches for weighted loss.
 
     Args:
-        pred (torch.Tensor): Predicted patches [B, L, D].
-        target (torch.Tensor): Ground truth patches [B, L, D].
-        alpha (float): Weight for non-zero patch loss. Default: 1.0.
-        beta (float): Weight for all-zero patch loss. Default: 1.0.
-        base_type (str): Base loss type - "mse", "mae", or "huber".
-            Default: "mse".
-        huber_delta (float): Delta parameter for Huber loss. Default: 1.0.
-
-    Returns:
-        torch.Tensor: Scalar weighted loss.
-
-    Example:
-        >>> pred = torch.randn(2, 100, 768)  # [B, L, D]
-        >>> target = torch.randn(2, 100, 768)
-        >>> loss = split_patch_loss(pred, target, alpha=0.8, beta=0.2, base_type="mae")
+        pred: Predicted patches [B, L, D]
+        target: Target patches [B, L, D]
+        alpha: Weight for non-zero patches
+        beta: Weight for zero (off-limb) patches
+        base_type: Loss type
+        huber_delta: Huber delta
+        off_limb_mask: Binary mask [B, L] - True for off-limb patches.
+            If provided, used directly for detection.
     """
-    # Compute element-wise base loss
     element_loss = _get_base_loss(pred, target, base_type, huber_delta)
 
-    # Find patches that are all-zero in target
-    # target shape: [B, L, D] -> sum over D dimension -> [B, L]
-    # A patch is all-zero if all its D elements are zero
-    patch_sum = pred.abs().sum(dim=-1)  # [B, L]
-    is_zero_patch = patch_sum == 0  # [B, L] - True where patch is all zeros
-    is_nonzero_patch = ~is_zero_patch  # [B, L] - True where patch has non-zero values
+    if off_limb_mask is not None:
+        is_zero_patch = off_limb_mask
+    else:
+        patch_mean_abs = target.abs().mean(dim=-1)
+        is_zero_patch = patch_mean_abs < 1e-3
+
+    is_nonzero_patch = ~is_zero_patch
 
     # Compute mean loss for non-zero patches
     if is_nonzero_patch.any():
@@ -264,34 +252,18 @@ def sparse_dense_loss(
     beta: float = 1.0,
     base_type: Literal["mse", "mae", "huber"] = "mse",
     huber_delta: float = 1.0,
+    off_limb_mask: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Calculates loss combining reconstruction on data patches and embedding regularization on empty patches.
-
-    This loss combines:
-    - Reconstruction loss on patches with non-zero values (dense/data patches)
-    - Normalized embedding size on patches that are all-zero (sparse/empty patches)
-
-    Total loss: alpha * reconstruction_loss(non_zero_patches) + beta * normalized_embedding_size(zero_patches)
-
-    Args:
-        pred (torch.Tensor): Predicted patches [B, L, D].
-        target (torch.Tensor): Ground truth patches [B, L, D].
-        alpha (float): Weight for reconstruction loss on non-zero patches. Default: 1.0.
-        beta (float): Weight for embedding regularization on zero patches. Default: 1.0.
-        base_type (str): Base loss type - "mse", "mae", or "huber".
-            Default: "mse".
-        huber_delta (float): Delta parameter for Huber loss. Default: 1.0.
-
-    Returns:
-        torch.Tensor: Scalar weighted loss.
-    """
-    # Compute element-wise base loss
+    """Combines reconstruction loss on data patches with regularization on zero patches."""
     element_loss = _get_base_loss(pred, target, base_type, huber_delta)
 
-    # Identify patches with non-zero values in target
-    patch_sum = pred.abs().sum(dim=-1)  # [B, L]
-    is_nonzero_patch = patch_sum != 0  # [B, L] - True where patch has non-zero values
-    is_zero_patch = ~is_nonzero_patch  # [B, L] - True where patch is all zeros
+    if off_limb_mask is not None:
+        is_zero_patch = off_limb_mask
+    else:
+        patch_mean_abs = target.abs().mean(dim=-1)
+        is_zero_patch = patch_mean_abs < 1e-3
+
+    is_nonzero_patch = ~is_zero_patch
 
     # Reconstruction loss on non-zero (dense) patches
     if is_nonzero_patch.any():

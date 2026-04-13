@@ -20,6 +20,8 @@ from .losses import (
     vector_aware_loss,
     pixel_weight_loss,
     patch_weight_loss,
+    split_patch_loss,
+    sparse_dense_loss,
 )
 
 
@@ -181,6 +183,8 @@ class MaskedAutoencoderViT3D(nn.Module):
             "vector_aware_loss": vector_aware_loss,
             "pixel_weight_loss": pixel_weight_loss,
             "patch_weight_loss": patch_weight_loss,
+            "split_patch_loss": split_patch_loss,
+            "sparse_dense_loss": sparse_dense_loss,
         }
         loss_type = self.loss_dict.get("type", "mse")
         if loss_type not in loss_functions:
@@ -487,6 +491,26 @@ class MaskedAutoencoderViT3D(nn.Module):
                     self.loss_dict.patch_weight_loss,
                     mask_hidden=mask,
                     mask_off_limb=is_off_limb,
+                )
+            elif self.loss_dict.type == "split_patch_loss":
+                loss = self.loss_fn(
+                    pred,
+                    target_norm if self.loss_dict.norm_pix_loss else target,
+                    alpha=self.loss_dict.split_patch_loss.get("alpha", 1.0),
+                    beta=self.loss_dict.split_patch_loss.get("beta", 1.0),
+                    base_type=self.loss_dict.split_patch_loss.get("base_type", "mse"),
+                    huber_delta=self.loss_dict.split_patch_loss.get("huber_delta", 1.0),
+                )
+            elif self.loss_dict.type == "sparse_dense_loss":
+                loss = self.loss_fn(
+                    pred,
+                    target_norm if self.loss_dict.norm_pix_loss else target,
+                    alpha=self.loss_dict.sparse_dense_loss.get("alpha", 1.0),
+                    beta=self.loss_dict.sparse_dense_loss.get("beta", 1.0),
+                    base_type=self.loss_dict.sparse_dense_loss.get("base_type", "mse"),
+                    huber_delta=self.loss_dict.sparse_dense_loss.get(
+                        "huber_delta", 1.0
+                    ),
                 )
             else:
                 loss = self.loss_fn(

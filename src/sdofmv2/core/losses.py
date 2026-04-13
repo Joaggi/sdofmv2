@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from typing import Optional, Literal
 
 
 def mae_loss(pred, target) -> torch.Tensor:
@@ -161,3 +162,152 @@ def patch_weight_loss(pred, target, loss_dict, mask_hidden, mask_off_limb):
     final_loss = (w_m * mean_masked) + (w_v * mean_visible) + (w_l * mean_space)
 
     return final_loss
+
+
+# =============================================================================
+# Patch-level loss functions for non-zero vs all-zero patches
+# =============================================================================
+
+
+def _get_base_loss(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    base_type: Literal["mse", "mae", "huber"],
+    huber_delta: float = 1.0,
+) -> torch.Tensor:
+    """Compute element-wise base loss between predictions and targets.
+
+    Args:
+        pred: Predicted tensor [B, L, D]
+        target: Target tensor [B, L, D]
+        base_type: Type of loss - "mse", "mae", or "huber"
+        huber_delta: Delta parameter for Huber loss
+
+    Returns:
+        Element-wise loss tensor of same shape as pred/target
+    """
+    if base_type == "mse":
+        return (pred - target) ** 2
+    elif base_type == "mae":
+        return torch.abs(pred - target)
+    elif base_type == "huber":
+        return F.huber_loss(pred, target, reduction="none", delta=huber_delta)
+    else:
+        raise ValueError(f"Not supported base loss type: {base_type}")
+
+
+def split_patch_loss(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    alpha: float = 1.0,
+    beta: float = 1.0,
+    base_type: Literal["mse", "mae", "huber"] = "mse",
+    huber_delta: float = 1.0,
+) -> torch.Tensor:
+    """Calculates weighted loss separating non-zero patches from all-zero patches.
+
+    This loss computes reconstruction error separately for:
+    - Patches that contain non-zero values in the target (data patches)
+    - Patches that are all zeros in the target (empty patches)
+
+    The total loss is: alpha * loss(non_zero_patches) + beta * loss(zero_patches)
+
+    Args:
+        pred (torch.Tensor): Predicted patches [B, L, D].
+        target (torch.Tensor): Ground truth patches [B, L, D].
+        alpha (float): Weight for non-zero patch loss. Default: 1.0.
+        beta (float): Weight for all-zero patch loss. Default: 1.0.
+        base_type (str): Base loss type - "mse", "mae", or "huber".
+            Default: "mse".
+        huber_delta (float): Delta parameter for Huber loss. Default: 1.0.
+
+    Returns:
+        torch.Tensor: Scalar weighted loss.
+
+    Example:
+        >>> pred = torch.randn(2, 100, 768)  # [B, L, D]
+        >>> target = torch.randn(2, 100, 768)
+        >>> loss = split_patch_loss(pred, target, alpha=0.8, beta=0.2, base_type="mae")
+    """
+    # Compute element-wise base loss
+    element_loss = _get_base_loss(pred, target, base_type, huber_delta)
+
+    # Find patches that are all-zero in target
+    # target shape: [B, L, D] -> sum over D dimension -> [B, L]
+    # A patch is all-zero if all its D elements are zero
+    patch_sum = pred.abs().sum(dim=-1)  # [B, L]
+    is_zero_patch = patch_sum == 0  # [B, L] - True where patch is all zeros
+    is_nonzero_patch = ~is_zero_patch  # [B, L] - True where patch has non-zero values
+
+    # Compute mean loss for non-zero patches
+    if is_nonzero_patch.any():
+        loss_nonzero = element_loss[is_nonzero_patch].mean()
+    else:
+        loss_nonzero = torch.tensor(0.0, device=pred.device)
+
+    # Compute mean loss for zero patches
+    if is_zero_patch.any():
+        loss_zero = element_loss[is_zero_patch].mean()
+    else:
+        loss_zero = torch.tensor(0.0, device=pred.device)
+
+    # Combined weighted loss
+    total_loss = alpha * loss_nonzero + beta * loss_zero
+
+    return total_loss
+
+
+def sparse_dense_loss(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    alpha: float = 1.0,
+    beta: float = 1.0,
+    base_type: Literal["mse", "mae", "huber"] = "mse",
+    huber_delta: float = 1.0,
+) -> torch.Tensor:
+    """Calculates loss combining reconstruction on data patches and embedding regularization on empty patches.
+
+    This loss combines:
+    - Reconstruction loss on patches with non-zero values (dense/data patches)
+    - Normalized embedding size on patches that are all-zero (sparse/empty patches)
+
+    Total loss: alpha * reconstruction_loss(non_zero_patches) + beta * normalized_embedding_size(zero_patches)
+
+    Args:
+        pred (torch.Tensor): Predicted patches [B, L, D].
+        target (torch.Tensor): Ground truth patches [B, L, D].
+        alpha (float): Weight for reconstruction loss on non-zero patches. Default: 1.0.
+        beta (float): Weight for embedding regularization on zero patches. Default: 1.0.
+        base_type (str): Base loss type - "mse", "mae", or "huber".
+            Default: "mse".
+        huber_delta (float): Delta parameter for Huber loss. Default: 1.0.
+
+    Returns:
+        torch.Tensor: Scalar weighted loss.
+    """
+    # Compute element-wise base loss
+    element_loss = _get_base_loss(pred, target, base_type, huber_delta)
+
+    # Identify patches with non-zero values in target
+    patch_sum = pred.abs().sum(dim=-1)  # [B, L]
+    is_nonzero_patch = patch_sum != 0  # [B, L] - True where patch has non-zero values
+    is_zero_patch = ~is_nonzero_patch  # [B, L] - True where patch is all zeros
+
+    # Reconstruction loss on non-zero (dense) patches
+    if is_nonzero_patch.any():
+        recon_loss = element_loss[is_nonzero_patch].mean()
+    else:
+        recon_loss = torch.tensor(0.0, device=pred.device)
+
+    # Normalized embedding size on zero (sparse) patches
+    zero_target = target[is_zero_patch]  # [N, D]
+    if zero_target.numel() > 0:
+        # Mean squared norm per patch, normalized by embedding dimension D
+        embedding_size = (zero_target**2).sum(dim=-1).mean() / target.shape[-1]
+    else:
+        embedding_size = torch.tensor(0.0, device=pred.device)
+
+    # Combined weighted loss
+    total_loss = alpha * recon_loss + beta * embedding_size
+
+    return total_loss

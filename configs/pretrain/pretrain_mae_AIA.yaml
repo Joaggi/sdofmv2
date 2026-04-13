@@ -119,6 +119,18 @@ model:
         delta: 1.0
       weight_on_patches: [0.75, 0.2, 0.05]
 
+    split_patch_loss:
+      alpha: 0.8
+      beta: 0.2
+      base_type: mae  # "mse", "mae", or "huber"
+      huber_delta: 1.0  # only used if base_type is "huber"
+
+    sparse_dense_loss:
+      alpha: 0.8
+      beta: 0.2
+      base_type: mae  # "mse", "mae", or "huber"
+      huber_delta: 1.0  # only used if base_type is "huber"
+
   # for optimizer
   optimizer: 
     use: adamw

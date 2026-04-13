@@ -191,6 +191,8 @@ class Pretrainer(object):
             min_date=self.cfg.data.min_date,
             max_date=self.cfg.data.max_date,
             num_frames=self.cfg.model.mae.num_frames,
+            patch_size=self.cfg.model.mae.patch_size,
+            img_size=self.cfg.model.mae.img_size,
             drop_frame_dim=self.cfg.data.drop_frame_dim,
             apply_mask=self.cfg.data.sdoml.apply_mask,
             precision=self.cfg.experiment.precision,

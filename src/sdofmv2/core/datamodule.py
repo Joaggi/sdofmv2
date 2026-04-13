@@ -166,6 +166,8 @@ class SDOMLDataset(Dataset):
         normalization=None,
         normalization_stat=None,
         mask=None,
+        patch_size=16,
+        img_size=512,
         num_frames=1,
         drop_frame_dim=False,
         min_date=None,
@@ -181,6 +183,8 @@ class SDOMLDataset(Dataset):
         self.hmi_data = hmi_data
 
         self.mask = mask
+        self.patch_size = patch_size
+        self.img_size = img_size
         self.get_header = get_header
         self.precision = precision
 
@@ -233,15 +237,10 @@ class SDOMLDataset(Dataset):
         Returns:
             np.ndarray: (L,) boolean array where True = off-limb patch
         """
-        if self.mask is None:
-            return None
-
         mask_t = torch.from_numpy(self.mask).float()
-        p = 16
-
-        patches = mask_t.unflatten(0, (mask_t.shape[0] // p, p)).unflatten(
-            1, (mask_t.shape[1] // p, p)
-        )
+        patches = mask_t.unflatten(
+            0, (mask_t.shape[0] // self.patch_size, self.patch_size)
+        ).unflatten(1, (mask_t.shape[1] // self.patch_size, self.patch_size))
         patches = patches.permute(0, 1, 2, 3).flatten(0, 2)
 
         patch_is_zero = patches.sum(dim=(-1, -2)) == 0
@@ -250,6 +249,37 @@ class SDOMLDataset(Dataset):
     def __len__(self):
         # report slightly smaller such that all frame sets requested are available
         return self.aligndata.shape[0] - (self.num_frames - 1)
+
+    def _compute_zero_patch_mask_from_data(self, image_stack):
+        """Compute zero patch mask from actual data AFTER mask applied.
+
+        Args:
+            image_stack: numpy array of shape (C, T, H, W)
+
+        Returns:
+            numpy bool array of shape (L,) where True = all-zero patch
+        """
+        p = self.patch_size
+
+        num_patches_per_dim = self.img_size // p
+        num_patches = num_patches_per_dim**2 * self.num_frames
+
+        zero_mask = np.zeros(num_patches, dtype=bool)
+
+        for c in range(image_stack.shape[0]):
+            for t in range(image_stack.shape[1]):
+                img = image_stack[c, t]  # (H, W)
+
+                patches = (
+                    img.reshape(num_patches_per_dim, p, num_patches_per_dim, p)
+                    .transpose(1, 2, 0, 3)
+                    .reshape(num_patches, p * p)
+                )
+
+                patch_is_zero = patches.sum(axis=-1) == 0
+                zero_mask |= patch_is_zero
+
+        return zero_mask
 
     def __getitem__(self, idx):
         image_stack = None
@@ -268,6 +298,8 @@ class SDOMLDataset(Dataset):
                 image_stack = np.concatenate((image_stack, hmi_images), axis=0)
             header_stack.update(hmi_headers)
 
+        zero_patch_mask = self._compute_zero_patch_mask_from_data(image_stack)
+
         image_stack = torch.from_numpy(image_stack)
         image_stack = image_stack.to(get_dtype_from_precision(self.precision))
         timestamps = self.aligndata.index[idx : idx + self.num_frames].astype("int")
@@ -276,9 +308,9 @@ class SDOMLDataset(Dataset):
         if not self.get_header:
             if self.eve_data is not None:
                 eve_data = self.get_eve(idx)
-                return image_stack, timestamps, eve_data, self.zero_patch_mask
+                return image_stack, timestamps, eve_data, zero_patch_mask
             else:
-                return image_stack, timestamps, self.zero_patch_mask
+                return image_stack, timestamps, zero_patch_mask
         else:
             if self.eve_data is not None:
                 eve_data = self.get_eve(idx)
@@ -558,6 +590,8 @@ class SDOMLDataModule(pl.LightningDataModule):
         norm_stat_tag="",
         apply_mask=True,
         num_frames=1,
+        patch_size=16,
+        img_size=512,
         drop_frame_dim=False,
         min_date=None,
         max_date=None,
@@ -582,6 +616,8 @@ class SDOMLDataModule(pl.LightningDataModule):
         self.norm_stat_tag = norm_stat_tag
         self.apply_mask = apply_mask
         self.num_frames = num_frames
+        self.patch_size = patch_size
+        self.img_size = img_size
         self.drop_frame_dim = drop_frame_dim
         self.min_date = pd.to_datetime(min_date) if min_date is not None else None
         self.max_date = pd.to_datetime(max_date) if max_date is not None else None
@@ -688,28 +724,6 @@ class SDOMLDataModule(pl.LightningDataModule):
         self.normalization_stat = (
             self.__calc_normalizations() if normalization.enabled is True else None
         )
-
-        self._setup_off_limb_patch_mask()
-
-    def _setup_off_limb_patch_mask(self):
-        """Compute patch-level off-limb mask from hmi_mask.
-
-        Uses hmi_mask (2D binary: 1=solar disk, 0=space) to determine
-        which patches are completely outside the solar disk.
-        """
-        from ..utils import patchify
-
-        patch_size = 16
-        num_frames = getattr(self, "num_frames", 1)
-
-        hmi_mask_np = self.hmi_mask.cpu().numpy()
-        mask_3d = hmi_mask_np[np.newaxis, np.newaxis, :, :]
-        mask_3d = np.repeat(mask_3d, num_frames, axis=0)
-
-        patches = patchify(torch.from_numpy(mask_3d).float(), patch_size, 1)
-
-        all_zero = patches.sum(dim=-1) == 0
-        self.off_limb_patch_mask = all_zero.squeeze(0)
 
     def __str__(self):
         output = ""

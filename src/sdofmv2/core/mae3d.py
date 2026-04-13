@@ -468,9 +468,8 @@ class MaskedAutoencoderViT3D(nn.Module):
             device = target.device
             batch_size, num_patches, dims = pred.shape
 
-            # Identify off-limb regions
+            # Identify off-limb regions from data or config
             if zero_patch_mask is not None:
-                # zero_patch_mask shape: (L,) -> expand to (B, L)
                 is_off_limb = zero_patch_mask.to(device).bool()
                 is_off_limb = is_off_limb.unsqueeze(0).expand(batch_size, -1)
             elif self.ids_limb_mask is not None and len(self.ids_limb_mask) > 0:

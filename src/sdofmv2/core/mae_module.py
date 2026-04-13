@@ -157,7 +157,7 @@ class MAE(BaseModule):
         batch_len = len(batch)
         if batch_len >= 3:
             x = batch[0]
-            zero_patch_mask = batch[-1]  # zero_patch_mask is last element
+            zero_patch_mask = batch[-1]
         else:
             x, timestamps = batch[:2]
             zero_patch_mask = None

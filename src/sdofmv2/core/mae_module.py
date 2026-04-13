@@ -147,15 +147,24 @@ class MAE(BaseModule):
         """Perform a single training step.
 
         Args:
-            batch: A tuple containing (images, timestamps).
+            batch: A tuple containing (images, timestamps, zero_patch_mask).
             batch_idx: The index of the current batch.
 
         Returns:
             torch.Tensor: The training loss value.
         """
         # training_step defines the train loop.
-        x, timestamps = batch
-        loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
+        batch_len = len(batch)
+        if batch_len >= 3:
+            x = batch[0]
+            zero_patch_mask = batch[-1]  # zero_patch_mask is last element
+        else:
+            x, timestamps = batch[:2]
+            zero_patch_mask = None
+
+        loss, x_hat, mask = self.autoencoder(
+            x, mask_ratio=self.masking_ratio, zero_patch_mask=zero_patch_mask
+        )
 
         # logs
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
@@ -165,12 +174,21 @@ class MAE(BaseModule):
         """Perform a single validation step.
 
         Args:
-            batch: A tuple containing (images, timestamps).
+            batch: A tuple containing (images, timestamps, zero_patch_mask).
             batch_idx: The index of the current batch.
         """
-        x, timestamps = batch
+        batch_len = len(batch)
+        if batch_len >= 3:
+            x = batch[0]
+            zero_patch_mask = batch[-1]
+        else:
+            x, timestamps = batch[:2]
+            zero_patch_mask = None
+
         x_patchified = patchify(x, self.patch_size, self.tubelet_size)
-        loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
+        loss, x_hat, mask = self.autoencoder(
+            x, mask_ratio=self.masking_ratio, zero_patch_mask=zero_patch_mask
+        )
         x_hat_reconstructed = unpatchify(
             x_hat, self.img_size, self.patch_size, self.tubelet_size
         )

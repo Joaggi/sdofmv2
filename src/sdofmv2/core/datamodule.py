@@ -225,6 +225,28 @@ class SDOMLDataset(Dataset):
         if self.drop_frame_dim:
             assert self.num_frames == 1
 
+        self.zero_patch_mask = self._compute_zero_patch_mask()
+
+    def _compute_zero_patch_mask(self):
+        """Compute patch-level zero mask from spatial mask.
+
+        Returns:
+            np.ndarray: (L,) boolean array where True = off-limb patch
+        """
+        if self.mask is None:
+            return None
+
+        mask_t = torch.from_numpy(self.mask).float()
+        p = 16
+
+        patches = mask_t.unflatten(0, (mask_t.shape[0] // p, p)).unflatten(
+            1, (mask_t.shape[1] // p, p)
+        )
+        patches = patches.permute(0, 1, 2, 3).flatten(0, 2)
+
+        patch_is_zero = patches.sum(dim=(-1, -2)) == 0
+        return patch_is_zero.numpy()
+
     def __len__(self):
         # report slightly smaller such that all frame sets requested are available
         return self.aligndata.shape[0] - (self.num_frames - 1)
@@ -254,15 +276,21 @@ class SDOMLDataset(Dataset):
         if not self.get_header:
             if self.eve_data is not None:
                 eve_data = self.get_eve(idx)
-                return image_stack, timestamps, eve_data
+                return image_stack, timestamps, eve_data, self.zero_patch_mask
             else:
-                return image_stack, timestamps
+                return image_stack, timestamps, self.zero_patch_mask
         else:
             if self.eve_data is not None:
                 eve_data = self.get_eve(idx)
-                return image_stack, timestamps, header_stack, eve_data.reshape(-1)
+                return (
+                    image_stack,
+                    timestamps,
+                    header_stack,
+                    eve_data.reshape(-1),
+                    self.zero_patch_mask,
+                )
             else:
-                return image_stack, timestamps, header_stack
+                return image_stack, timestamps, header_stack, self.zero_patch_mask
 
     def _data_norm(self, data, instrument, channel):
         """

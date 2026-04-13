@@ -450,7 +450,7 @@ class MaskedAutoencoderViT3D(nn.Module):
 
         return x
 
-    def forward(self, imgs, mask_ratio=0.5):
+    def forward(self, imgs, mask_ratio=0.5, zero_patch_mask=None):
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio)
         pred = self.forward_decoder(latent, ids_restore)
 
@@ -468,11 +468,21 @@ class MaskedAutoencoderViT3D(nn.Module):
             device = target.device
             batch_size, num_patches, dims = pred.shape
 
-            # Identify off-limb regions (Static spatial map)
-            is_off_limb = torch.zeros(
-                (batch_size, num_patches), device=device, dtype=torch.bool
-            )
-            is_off_limb[:, self.ids_limb_mask] = True
+            # Identify off-limb regions
+            if zero_patch_mask is not None:
+                # zero_patch_mask shape: (L,) -> expand to (B, L)
+                is_off_limb = zero_patch_mask.to(device).bool()
+                is_off_limb = is_off_limb.unsqueeze(0).expand(batch_size, -1)
+            elif self.ids_limb_mask is not None and len(self.ids_limb_mask) > 0:
+                is_off_limb = torch.zeros(
+                    (batch_size, num_patches), device=device, dtype=torch.bool
+                )
+                is_off_limb[:, self.ids_limb_mask] = True
+            else:
+                # No off-limb detection - treat all as non-zero
+                is_off_limb = torch.zeros(
+                    (batch_size, num_patches), device=device, dtype=torch.bool
+                )
 
             if self.loss_dict.type == "pixel_weight_loss":
                 loss = self.loss_fn(

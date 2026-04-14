@@ -124,12 +124,16 @@ model:
       beta: 0.2
       base_type: mae
       huber_delta: 1.0
+      use_4corner_detection: true
+      corner_ratio: 0.25
 
     sparse_dense_loss:
       alpha: 0.8
       beta: 0.2
       base_type: mae
       huber_delta: 1.0
+      use_4corner_detection: true
+      corner_ratio: 0.25
 
   # for optimizer
   optimizer: 

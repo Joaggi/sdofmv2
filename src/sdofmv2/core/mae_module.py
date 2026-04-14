@@ -147,26 +147,16 @@ class MAE(BaseModule):
         """Perform a single training step.
 
         Args:
-            batch: A tuple containing (images, timestamps, zero_patch_mask).
+            batch: A tuple containing (images, timestamps).
             batch_idx: The index of the current batch.
 
         Returns:
             torch.Tensor: The training loss value.
         """
-        # training_step defines the train loop.
-        batch_len = len(batch)
-        if batch_len >= 3:
-            x = batch[0]
-            zero_patch_mask = batch[-1]
-        else:
-            x, timestamps = batch[:2]
-            zero_patch_mask = None
+        x, timestamps = batch[:2]
 
-        loss, x_hat, mask = self.autoencoder(
-            x, mask_ratio=self.masking_ratio, zero_patch_mask=zero_patch_mask
-        )
+        loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
 
-        # logs
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
@@ -174,26 +164,17 @@ class MAE(BaseModule):
         """Perform a single validation step.
 
         Args:
-            batch: A tuple containing (images, timestamps, zero_patch_mask).
+            batch: A tuple containing (images, timestamps).
             batch_idx: The index of the current batch.
         """
-        batch_len = len(batch)
-        if batch_len >= 3:
-            x = batch[0]
-            zero_patch_mask = batch[-1]
-        else:
-            x, timestamps = batch[:2]
-            zero_patch_mask = None
+        x, timestamps = batch[:2]
 
         x_patchified = patchify(x, self.patch_size, self.tubelet_size)
-        loss, x_hat, mask = self.autoencoder(
-            x, mask_ratio=self.masking_ratio, zero_patch_mask=zero_patch_mask
-        )
+        loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
         x_hat_reconstructed = unpatchify(
             x_hat, self.img_size, self.patch_size, self.tubelet_size
         )
 
-        # only masked patches
         active_mask = mask == 1
 
         # 2d mask tensor

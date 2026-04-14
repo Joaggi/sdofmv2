@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from einops import rearrange
 from typing import Optional, Literal
 
 
@@ -196,6 +197,37 @@ def _get_base_loss(
         raise ValueError(f"Not supported base loss type: {base_type}")
 
 
+def _get_zero_patch_mask_from_target(imgs, patch_size=16, corner_ratio=0.25):
+    B, C, T, H, W = imgs.shape
+    p = patch_size
+
+    imgs_avg = imgs.mean(dim=2)
+
+    corner_size = 4
+    corners = torch.cat(
+        [
+            imgs_avg[:, :, :corner_size, :corner_size].reshape(B, C, -1),
+            imgs_avg[:, :, :corner_size, -corner_size:].reshape(B, C, -1),
+            imgs_avg[:, :, -corner_size:, :corner_size].reshape(B, C, -1),
+            imgs_avg[:, :, -corner_size:, -corner_size:].reshape(B, C, -1),
+        ],
+        dim=-1,
+    )
+
+    corner_mean = corners.mean(dim=-1)
+    threshold = corner_ratio * corner_mean
+
+    threshold_expanded = threshold.unsqueeze(-1).unsqueeze(-1)
+    is_zero_pixel = imgs_avg < threshold_expanded
+
+    is_zero_pixel = rearrange(
+        is_zero_pixel, "b c (h p) (w q) -> b (h w) (p q c)", p=p, q=p
+    )
+    is_zero_patch = is_zero_pixel.any(dim=-1)
+
+    return is_zero_patch
+
+
 def split_patch_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
@@ -204,42 +236,35 @@ def split_patch_loss(
     base_type: Literal["mse", "mae", "huber"] = "mse",
     huber_delta: float = 1.0,
     off_limb_mask: torch.Tensor | None = None,
+    use_4corner_detection: bool = False,
+    imgs: torch.Tensor | None = None,
+    patch_size: int = 16,
+    corner_ratio: float = 0.25,
 ) -> torch.Tensor:
-    """Separates non-zero patches from all-zero patches for weighted loss.
-
-    Args:
-        pred: Predicted patches [B, L, D]
-        target: Target patches [B, L, D]
-        alpha: Weight for non-zero patches
-        beta: Weight for zero (off-limb) patches
-        base_type: Loss type
-        huber_delta: Huber delta
-        off_limb_mask: Binary mask [B, L] - True for off-limb patches.
-            If provided, used directly for detection.
-    """
     element_loss = _get_base_loss(pred, target, base_type, huber_delta)
 
     if off_limb_mask is not None:
         is_zero_patch = off_limb_mask
+    elif use_4corner_detection:
+        is_zero_patch = _get_zero_patch_mask_from_target(
+            imgs, patch_size=patch_size, corner_ratio=corner_ratio
+        )
     else:
         patch_mean_abs = target.abs().mean(dim=-1)
         is_zero_patch = patch_mean_abs < 1e-3
 
     is_nonzero_patch = ~is_zero_patch
 
-    # Compute mean loss for non-zero patches
     if is_nonzero_patch.any():
         loss_nonzero = element_loss[is_nonzero_patch].mean()
     else:
         loss_nonzero = torch.tensor(0.0, device=pred.device)
 
-    # Compute mean loss for zero patches
     if is_zero_patch.any():
         loss_zero = element_loss[is_zero_patch].mean()
     else:
         loss_zero = torch.tensor(0.0, device=pred.device)
 
-    # Combined weighted loss
     total_loss = alpha * loss_nonzero + beta * loss_zero
 
     return total_loss
@@ -253,28 +278,32 @@ def sparse_dense_loss(
     base_type: Literal["mse", "mae", "huber"] = "mse",
     huber_delta: float = 1.0,
     off_limb_mask: torch.Tensor | None = None,
+    use_4corner_detection: bool = False,
+    imgs: torch.Tensor | None = None,
+    patch_size: int = 16,
+    corner_ratio: float = 0.25,
 ) -> torch.Tensor:
-    """Combines reconstruction loss on data patches with regularization on zero patches."""
     element_loss = _get_base_loss(pred, target, base_type, huber_delta)
 
     if off_limb_mask is not None:
         is_zero_patch = off_limb_mask
+    elif use_4corner_detection:
+        is_zero_patch = _get_zero_patch_mask_from_target(
+            imgs, patch_size=patch_size, corner_ratio=corner_ratio
+        )
     else:
         patch_mean_abs = target.abs().mean(dim=-1)
         is_zero_patch = patch_mean_abs < 1e-3
 
     is_nonzero_patch = ~is_zero_patch
 
-    # Reconstruction loss on non-zero (dense) patches
     if is_nonzero_patch.any():
         recon_loss = element_loss[is_nonzero_patch].mean()
     else:
         recon_loss = torch.tensor(0.0, device=pred.device)
 
-    # Normalized embedding size on zero (sparse) patches
-    zero_target = target[is_zero_patch]  # [N, D]
+    zero_target = target[is_zero_patch]
     if zero_target.numel() > 0:
-        # Mean squared norm per patch, normalized by embedding dimension D
         embedding_size = (zero_target**2).sum(dim=-1).mean() / target.shape[-1]
     else:
         embedding_size = torch.tensor(0.0, device=pred.device)

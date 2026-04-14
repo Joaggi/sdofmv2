@@ -346,28 +346,6 @@ def patchify(imgs, patch_size, tubelet_size):
     return x
 
 
-def get_zero_patch_mask(imgs, patch_size, tubelet_size):
-    """Create binary mask indicating which patches are all-zero.
-
-    Args:
-        imgs (torch.Tensor): Images of shape (B, C, T, H, W) BEFORE normalization.
-        patch_size (int): Spatial size of each patch.
-        tubelet_size (int): Temporal size of each tubelet.
-
-    Returns:
-        torch.Tensor: Binary mask of shape (B, L) where 1 = all-zero patch.
-    """
-    p = patch_size
-    tub = tubelet_size
-
-    patches = rearrange(
-        imgs, "b c (t tub) (h p) (w q) -> b (t h w) (tub p q c)", tub=tub, p=p, q=p
-    )
-
-    patch_is_zero = patches.abs().sum(dim=-1) == 0
-    return patch_is_zero
-
-
 def spatial_to_patch_mask(
     mask_2d: torch.Tensor, patch_size: int, num_frames: int = 1
 ) -> torch.Tensor:

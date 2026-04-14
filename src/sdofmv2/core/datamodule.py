@@ -4,15 +4,12 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Optional
 from loguru import logger
 
 import torch
 
 import dask.array as da
 from dask.diagnostics import ProgressBar
-
-from ..utils import patchify
 
 import lightning.pytorch as pl
 import numpy as np
@@ -229,57 +226,9 @@ class SDOMLDataset(Dataset):
         if self.drop_frame_dim:
             assert self.num_frames == 1
 
-        self.zero_patch_mask = self._compute_zero_patch_mask()
-
-    def _compute_zero_patch_mask(self):
-        """Compute patch-level zero mask from spatial mask.
-
-        Returns:
-            np.ndarray: (L,) boolean array where True = off-limb patch
-        """
-        mask_t = torch.from_numpy(self.mask).float()
-        patches = mask_t.unflatten(
-            0, (mask_t.shape[0] // self.patch_size, self.patch_size)
-        ).unflatten(1, (mask_t.shape[1] // self.patch_size, self.patch_size))
-        patches = patches.permute(0, 1, 2, 3).flatten(0, 2)
-
-        patch_is_zero = patches.sum(dim=(-1, -2)) == 0
-        return patch_is_zero.numpy()
-
     def __len__(self):
         # report slightly smaller such that all frame sets requested are available
         return self.aligndata.shape[0] - (self.num_frames - 1)
-
-    def _compute_zero_patch_mask_from_data(self, image_stack):
-        """Compute zero patch mask from actual data AFTER mask applied.
-
-        Args:
-            image_stack: numpy array of shape (C, T, H, W)
-
-        Returns:
-            numpy bool array of shape (L,) where True = all-zero patch
-        """
-        p = self.patch_size
-
-        num_patches_per_dim = self.img_size // p
-        num_patches = num_patches_per_dim**2 * self.num_frames
-
-        zero_mask = np.zeros(num_patches, dtype=bool)
-
-        for c in range(image_stack.shape[0]):
-            for t in range(image_stack.shape[1]):
-                img = image_stack[c, t]  # (H, W)
-
-                patches = (
-                    img.reshape(num_patches_per_dim, p, num_patches_per_dim, p)
-                    .transpose(1, 2, 0, 3)
-                    .reshape(num_patches, p * p)
-                )
-
-                patch_is_zero = patches.sum(axis=-1) == 0
-                zero_mask |= patch_is_zero
-
-        return zero_mask
 
     def __getitem__(self, idx):
         image_stack = None
@@ -298,8 +247,6 @@ class SDOMLDataset(Dataset):
                 image_stack = np.concatenate((image_stack, hmi_images), axis=0)
             header_stack.update(hmi_headers)
 
-        zero_patch_mask = self._compute_zero_patch_mask_from_data(image_stack)
-
         image_stack = torch.from_numpy(image_stack)
         image_stack = image_stack.to(get_dtype_from_precision(self.precision))
         timestamps = self.aligndata.index[idx : idx + self.num_frames].astype("int")
@@ -308,9 +255,9 @@ class SDOMLDataset(Dataset):
         if not self.get_header:
             if self.eve_data is not None:
                 eve_data = self.get_eve(idx)
-                return image_stack, timestamps, eve_data, zero_patch_mask
+                return image_stack, timestamps, eve_data
             else:
-                return image_stack, timestamps, zero_patch_mask
+                return image_stack, timestamps
         else:
             if self.eve_data is not None:
                 eve_data = self.get_eve(idx)
@@ -319,10 +266,9 @@ class SDOMLDataset(Dataset):
                     timestamps,
                     header_stack,
                     eve_data.reshape(-1),
-                    self.zero_patch_mask,
                 )
             else:
-                return image_stack, timestamps, header_stack, self.zero_patch_mask
+                return image_stack, timestamps, header_stack
 
     def _data_norm(self, data, instrument, channel):
         """

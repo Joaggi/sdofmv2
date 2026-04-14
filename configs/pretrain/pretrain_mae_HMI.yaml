@@ -131,12 +131,18 @@ model:
       beta: 0.2
       base_type: mae  # "mse", "mae", or "huber"
       huber_delta: 1.0  # only used if base_type is "huber"
+      use_4corner_detection: true
+      patch_size: 16
+      corner_ratio: 0.25
 
     sparse_dense_loss:
       alpha: 0.8
       beta: 0.2
       base_type: mae  # "mse", "mae", or "huber"
       huber_delta: 1.0  # only used if base_type is "huber"
+      use_4corner_detection: true
+      patch_size: 16
+      corner_ratio: 0.25
       
   # for optimizer
   optimizer: 

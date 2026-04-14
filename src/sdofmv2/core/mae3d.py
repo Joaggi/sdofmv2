@@ -10,7 +10,6 @@ Adapted from: https://github.com/facebookresearch/mae/blob/main/models_mae.py
 
 import torch
 import torch.nn as nn
-from einops import rearrange
 from timm.layers import to_2tuple
 from timm.models.vision_transformer import Block
 import torch.nn.functional as F
@@ -91,7 +90,7 @@ class PatchEmbed(nn.Module):
         self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
 
     def forward(self, x):
-        B, C, T, H, W = x.shape  # batch channels frames height width
+        # B, C, T, H, W = x.shape  # batch channels frames height width
         # print("input dim", x.shape)
         x = self.proj(x)
         # print("proj dim", x.shape)
@@ -227,7 +226,7 @@ class MaskedAutoencoderViT3D(nn.Module):
                     qkv_bias=True,
                     norm_layer=norm_layer,
                 )
-                for i in range(depth)
+                for _ in range(depth)
             ]
         )
         self.norm = norm_layer(embed_dim)
@@ -252,7 +251,7 @@ class MaskedAutoencoderViT3D(nn.Module):
                     qkv_bias=True,
                     norm_layer=norm_layer,
                 )
-                for i in range(decoder_depth)
+                for _ in range(decoder_depth)
             ]
         )
 
@@ -450,7 +449,7 @@ class MaskedAutoencoderViT3D(nn.Module):
 
         return x
 
-    def forward(self, imgs, mask_ratio=0.5, zero_patch_mask=None):
+    def forward(self, imgs, mask_ratio=0.5):
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio)
         pred = self.forward_decoder(latent, ids_restore)
 
@@ -468,17 +467,13 @@ class MaskedAutoencoderViT3D(nn.Module):
             device = target.device
             batch_size, num_patches, dims = pred.shape
 
-            # Identify off-limb regions from data or config
-            if zero_patch_mask is not None:
-                is_off_limb = zero_patch_mask.to(device).bool()
-                is_off_limb = is_off_limb.unsqueeze(0).expand(batch_size, -1)
-            elif self.ids_limb_mask is not None and len(self.ids_limb_mask) > 0:
+            # Identify off-limb regions from config
+            if self.ids_limb_mask is not None and len(self.ids_limb_mask) > 0:
                 is_off_limb = torch.zeros(
                     (batch_size, num_patches), device=device, dtype=torch.bool
                 )
                 is_off_limb[:, self.ids_limb_mask] = True
             else:
-                # No off-limb detection - treat all as non-zero
                 is_off_limb = torch.zeros(
                     (batch_size, num_patches), device=device, dtype=torch.bool
                 )
@@ -510,6 +505,14 @@ class MaskedAutoencoderViT3D(nn.Module):
                     base_type=self.loss_dict.split_patch_loss.get("base_type", "mse"),
                     huber_delta=self.loss_dict.split_patch_loss.get("huber_delta", 1.0),
                     off_limb_mask=is_off_limb,
+                    use_4corner_detection=self.loss_dict.split_patch_loss.get(
+                        "use_4corner_detection", False
+                    ),
+                    imgs=imgs,
+                    patch_size=self.patch_size,
+                    corner_ratio=self.loss_dict.split_patch_loss.get(
+                        "corner_ratio", 0.25
+                    ),
                 )
             elif self.loss_dict.type == "sparse_dense_loss":
                 loss = self.loss_fn(
@@ -522,6 +525,14 @@ class MaskedAutoencoderViT3D(nn.Module):
                         "huber_delta", 1.0
                     ),
                     off_limb_mask=is_off_limb,
+                    use_4corner_detection=self.loss_dict.sparse_dense_loss.get(
+                        "use_4corner_detection", False
+                    ),
+                    imgs=imgs,
+                    patch_size=self.patch_size,
+                    corner_ratio=self.loss_dict.sparse_dense_loss.get(
+                        "corner_ratio", 0.25
+                    ),
                 )
             else:
                 loss = self.loss_fn(

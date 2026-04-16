@@ -82,9 +82,7 @@ def pixel_weight_loss(
     # weights = (torch.abs(imgs) ** 2) + 0.1
     weight_for_ar = ar_weight_ratio / (ar_weight_ratio + 1)
     weight_for_noise = 1 / (ar_weight_ratio + 1)
-    weights = torch.where(
-        torch.abs(target) > threshold, weight_for_ar, weight_for_noise
-    )
+    weights = torch.where(torch.abs(target) > threshold, weight_for_ar, weight_for_noise)
     return (loss * weights).mean()
 
 
@@ -122,9 +120,7 @@ def patch_weight_loss(pred, target, loss_dict, mask_hidden, mask_off_limb):
     # Extract 3-tier weights
     weights_raw = loss_dict.get("weight_on_patches", [0.7, 0.2, 0.1])
     if len(weights_raw) < 3:
-        raise IndexError(
-            "weight_on_patches must have 3 elements for the 3-tier strategy."
-        )
+        raise IndexError("weight_on_patches must have 3 elements for the 3-tier strategy.")
 
     # Base Loss Calculation
     if base_loss_type == "mse":
@@ -133,19 +129,20 @@ def patch_weight_loss(pred, target, loss_dict, mask_hidden, mask_off_limb):
         loss = torch.abs(pred - target)
     elif base_loss_type == "huber":
         delta = loss_dict.base_loss.get("delta", 1.0)
-        loss = torch.nn.functional.huber_loss(
-            pred, target, reduction="none", delta=delta
-        )
+        loss = torch.nn.functional.huber_loss(pred, target, reduction="none", delta=delta)
     else:
         raise ValueError(f"Not supported loss type: {base_loss_type}")
 
     # Define the three tiers using boolean logic
     # Tier 1: Hidden patches inside the solar disk
-    is_masked_inner = mask_hidden.bool() & (~mask_off_limb.bool())
-    # Tier 2: Visible patches inside the solar disk
-    is_visible_inner = (~mask_hidden.bool()) & (~mask_off_limb.bool())
-    # Tier 3: All patches outside the solar disk (space)
-    is_space = mask_off_limb.bool()
+    if mask_off_limb is not None:
+        is_masked_inner = mask_hidden.bool() & (~mask_off_limb.bool())
+        # Tier 2: Visible patches inside the solar disk
+        is_visible_inner = (~mask_hidden.bool()) & (~mask_off_limb.bool())
+        # Tier 3: All patches outside the solar disk (space)
+        is_space = mask_off_limb.bool()
+    else:
+        raise ValueError("off limb mask is None!")
 
     # Compute group means safely (avoiding NaN on empty tensors)
     def get_group_mean(l, m):
@@ -197,13 +194,11 @@ def _get_base_loss(
         raise ValueError(f"Not supported base loss type: {base_type}")
 
 
-def _get_zero_patch_mask_from_target(imgs, patch_size=16, corner_ratio=0.25):
+def _get_zero_pixel_mask_from_target(imgs, patch_size=16, corner_size=4, corner_ratio=0.25):
     B, C, T, H, W = imgs.shape
     p = patch_size
-
     imgs_avg = imgs.mean(dim=2)
 
-    corner_size = 4
     corners = torch.cat(
         [
             imgs_avg[:, :, :corner_size, :corner_size].reshape(B, C, -1),
@@ -219,49 +214,37 @@ def _get_zero_patch_mask_from_target(imgs, patch_size=16, corner_ratio=0.25):
 
     threshold_expanded = threshold.unsqueeze(-1).unsqueeze(-1)
     is_zero_pixel = imgs_avg < threshold_expanded
+    is_zero_pixel = rearrange(is_zero_pixel, "b c (h p) (w q) -> b (h w) (p q c)", p=p, q=p)
 
-    is_zero_pixel = rearrange(
-        is_zero_pixel, "b c (h p) (w q) -> b (h w) (p q c)", p=p, q=p
-    )
-    is_zero_patch = is_zero_pixel.any(dim=-1)
-
-    return is_zero_patch
+    return is_zero_pixel
 
 
-def split_patch_loss(
+def split_pixel_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
     alpha: float = 1.0,
     beta: float = 1.0,
     base_type: Literal["mse", "mae", "huber"] = "mse",
     huber_delta: float = 1.0,
-    off_limb_mask: torch.Tensor | None = None,
-    use_4corner_detection: bool = False,
     imgs: torch.Tensor | None = None,
     patch_size: int = 16,
+    corner_size: int = 4,
     corner_ratio: float = 0.25,
 ) -> torch.Tensor:
+
     element_loss = _get_base_loss(pred, target, base_type, huber_delta)
+    is_zero_pixel = _get_zero_pixel_mask_from_target(
+        imgs, patch_size=patch_size, corner_size=corner_size, corner_ratio=corner_ratio
+    )
+    is_nonzero_pixel = ~is_zero_pixel
 
-    if off_limb_mask is not None:
-        is_zero_patch = off_limb_mask
-    elif use_4corner_detection:
-        is_zero_patch = _get_zero_patch_mask_from_target(
-            imgs, patch_size=patch_size, corner_ratio=corner_ratio
-        )
-    else:
-        patch_mean_abs = target.abs().mean(dim=-1)
-        is_zero_patch = patch_mean_abs < 1e-3
-
-    is_nonzero_patch = ~is_zero_patch
-
-    if is_nonzero_patch.any():
-        loss_nonzero = element_loss[is_nonzero_patch].mean()
+    if is_nonzero_pixel.any():
+        loss_nonzero = element_loss[is_nonzero_pixel].mean()
     else:
         loss_nonzero = torch.tensor(0.0, device=pred.device)
 
-    if is_zero_patch.any():
-        loss_zero = element_loss[is_zero_patch].mean()
+    if is_zero_pixel.any():
+        loss_zero = element_loss[is_zero_pixel].mean()
     else:
         loss_zero = torch.tensor(0.0, device=pred.device)
 
@@ -283,26 +266,19 @@ def sparse_dense_loss(
     patch_size: int = 16,
     corner_ratio: float = 0.25,
 ) -> torch.Tensor:
+
     element_loss = _get_base_loss(pred, target, base_type, huber_delta)
+    is_zero_pixel = _get_zero_pixel_mask_from_target(
+        imgs, patch_size=patch_size, corner_ratio=corner_ratio
+    )
+    is_nonzero_pixel = ~is_zero_pixel
 
-    if off_limb_mask is not None:
-        is_zero_patch = off_limb_mask
-    elif use_4corner_detection:
-        is_zero_patch = _get_zero_patch_mask_from_target(
-            imgs, patch_size=patch_size, corner_ratio=corner_ratio
-        )
-    else:
-        patch_mean_abs = target.abs().mean(dim=-1)
-        is_zero_patch = patch_mean_abs < 1e-3
-
-    is_nonzero_patch = ~is_zero_patch
-
-    if is_nonzero_patch.any():
-        recon_loss = element_loss[is_nonzero_patch].mean()
+    if is_nonzero_pixel.any():
+        recon_loss = element_loss[is_nonzero_pixel].mean()
     else:
         recon_loss = torch.tensor(0.0, device=pred.device)
 
-    zero_target = target[is_zero_patch]
+    zero_target = target[is_zero_pixel]
     if zero_target.numel() > 0:
         embedding_size = (zero_target**2).sum(dim=-1).mean() / target.shape[-1]
     else:

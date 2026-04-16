@@ -101,8 +101,7 @@ class Pretrainer(object):
             ModelCheckpoint(
                 dirpath=cfg.experiment.backbone.ckpt_dir,
                 filename=(
-                    f"id_{logger.experiment.id}_{cfg.experiment.model}_"
-                    "{epoch}-{val_loss:.2f}"
+                    f"id_{logger.experiment.id}_{cfg.experiment.model}_" "{epoch}-{val_loss:.2f}"
                 ),
                 verbose=True,
                 monitor="val_loss",
@@ -200,20 +199,12 @@ class Pretrainer(object):
         )
         self.data_module.setup()
 
-        limb_mask_2d = (
-            self.data_module.hmi_mask if cfg.model.misc.limb_mask is True else None
-        )
-        ids_limb_mask = (
-            self._compute_ids_limb_mask(limb_mask_2d)
-            if limb_mask_2d is not None
-            else None
-        )
+        limb_mask_2d = self.data_module.hmi_mask if cfg.model.misc.limb_mask is True else None
 
         model_hyperparams = {
             **cfg.model.mae,
             "chan_types": self.chan_types,
             "limb_mask": limb_mask_2d,
-            "ids_limb_mask": ids_limb_mask,
             "loss_dict": self.cfg.model.loss,
             "optimizer_dict": self.cfg.model.optimizer,
             "scheduler_dict": self.cfg.model.scheduler,
@@ -326,15 +317,13 @@ class Pretrainer(object):
         # check input channels
         aia_list = (
             ALL_WAVELENGTHS
-            if self.cfg.data.sdoml.sub_directory.aia
-            and self.cfg.data.sdoml.wavelengths is None
+            if self.cfg.data.sdoml.sub_directory.aia and self.cfg.data.sdoml.wavelengths is None
             else self.cfg.data.sdoml.wavelengths or []
         )
 
         hmi_list = (
             ALL_COMPONENTS
-            if self.cfg.data.sdoml.sub_directory.hmi
-            and self.cfg.data.sdoml.components is None
+            if self.cfg.data.sdoml.sub_directory.hmi and self.cfg.data.sdoml.components is None
             else self.cfg.data.sdoml.components or []
         )
 
@@ -390,9 +379,7 @@ class Pretrainer(object):
             **self.cfg.model.mae,
             "chan_types": self.chan_types,
             "limb_mask": (
-                self.data_module.hmi_mask
-                if self.cfg.model.misc.limb_mask is True
-                else None
+                self.data_module.hmi_mask if self.cfg.model.misc.limb_mask is True else None
             ),
             "loss_dict": self.cfg.model.loss,
             "optimizer_dict": self.cfg.model.optimizer,
@@ -491,15 +478,11 @@ def main(cfg: DictConfig) -> None:
         wandb.login()
         output_dir = Path(cfg.experiment.wandb.output_directory)
         output_dir.mkdir(exist_ok=True, parents=True)
-        print(
-            f"Created directory for storing results: {cfg.experiment.wandb.output_directory}"
-        )
+        print(f"Created directory for storing results: {cfg.experiment.wandb.output_directory}")
         cache_dir = Path(f"{cfg.experiment.wandb.output_directory}/.cache")
         cache_dir.mkdir(exist_ok=True, parents=True)
 
-        os.environ["WANDB_CACHE_DIR"] = (
-            f"{cfg.experiment.wandb.output_directory}/.cache"
-        )
+        os.environ["WANDB_CACHE_DIR"] = f"{cfg.experiment.wandb.output_directory}/.cache"
 
         logger = WandbLogger(
             # WandbLogger params
@@ -538,8 +521,4 @@ if __name__ == "__main__":
     os.environ["HYDRA_FULL_ERROR"] = "1"  # Produce a complete stack trace
 
     main()
-    print(
-        "\nTotal duration: {}".format(
-            utils.days_hours_mins_secs_str(time.time() - time_start)
-        )
-    )
+    print("\nTotal duration: {}".format(utils.days_hours_mins_secs_str(time.time() - time_start)))

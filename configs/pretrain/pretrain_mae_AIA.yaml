@@ -22,7 +22,7 @@ experiment:
     notes: AIA-pretrain
     output_directory: ./assets/wandb
     log_model: False # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
-    offline: false
+    offline: true
   
   gcp_storage: # this will checkpoint all epoches, perhaps clean up this config
     enabled: False
@@ -49,10 +49,10 @@ data:
     val: [11]
     test: [12]
     holdout: []
-  num_workers: 12    # set appropriately for your machine
-  pin_memory: true
-  prefetch_factor: 2
-  persistent_workers: true
+  num_workers: 1    # set appropriately for your machine
+  pin_memory: false
+  prefetch_factor: 1
+  persistent_workers: false
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
   drop_frame_dim: false
   # output_directory: "wandb_output"
@@ -95,12 +95,12 @@ model:
     decoder_num_heads: 16
     mlp_ratio: 4.0
     norm_layer: LayerNorm
-    masking_ratio: 0.5
+    masking_ratio: 0.0
 
   # for loss
   loss:
     space: patch # pixel, patch
-    type: patch_weight_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
+    type: split_patch_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
     # exclude_limb: true
     norm_pix_loss: false
     # only_masked_patches: true # patch space
@@ -125,7 +125,8 @@ model:
       base_type: mae
       huber_delta: 1.0
       use_4corner_detection: true
-      corner_ratio: 0.25
+      corner_size: 16
+      corner_ratio: 0.9
 
     sparse_dense_loss:
       alpha: 0.8
@@ -133,7 +134,8 @@ model:
       base_type: mae
       huber_delta: 1.0
       use_4corner_detection: true
-      corner_ratio: 0.25
+      corner_size: 16
+      corner_ratio: 0.9
 
   # for optimizer
   optimizer: 
@@ -160,9 +162,9 @@ model:
       gamma: 0.95
     
   misc:
-    limb_mask: true
+    limb_mask: false
     epochs: 300
-    batch_size: 32
+    batch_size: 1
     accumulate_grad_batches: 8 # accumulate grad for 32 steps
     limit_train_batches: null
 

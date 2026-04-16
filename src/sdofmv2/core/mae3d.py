@@ -96,9 +96,7 @@ class PatchEmbed(nn.Module):
         # print("proj dim", x.shape)
         # The output size is (B, L, C), where N=H*W/T/T, C is embid_dim
         if self.flatten:
-            x = (
-                x.flatten(2).transpose(1, 2).contiguous()
-            )  # B,C,T,H,W -> B,C,L=(T*H*W) -> B,L,C
+            x = x.flatten(2).transpose(1, 2).contiguous()  # B,C,T,H,W -> B,C,L=(T*H*W) -> B,L,C
         x = self.norm(x)
         return x
 
@@ -200,11 +198,10 @@ class MaskedAutoencoderViT3D(nn.Module):
 
         # --------------------------------------------------------------------------
         # Limb masking
-        ids_limb_mask = torch.as_tensor(ids_limb_mask, dtype=torch.long)
-        ids_limb_mask, _ = torch.sort(ids_limb_mask)
-        self.register_buffer(
-            "ids_limb_mask", ids_limb_mask
-        )  # indices of pixel inside solar disk
+        if ids_limb_mask is not None:
+            ids_limb_mask = torch.as_tensor(ids_limb_mask, dtype=torch.long)
+            ids_limb_mask, _ = torch.sort(ids_limb_mask)
+        self.register_buffer("ids_limb_mask", ids_limb_mask)  # indices of pixel inside solar disk
 
         # MAE encoder specifics
         self.patch_embed = PatchEmbed(
@@ -276,9 +273,7 @@ class MaskedAutoencoderViT3D(nn.Module):
         decoder_pos_embed = get_3d_sincos_pos_embed(
             self.decoder_pos_embed.shape[-1], self.patch_embed.grid_size, cls_token=True
         )
-        self.decoder_pos_embed.data.copy_(
-            torch.from_numpy(decoder_pos_embed).float().unsqueeze(0)
-        )
+        self.decoder_pos_embed.data.copy_(torch.from_numpy(decoder_pos_embed).float().unsqueeze(0))
 
         # initialize patch_embed like nn.Linear (instead of nn.Conv2d)
         w = self.patch_embed.proj.weight.data
@@ -378,17 +373,13 @@ class MaskedAutoencoderViT3D(nn.Module):
             noise = torch.rand(N, L, device=device)  # noise in [0, 1]
 
             # sort noise for each sample
-            ids_shuffle = torch.argsort(
-                noise, dim=1
-            )  # ascend: small is keep, large is remove
+            ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
             ids_restore = torch.argsort(ids_shuffle, dim=1)
 
             # keep the first subset
             ids_keep = ids_shuffle[:, :len_keep]
 
-            x_masked = torch.gather(
-                x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D)
-            )
+            x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
 
             # generate the binary mask: 0 is keep, 1 is remove
             mask = torch.ones([N, L], device=device, dtype=torch.long)
@@ -424,9 +415,7 @@ class MaskedAutoencoderViT3D(nn.Module):
         x = self.decoder_embed(x)
 
         # append mask tokens to sequence
-        mask_tokens = self.mask_token.repeat(
-            x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1
-        )
+        mask_tokens = self.mask_token.repeat(x.shape[0], ids_restore.shape[1] + 1 - x.shape[1], 1)
         x_ = torch.cat([x[:, 1:, :], mask_tokens], dim=1)  # no cls token
         x_ = torch.gather(
             x_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x.shape[2])
@@ -474,9 +463,7 @@ class MaskedAutoencoderViT3D(nn.Module):
                 )
                 is_off_limb[:, self.ids_limb_mask] = True
             else:
-                is_off_limb = torch.zeros(
-                    (batch_size, num_patches), device=device, dtype=torch.bool
-                )
+                is_off_limb = None
 
             if self.loss_dict.type == "pixel_weight_loss":
                 loss = self.loss_fn(
@@ -510,9 +497,8 @@ class MaskedAutoencoderViT3D(nn.Module):
                     ),
                     imgs=imgs,
                     patch_size=self.patch_size,
-                    corner_ratio=self.loss_dict.split_patch_loss.get(
-                        "corner_ratio", 0.25
-                    ),
+                    corner_size=self.loss_dict.split_patch_loss.get("corner_size", 4),
+                    corner_ratio=self.loss_dict.split_patch_loss.get("corner_ratio", 0.25),
                 )
             elif self.loss_dict.type == "sparse_dense_loss":
                 loss = self.loss_fn(
@@ -521,18 +507,15 @@ class MaskedAutoencoderViT3D(nn.Module):
                     alpha=self.loss_dict.sparse_dense_loss.get("alpha", 1.0),
                     beta=self.loss_dict.sparse_dense_loss.get("beta", 1.0),
                     base_type=self.loss_dict.sparse_dense_loss.get("base_type", "mse"),
-                    huber_delta=self.loss_dict.sparse_dense_loss.get(
-                        "huber_delta", 1.0
-                    ),
+                    huber_delta=self.loss_dict.sparse_dense_loss.get("huber_delta", 1.0),
                     off_limb_mask=is_off_limb,
                     use_4corner_detection=self.loss_dict.sparse_dense_loss.get(
                         "use_4corner_detection", False
                     ),
                     imgs=imgs,
                     patch_size=self.patch_size,
-                    corner_ratio=self.loss_dict.sparse_dense_loss.get(
-                        "corner_ratio", 0.25
-                    ),
+                    corner_size=self.loss_dict.split_patch_loss.get("corner_size", 4),
+                    corner_ratio=self.loss_dict.sparse_dense_loss.get("corner_ratio", 0.25),
                 )
             else:
                 loss = self.loss_fn(
@@ -542,9 +525,7 @@ class MaskedAutoencoderViT3D(nn.Module):
 
         elif self.loss_dict.space == "pixel":
             # pixel-level reconstruction
-            pred_img = unpatchify(
-                pred, self.img_size, self.patch_size, self.tubelet_size
-            )
+            pred_img = unpatchify(pred, self.img_size, self.patch_size, self.tubelet_size)
 
             # Apply limb mask if available
             if self.loss_dict.exclude_limb:
@@ -554,9 +535,7 @@ class MaskedAutoencoderViT3D(nn.Module):
 
             # Compute pixel-level loss
             if self.loss_dict.type == "vector_aware_loss":
-                loss = self.loss_fn(
-                    pred_img, imgs, self.loss_dict.vector_aware_loss.base_loss
-                )
+                loss = self.loss_fn(pred_img, imgs, self.loss_dict.vector_aware_loss.base_loss)
             else:
                 loss = self.loss_fn(pred_img, imgs)
 

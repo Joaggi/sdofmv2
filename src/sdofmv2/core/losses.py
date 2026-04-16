@@ -4,6 +4,19 @@ from einops import rearrange
 from typing import Optional, Literal
 
 
+def _get_group_mean(loss: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    """Compute mean loss for a group defined by a mask, safely handling empty groups.
+
+    Args:
+        loss: Element-wise loss tensor.
+        mask: Boolean mask of same shape as loss (for 2D) or broadcastable.
+
+    Returns:
+        Scalar mean loss for the group, or 0.0 if the group is empty.
+    """
+    return loss[mask].mean() if mask.any() else torch.tensor(0.0, device=loss.device)
+
+
 def mae_loss(pred, target) -> torch.Tensor:
     """Calculates the mean absolute error between predictions and targets.
 
@@ -70,20 +83,20 @@ def pixel_weight_loss(
         _type_: torch.float
     """
 
-    if base_loss == "mse":
-        loss = (pred - target_norm) ** 2
-    elif base_loss == "mae":
-        loss = torch.abs(pred - target_norm)
-    else:
-        raise ValueError(f"Not supported loss type: {base_loss}")
+    loss = _get_base_loss(pred, target_norm, base_loss)
 
-    # Calculate weights. Adding + 0.1 is critical so quiet regions still have some weight.
-    # weights = torch.abs(imgs) + 0.1
-    # weights = (torch.abs(imgs) ** 2) + 0.1
+    # Create masks for high magnetic field (ar) and low/no field (noise) regions
+    is_ar_region = torch.abs(target) > threshold
+    is_noise_region = ~is_ar_region
+
+    mean_ar = _get_group_mean(loss, is_ar_region)
+    mean_noise = _get_group_mean(loss, is_noise_region)
+
+    # Normalize weights
     weight_for_ar = ar_weight_ratio / (ar_weight_ratio + 1)
     weight_for_noise = 1 / (ar_weight_ratio + 1)
-    weights = torch.where(torch.abs(target) > threshold, weight_for_ar, weight_for_noise)
-    return (loss * weights).mean()
+
+    return (weight_for_ar * mean_ar) + (weight_for_noise * mean_noise)
 
 
 def patch_weight_loss(pred, target, loss_dict, mask_hidden, mask_off_limb):
@@ -116,6 +129,7 @@ def patch_weight_loss(pred, target, loss_dict, mask_hidden, mask_off_limb):
         IndexError: If weight_on_patches does not contain exactly three elements.
     """
     base_loss_type = loss_dict.base_loss.get("type", "mse")
+    huber_delta = loss_dict.base_loss.get("delta", 1.0)
 
     # Extract 3-tier weights
     weights_raw = loss_dict.get("weight_on_patches", [0.7, 0.2, 0.1])
@@ -123,15 +137,7 @@ def patch_weight_loss(pred, target, loss_dict, mask_hidden, mask_off_limb):
         raise IndexError("weight_on_patches must have 3 elements for the 3-tier strategy.")
 
     # Base Loss Calculation
-    if base_loss_type == "mse":
-        loss = (pred - target) ** 2
-    elif base_loss_type == "mae":
-        loss = torch.abs(pred - target)
-    elif base_loss_type == "huber":
-        delta = loss_dict.base_loss.get("delta", 1.0)
-        loss = torch.nn.functional.huber_loss(pred, target, reduction="none", delta=delta)
-    else:
-        raise ValueError(f"Not supported loss type: {base_loss_type}")
+    loss = _get_base_loss(pred, target, base_loss_type, huber_delta)
 
     # Define the three tiers using boolean logic
     # Tier 1: Hidden patches inside the solar disk
@@ -144,14 +150,9 @@ def patch_weight_loss(pred, target, loss_dict, mask_hidden, mask_off_limb):
     else:
         raise ValueError("off limb mask is None!")
 
-    # Compute group means safely (avoiding NaN on empty tensors)
-    def get_group_mean(l, m):
-        # Indexing [B, L, D] with [B, L] mask results in [N_pixels, D]
-        return l[m].mean() if m.any() else torch.tensor(0.0, device=l.device)
-
-    mean_masked = get_group_mean(loss, is_masked_inner)
-    mean_visible = get_group_mean(loss, is_visible_inner)
-    mean_space = get_group_mean(loss, is_space)
+    mean_masked = _get_group_mean(loss, is_masked_inner)
+    mean_visible = _get_group_mean(loss, is_visible_inner)
+    mean_space = _get_group_mean(loss, is_space)
 
     # Apply Normalized Weights
     w_sum = sum(weights_raw)
@@ -231,22 +232,14 @@ def split_pixel_loss(
     corner_size: int = 4,
     corner_ratio: float = 0.25,
 ) -> torch.Tensor:
-
     element_loss = _get_base_loss(pred, target, base_type, huber_delta)
     is_zero_pixel = _get_zero_pixel_mask_from_target(
         imgs, patch_size=patch_size, corner_size=corner_size, corner_ratio=corner_ratio
     )
     is_nonzero_pixel = ~is_zero_pixel
 
-    if is_nonzero_pixel.any():
-        loss_nonzero = element_loss[is_nonzero_pixel].mean()
-    else:
-        loss_nonzero = torch.tensor(0.0, device=pred.device)
-
-    if is_zero_pixel.any():
-        loss_zero = element_loss[is_zero_pixel].mean()
-    else:
-        loss_zero = torch.tensor(0.0, device=pred.device)
+    loss_nonzero = _get_group_mean(element_loss, is_nonzero_pixel)
+    loss_zero = _get_group_mean(element_loss, is_zero_pixel)
 
     total_loss = alpha * loss_nonzero + beta * loss_zero
 
@@ -260,31 +253,26 @@ def sparse_dense_loss(
     beta: float = 1.0,
     base_type: Literal["mse", "mae", "huber"] = "mse",
     huber_delta: float = 1.0,
-    off_limb_mask: torch.Tensor | None = None,
-    use_4corner_detection: bool = False,
     imgs: torch.Tensor | None = None,
     patch_size: int = 16,
+    corner_size: int = 4,
     corner_ratio: float = 0.25,
 ) -> torch.Tensor:
-
     element_loss = _get_base_loss(pred, target, base_type, huber_delta)
     is_zero_pixel = _get_zero_pixel_mask_from_target(
-        imgs, patch_size=patch_size, corner_ratio=corner_ratio
+        imgs, patch_size=patch_size, corner_size=corner_size, corner_ratio=corner_ratio
     )
     is_nonzero_pixel = ~is_zero_pixel
 
-    if is_nonzero_pixel.any():
-        recon_loss = element_loss[is_nonzero_pixel].mean()
-    else:
-        recon_loss = torch.tensor(0.0, device=pred.device)
+    recon_loss = _get_group_mean(element_loss, is_nonzero_pixel)
 
-    zero_target = target[is_zero_pixel]
-    if zero_target.numel() > 0:
-        embedding_size = (zero_target**2).sum(dim=-1).mean() / target.shape[-1]
-    else:
-        embedding_size = torch.tensor(0.0, device=pred.device)
+    zero_pred = pred[is_zero_pixel]
+    embedding_size = (
+        (zero_pred**2).sum(dim=-1).mean() / zero_pred.shape[-1]
+        if zero_pred.numel() > 0
+        else torch.tensor(0.0, device=pred.device)
+    )
 
-    # Combined weighted loss
     total_loss = alpha * recon_loss + beta * embedding_size
 
     return total_loss

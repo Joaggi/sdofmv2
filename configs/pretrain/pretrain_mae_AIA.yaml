@@ -1,6 +1,6 @@
 # general
 experiment:
-  name: mae-pretrain-aia-patchweight-huber # generate random name in wandb
+  name: mae-pretrain-aia-split_pixel_loss-huber # generate random name in wandb
   project: sdofm
   model: mae
   backbone:
@@ -22,7 +22,7 @@ experiment:
     notes: AIA-pretrain
     output_directory: ./assets/wandb
     log_model: False # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
-    offline: true
+    offline: false
   
   gcp_storage: # this will checkpoint all epoches, perhaps clean up this config
     enabled: False
@@ -49,10 +49,10 @@ data:
     val: [11]
     test: [12]
     holdout: []
-  num_workers: 1    # set appropriately for your machine
-  pin_memory: false
-  prefetch_factor: 1
-  persistent_workers: false
+  num_workers: 24    # set appropriately for your machine
+  pin_memory: true
+  prefetch_factor: 2
+  persistent_workers: true
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
   drop_frame_dim: false
   # output_directory: "wandb_output"
@@ -122,7 +122,7 @@ model:
     split_patch_loss:
       alpha: 0.8
       beta: 0.2
-      base_type: mae
+      base_type: huber
       huber_delta: 1.0
       use_4corner_detection: true
       corner_size: 16
@@ -131,7 +131,7 @@ model:
     sparse_dense_loss:
       alpha: 0.8
       beta: 0.2
-      base_type: mae
+      base_type: huber
       huber_delta: 1.0
       use_4corner_detection: true
       corner_size: 16
@@ -164,8 +164,8 @@ model:
   misc:
     limb_mask: false
     epochs: 300
-    batch_size: 1
-    accumulate_grad_batches: 8 # accumulate grad for 32 steps
+    batch_size: 16
+    accumulate_grad_batches: 16 # accumulate grad for 32 steps
     limit_train_batches: null
 
 defaults:

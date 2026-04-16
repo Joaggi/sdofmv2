@@ -19,7 +19,7 @@ from .losses import (
     vector_aware_loss,
     pixel_weight_loss,
     patch_weight_loss,
-    split_patch_loss,
+    split_pixel_loss,
     sparse_dense_loss,
 )
 
@@ -180,7 +180,7 @@ class MaskedAutoencoderViT3D(nn.Module):
             "vector_aware_loss": vector_aware_loss,
             "pixel_weight_loss": pixel_weight_loss,
             "patch_weight_loss": patch_weight_loss,
-            "split_patch_loss": split_patch_loss,
+            "split_patch_loss": split_pixel_loss,
             "sparse_dense_loss": sparse_dense_loss,
         }
         loss_type = self.loss_dict.get("type", "mse")
@@ -491,10 +491,6 @@ class MaskedAutoencoderViT3D(nn.Module):
                     beta=self.loss_dict.split_patch_loss.get("beta", 1.0),
                     base_type=self.loss_dict.split_patch_loss.get("base_type", "mse"),
                     huber_delta=self.loss_dict.split_patch_loss.get("huber_delta", 1.0),
-                    off_limb_mask=is_off_limb,
-                    use_4corner_detection=self.loss_dict.split_patch_loss.get(
-                        "use_4corner_detection", False
-                    ),
                     imgs=imgs,
                     patch_size=self.patch_size,
                     corner_size=self.loss_dict.split_patch_loss.get("corner_size", 4),
@@ -508,10 +504,6 @@ class MaskedAutoencoderViT3D(nn.Module):
                     beta=self.loss_dict.sparse_dense_loss.get("beta", 1.0),
                     base_type=self.loss_dict.sparse_dense_loss.get("base_type", "mse"),
                     huber_delta=self.loss_dict.sparse_dense_loss.get("huber_delta", 1.0),
-                    off_limb_mask=is_off_limb,
-                    use_4corner_detection=self.loss_dict.sparse_dense_loss.get(
-                        "use_4corner_detection", False
-                    ),
                     imgs=imgs,
                     patch_size=self.patch_size,
                     corner_size=self.loss_dict.split_patch_loss.get("corner_size", 4),

@@ -5,16 +5,16 @@ experiment:
   model: mae
   backbone:
     model: mae
-    is_backbone: false
-    ckpt_dir: ./assets/check_point/backbone/AIA/
-    weight_name: AIA_MSEloss_epoch=171-val_loss=0.00.ckpt
+    is_backbone: true
+    ckpt_dir: ./assets/checkpoints/backbone/AIA/
+    weight_name: id_igwdm7mx_mae_epoch=3-val_loss=0.28.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
   
   wandb:
     enable: true
-    run_id: null
+    run_id: igwdm7mx
     entity: allshaman
     group: ""
     job_type: pretrain
@@ -23,14 +23,7 @@ experiment:
     output_directory: ./assets/wandb
     log_model: False # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
     offline: false
-  
-  gcp_storage: # this will checkpoint all epoches, perhaps clean up this config
-    enabled: False
-    bucket: sdofm-checkpoints
   fold: null
-  evaluate: false     # skip training and only evaluate (requires checkpoint to be set)
-  checkpoint: null    # this is the wandb run_id of the checkpoint to load
-  save_results: true  # save full results to file and wandb
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
   # lightining pretrainer
   precision: 32 #-true'       # (32, 64) for cuda, ('32-true', '16-true', 'bf16-true') for tpu

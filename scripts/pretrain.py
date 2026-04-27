@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import torch.multiprocessing as mp
 import wandb
+from einops import rearrange
 from loguru import logger as lgr_logger
 from omegaconf import DictConfig, OmegaConf
 
@@ -65,15 +66,10 @@ class Pretrainer(object):
         Returns:
             torch.Tensor: 1D tensor of patch indices outside the solar disk.
         """
-        import torch
-        from einops import rearrange
 
         patch_size = self.cfg.model.mae.patch_size
         num_frames = self.cfg.model.mae.num_frames
         img_size = self.cfg.model.mae.img_size
-
-        h = img_size // patch_size
-        w = img_size // patch_size
 
         mask_3d = limb_mask_2d.unsqueeze(0).unsqueeze(0)
         mask_3d = mask_3d.expand(num_frames, 1, img_size, img_size)
@@ -102,7 +98,7 @@ class Pretrainer(object):
             ModelCheckpoint(
                 dirpath=cfg.experiment.backbone.ckpt_dir,
                 filename=(
-                    f"id_{logger.experiment.id}_{cfg.experiment.model}_" "{epoch}-{val_loss:.2f}"
+                    f"id_{logger.experiment.id}_{cfg.experiment.model}_{{epoch}}-{{val_loss:.2f}}"
                 ),
                 verbose=True,
                 monitor="val_loss",
@@ -184,10 +180,9 @@ class Pretrainer(object):
             val_months=self.cfg.data.month_splits.val,
             test_months=self.cfg.data.month_splits.test,
             holdout_months=self.cfg.data.month_splits.holdout,
-            cache_dir=os.path.join(
-                self.cfg.data.sdoml.save_directory,
-                self.cfg.data.sdoml.sub_directory.cache,
-            ),
+            aligndata_dir=self.cfg.data.sdoml.aligndata_dir,
+            aligndata_files=self.cfg.data.sdoml.get("aligndata_files", {}),
+            hmi_mask=self.cfg.data.sdoml.get("hmi_mask", "hmi_mask_512x512.npy"),
             min_date=self.cfg.data.min_date,
             max_date=self.cfg.data.max_date,
             num_frames=self.cfg.model.mae.num_frames,
@@ -362,10 +357,9 @@ class Pretrainer(object):
             val_months=self.cfg.data.month_splits.val,
             test_months=self.cfg.data.month_splits.test,
             holdout_months=self.cfg.data.month_splits.holdout,
-            cache_dir=os.path.join(
-                self.cfg.data.sdoml.save_directory,
-                self.cfg.data.sdoml.sub_directory.cache,
-            ),
+            aligndata_dir=self.cfg.data.sdoml.aligndata_dir,
+            aligndata_files=self.cfg.data.sdoml.get("aligndata_files", {}),
+            hmi_mask=self.cfg.data.sdoml.get("hmi_mask", "hmi_mask_512x512.npy"),
             min_date=self.cfg.data.min_date,
             max_date=self.cfg.data.max_date,
             num_frames=self.cfg.model.mae.num_frames,

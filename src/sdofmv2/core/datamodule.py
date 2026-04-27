@@ -7,6 +7,7 @@ from pathlib import Path
 from loguru import logger
 
 import torch
+import yaml
 
 import dask.array as da
 from dask.diagnostics import ProgressBar
@@ -212,13 +213,15 @@ class SDOMLDataset(Dataset):
         self.normalization_stat = normalization_stat
 
         # get data from path
-        self.aligndata = self.aligndata.loc[
-            self.aligndata.index.month.isin(self.months), :
-        ]
+        # Apply month filtering only if months is provided and not empty
+        if months is not None and len(months) > 0:
+            self.aligndata = self.aligndata.loc[self.aligndata.index.month.isin(self.months), :]
 
-        self.aligndata = self.aligndata[
-            (self.aligndata.index >= min_date) & (self.aligndata.index <= max_date)
-        ]
+        # Apply date filtering only if min_date or max_date is provided
+        if min_date is not None or max_date is not None:
+            self.aligndata = self.aligndata[
+                (self.aligndata.index >= min_date) & (self.aligndata.index <= max_date)
+            ]
 
         # number of frames to return per sample
         self.num_frames = num_frames
@@ -330,9 +333,7 @@ class SDOMLDataset(Dataset):
 
         # If the loop finishes, we failed 'num_try' times.
         # Raise the last error to stop execution (or return zeros if preferred).
-        logger.error(
-            f"PERMANENT FAILURE: Could not load data after {num_try} attempts."
-        )
+        logger.error(f"PERMANENT FAILURE: Could not load data after {num_try} attempts.")
         raise last_error
 
     def get_aia_image(self, idx):
@@ -365,9 +366,7 @@ class SDOMLDataset(Dataset):
                         aia_header_dict[wavelength].append(
                             {
                                 keys: values[idx_wavelength]
-                                for keys, values in self.aia_data[year][
-                                    wavelength
-                                ].attrs.items()
+                                for keys, values in self.aia_data[year][wavelength].attrs.items()
                             }
                         )
                     except:
@@ -415,9 +414,7 @@ class SDOMLDataset(Dataset):
                     hmi_header_dict[component].append(
                         {
                             keys: values[idx_component]
-                            for keys, values in self.hmi_data[year][
-                                component
-                            ].attrs.items()
+                            for keys, values in self.hmi_data[year][component].attrs.items()
                         }
                     )
 
@@ -445,9 +442,7 @@ class SDOMLDataset(Dataset):
                 idx_eve = self.aligndata.iloc[idx + frame]["idx_eve"]
                 eve_ion_dict[ion].append(self.eve_data[ion][idx_eve])
                 if self.normalization.enabled:
-                    eve_ion_dict[ion][-1] = self._data_norm(
-                        eve_ion_dict[ion][-1], "EVE", ion
-                    )
+                    eve_ion_dict[ion][-1] = self._data_norm(eve_ion_dict[ion][-1], "EVE", ion)
 
         eve_data = np.array(list(eve_ion_dict.values()), dtype=np.float32)
 
@@ -497,10 +492,11 @@ class SDOMLDataModule(pl.LightningDataModule):
         predict_months (list[int], optional): List of months used specifically
             for the Lightning prediction stage. Defaults to [].
         normalization (dict): specific normalization strategy to use. Defaults to False.
-        cache_dir (str, optional): Path to the directory for caching aligned data
-            indices and normalization statistics. Defaults to "".
-        norm_stat_tag (str, optional): Tag/suffix used to identify the specific
-            pre-computed normalization statistics file in the cache. Defaults to "".
+        aligndata_dir (str, optional): Path to the directory containing preprocessed
+            aligndata (CSV) and statistics (YAML). Defaults to "".
+        aligndata_files (dict, optional): Dictionary mapping split names to CSV filenames.
+            Defaults to {"train": "aligndata_train.csv", "val": "aligndata_val.csv", "test": "aligndata_test.csv"}.
+        hmi_mask (str, optional): Filename for the HMI mask. Defaults to "hmi_mask_512x512.npy".
         apply_mask (bool, optional): Whether to apply the solar limb mask to the
             spatial data. Defaults to True.
         num_frames (int, optional): The number of consecutive temporal frames
@@ -532,8 +528,9 @@ class SDOMLDataModule(pl.LightningDataModule):
         holdout_months=[],
         predict_months=[],
         normalization={},
-        cache_dir="",
-        norm_stat_tag="",
+        aligndata_dir="",
+        aligndata_files={"train": "aligndata_train.csv", "val": "aligndata_val.csv", "test": "aligndata_test.csv"},
+        hmi_mask="hmi_mask_512x512.npy",
         apply_mask=True,
         num_frames=1,
         patch_size=16,
@@ -544,9 +541,7 @@ class SDOMLDataModule(pl.LightningDataModule):
         precision="32",
     ):
         super().__init__()
-        self.num_workers = (
-            num_workers if num_workers is not None else os.cpu_count() // 2
-        )
+        self.num_workers = num_workers if num_workers is not None else os.cpu_count() // 2
         self.pin_memory = pin_memory
         self.persistent_workers = persistent_workers
         self.hmi_path = hmi_path
@@ -558,8 +553,6 @@ class SDOMLDataModule(pl.LightningDataModule):
         self.test_months = test_months
         self.holdout_months = holdout_months
         self.predict_months = predict_months
-        self.cache_dir = cache_dir
-        self.norm_stat_tag = norm_stat_tag
         self.apply_mask = apply_mask
         self.num_frames = num_frames
         self.patch_size = patch_size
@@ -607,69 +600,18 @@ class SDOMLDataModule(pl.LightningDataModule):
             if i not in self.test_months + self.val_months + self.holdout_months
         ]
 
-        # Cache filenames
-        ids = []
-
-        if self.isHMI:
-            if len(self.components) == 3:
-                component_id = "HMI_FULL"
-            elif len(self.components) > 0 and len(self.components) < 3:
-                component_id = "_".join(self.components)
-            ids.append(component_id)
-
-        if self.isAIA:
-            if len(self.wavelengths) == 9:
-                wavelength_id = "AIA_FULL"
-            elif len(self.wavelengths) > 0 and len(self.wavelengths) < 9:
-                wavelength_id = "_".join(self.wavelengths)
-            ids.append(wavelength_id)
-
-        if self.isEVE:
-            if len(self.ions) == 38:  # excluding Fe XVI_2
-                ions_id = "EVE_FULL"
-            else:
-                ions_id = "_".join(self.ions).replace(" ", "_")
-            ids.append(ions_id)
-
-        if (self.min_date is None) and (self.max_date is None):
-            if not self.isEVE:
-                years = set()
-                if self.aia_data:
-                    years.update(self.aia_data.keys())
-                if self.hmi_data:
-                    years.update(self.hmi_data.keys())
-                self.training_years = sorted([int(year) for year in years])
-            else:  # EVE included, limit to 2010-2014
-                self.training_years = sorted(
-                    [int(year) for year in self.hmi_data.keys() if int(year) < 2015]
-                )
-            self.cache_id = f"{'_'.join(sorted(ids))}_{self.cadence}_fulldata"
-        else:
-            min_year = self.min_date.year
-            max_year = self.max_date.year
-            self.training_years = list(range(min_year, max_year + 1))
-            self.cache_id = f"{'_'.join(sorted(ids))}_{self.cadence}_{str(self.min_date).replace(' ', '')}-{str(self.max_date).replace(' ', '')}"
-
-        if self.aia_path is not None:
-            if "small" in self.aia_path:
-                self.cache_id += "_small"
-
-        self.index_cache_filename = f"{cache_dir}/aligndata_{self.cache_id}.csv"
-        self.hmi_mask_cache_filename = f"{cache_dir}/hmi_mask_512x512.npy"
-
-        self.aligndata = (
-            self.__aligntime()
-        )  # Temporal alignment of hmi, aia and eve data
-        # define min-max date after creating align data
-        align_min_date = self.aligndata.index.min()
-        align_max_date = self.aligndata.index.max()
-        self.min_date = max(self.min_date or align_min_date, align_min_date)
-        self.max_date = min(self.max_date or align_max_date, align_max_date)
-        self.hmi_mask = self.__make_hmi_mask()
+        # Preprocessed data paths
+        self.aligndata_dir = aligndata_dir
+        self.aligndata_files = aligndata_files
+        self.hmi_mask_filename = hmi_mask
         self.normalization = normalization
-        self.normalization_stat = (
-            self.__calc_normalizations() if normalization.enabled is True else None
-        )
+        self.normalization_stat = None  # Loaded in setup()
+        self.hmi_mask = None  # Loaded in setup()
+
+        # Initialize aligndata placeholders
+        self.aligndata_train = None
+        self.aligndata_val = None
+        self.aligndata_test = None
 
     def __str__(self):
         output = ""
@@ -677,448 +619,46 @@ class SDOMLDataModule(pl.LightningDataModule):
             output += f"{k}: {v}\n"
         return output
 
-    def __aligntime(self):
-        """
-        This function extracts the common indexes across aia and eve datasets, considering potential missing values.
-        """
-
-        # Check the cache
-        if Path(self.index_cache_filename).exists():
-            print(
-                f"[* CACHE SYSTEM *] Found cached index data in {self.index_cache_filename}."
-            )
-            aligndata = pd.read_csv(self.index_cache_filename)
-            aligndata["Time"] = pd.to_datetime(aligndata["Time"])
-            aligndata.set_index("Time", inplace=True)
-            return aligndata
-        print(f"No alignment cache found at {self.index_cache_filename}")
-        print("\nData alignment calculation begin:")
-        print("-" * 50)
-
-        join_series = None
-
-        # AIA
-        if self.isAIA:
-            print("Aligning AIA data")
-
-            for i, wavelength in enumerate(self.wavelengths):
-                print(f"Aligning AIA data for wavelength: {wavelength}")
-                for j, year in enumerate(tqdm((self.training_years))):
-                    aia_channel = self.aia_data[str(year)][wavelength]
-
-                    # get observation time
-                    t_obs_aia_channel = np.array(aia_channel.attrs["T_OBS"])
-                    if aia_channel.shape[0] != len(t_obs_aia_channel):
-                        logger.warning(f"The length of zarr does not match with T_OBS!")
-                        logger.warning(f"year: {year}, wavelength: {wavelength}")
-
-                    # check indices of images without nan
-                    images = da.from_array(aia_channel, chunks=(512, 512, 512))
-
-                    # Compute mask of valid images
-                    valid_mask = ~da.isnan(images).any(axis=(1, 2))
-
-                    # Get indices (requires computation)
-                    logger.info(f"Checking Nans in images, {year} & {wavelength}")
-                    with ProgressBar():
-                        valid_indices = da.nonzero(valid_mask)[0].compute()
-                    total_nan = len(valid_indices)
-                    logger.info(
-                        f"Total {images.shape[0] - total_nan} {(images.shape[0] - total_nan) * 100 / images.shape[0]:.0f}% images have Nan."
-                    )
-
-                    if j == 0:
-                        # transform to DataFrame
-                        # AIA
-                        df_t_aia = pd.DataFrame(
-                            {
-                                "Time": pd.to_datetime(
-                                    t_obs_aia_channel[valid_indices], format="mixed"
-                                ),
-                                f"idx_{wavelength}": np.arange(
-                                    0, len(t_obs_aia_channel)
-                                )[valid_indices],
-                            }
-                        )
-                        if df_t_aia[f"idx_{wavelength}"].max() >= len(
-                            t_obs_aia_channel
-                        ):
-                            logger.warning(
-                                "Max index is greater than number of instances in zarr file"
-                            )
-
-                    else:
-                        df_tmp_aia = pd.DataFrame(
-                            {
-                                "Time": pd.to_datetime(
-                                    t_obs_aia_channel[valid_indices],
-                                    format="mixed",
-                                    utc=True,
-                                ),
-                                f"idx_{wavelength}": np.arange(
-                                    0, len(t_obs_aia_channel)
-                                )[valid_indices],
-                            }
-                        )
-                        if df_tmp_aia[f"idx_{wavelength}"].max() >= len(
-                            t_obs_aia_channel
-                        ):
-                            logger.warning(
-                                "Max index is greater than number of instances in zarr file"
-                            )
-                        df_t_aia = pd.concat([df_t_aia, df_tmp_aia], ignore_index=True)
-
-                # Enforcing same datetime format
-                transform_datetime = lambda x: pd.to_datetime(
-                    x, format="mixed"
-                ).strftime("%Y-%m-%d %H:%M:%S")
-                df_t_aia["Time"] = df_t_aia["Time"].apply(transform_datetime)
-                df_t_aia["Time"] = pd.to_datetime(df_t_aia["Time"]).dt.tz_localize(
-                    None
-                )  # this is needed for timezone-naive type
-
-                df_t_aia["Time"] = df_t_aia["Time"].dt.round("1min")
-                cadence_min = int(pd.to_timedelta(self.cadence).total_seconds() // 60)
-                df_t_aia = df_t_aia.loc[df_t_aia["Time"].dt.minute % cadence_min == 0]
-                df_t_obs_aia = df_t_aia.drop_duplicates(
-                    subset="Time", keep="first"
-                )  # removing potential duplicates derived by rounding
-                df_t_obs_aia.set_index("Time", inplace=True)
-
-                # if i == 0:
-                if join_series is None:
-                    join_series = df_t_obs_aia
-                else:
-                    join_series = join_series.join(df_t_obs_aia, how="inner")
-
-                # after all years for this wavelength are processed
-                idx_col = f"idx_{wavelength}"
-
-                for year in self.training_years:
-                    if (
-                        (join_series.loc[join_series.index.year == year, idx_col]).max()
-                        >= self.aia_data[str(year)][wavelength].shape[0]
-                    ):
-                        logger.warning(
-                            f"Max id is greater than number instances in zarr file"
-                        )
-                        logger.warning(f"year: {year}, channel: {wavelength}")
-
-            logger.info(f"AIA alignment completed with {join_series.shape[0]} samples.")
-
-        # ----------------------------------------------------------------------------------------------------------------------------------
-
-        # HMI
-        if self.isHMI:
-            print("Aligning HMI data")
-            for i, component in enumerate(self.components):
-                print(f"Aligning HMI data for component: {component}")
-                for j, year in enumerate(
-                    tqdm((self.training_years))
-                ):  # EVE data only goes up to 2014
-                    hmi_channel = self.hmi_data[year][component]
-
-                    # get observation time
-                    t_obs_hmi_channel_pre = hmi_channel.attrs["T_OBS"]
-
-                    for idx, time_val in enumerate(t_obs_hmi_channel_pre):
-                        t_obs_hmi_channel_pre[idx] = time_val[:19]
-
-                    # substitute characters
-                    replacements = {".": "-", "_": "T", "TTAI": "", "60": "59"}
-                    t_obs_hmi_channel = []
-                    for word in t_obs_hmi_channel_pre:
-                        for old_char, new_char in replacements.items():
-                            word = word.replace(old_char, new_char)
-                        t_obs_hmi_channel.append(word)
-                    t_obs_hmi_channel = np.array(t_obs_hmi_channel)
-
-                    # check indices of images without nan
-                    images = da.from_array(hmi_channel, chunks=(512, 512, 512))
-
-                    # Compute mask of valid images
-                    valid_mask = ~da.isnan(images).any(axis=(1, 2))
-
-                    # Get indices (requires computation)
-                    logger.info(f"Checking Nans in images, {year} & {component}")
-                    with ProgressBar():
-                        valid_indices = da.nonzero(valid_mask)[0].compute()
-                    total_nan = len(valid_indices)
-                    logger.info(
-                        f"Total {images.shape[0] - total_nan} {(images.shape[0] - total_nan) * 100 / images.shape[0]:.0f}% images have Nan."
-                    )
-
-                    if j == 0:
-                        # transform to DataFrame
-                        # HMI
-                        df_t_hmi = pd.DataFrame(
-                            {
-                                "Time": pd.to_datetime(
-                                    t_obs_hmi_channel[valid_indices],
-                                    format="mixed",
-                                    utc=True,
-                                ),
-                                f"idx_{component}": np.arange(
-                                    0, len(t_obs_hmi_channel)
-                                )[valid_indices],
-                            }
-                        )
-
-                    else:
-                        df_tmp_hmi = pd.DataFrame(
-                            {
-                                "Time": pd.to_datetime(
-                                    t_obs_hmi_channel[valid_indices],
-                                    format="mixed",
-                                    utc=True,
-                                ),
-                                f"idx_{component}": np.arange(
-                                    0, len(t_obs_hmi_channel)
-                                )[valid_indices],
-                            }
-                        )
-                        df_t_hmi = pd.concat([df_t_hmi, df_tmp_hmi], ignore_index=True)
-
-                # Enforcing same datetime format
-                transform_datetime = lambda x: pd.to_datetime(
-                    x, format="mixed"
-                ).strftime("%Y-%m-%d %H:%M:%S")
-                df_t_hmi["Time"] = df_t_hmi["Time"].apply(transform_datetime)
-                df_t_hmi["Time"] = pd.to_datetime(df_t_hmi["Time"]).dt.tz_localize(
-                    None
-                )  # this is needed for timezone-naive type
-                df_t_hmi["Time"] = df_t_hmi["Time"].dt.round(self.cadence)
-                df_t_obs_hmi = df_t_hmi.drop_duplicates(
-                    subset="Time", keep="first"
-                )  # removing potential duplicates derived by rounding
-                df_t_obs_hmi.set_index("Time", inplace=True)
-
-                if join_series is None:
-                    join_series = df_t_obs_hmi
-                else:
-                    join_series = join_series.join(df_t_obs_hmi, how="inner")
-
-        print(f"HMI alignment completed with {join_series.shape[0]} samples.")
-
-        # ---------------------------------------------------------------------------------------------------------------------------------------
-        # EVE
-        if self.isEVE:
-            print("Aligning EVE data")
-            df_t_eve = pd.DataFrame(
-                {
-                    "Time": pd.to_datetime(self.eve_data["Time"]),
-                    "idx_eve": np.arange(0, len(self.eve_data["Time"])),
-                }
-            )
-            df_t_eve["Time"] = pd.to_datetime(df_t_eve["Time"]).dt.round(self.cadence)
-            df_t_obs_eve = df_t_eve.drop_duplicates(
-                subset="Time", keep="first"
-            ).set_index("Time")
-
-            if join_series is None:
-                join_series = df_t_obs_eve
-            else:
-                join_series = join_series.join(df_t_obs_eve, how="inner")
-
-            # remove missing eve data (missing values are labeled with negative values)
-            # this will remove all but 16 values if the partial year 2014 is included
-            for ion in self.ions:
-                if ion == "Fe XVI_2":
-                    continue
-                ion_data = self.eve_data[ion]
-                join_series = join_series.loc[ion_data[join_series["idx_eve"]] > 0]
-
-        if join_series is None:
-            raise ValueError("No data found for alignment.")
-
-        join_series.sort_index(inplace=True)
-
-        print("")
-        print("#" * 50)
-        print(f"[*] Total Alignment Completed with {join_series.shape[0]} Samples.")
-        print(f"[*] Saving alignment data to {self.index_cache_filename}.")
-        print("#" * 50)
-        print("")
-        # creating csv dataset
-        join_series.to_csv(self.index_cache_filename)
-
-        return join_series
-
-    def __calc_normalizations(self):
-        normalizations = {}
-        normalizations_align = self.aligndata.copy()
-
-        if self.isEVE:
-            normalizations["EVE"] = self._compute_data_statistic(
-                normalizations_align, self.eve_data, "EVE", self.ions
-            )
-
-        if self.isAIA:
-            normalizations["AIA"] = self._compute_data_statistic(
-                normalizations_align, self.aia_data, "AIA", self.wavelengths
-            )
-
-        if self.isHMI:
-            normalizations["HMI"] = self._compute_data_statistic(
-                normalizations_align, self.hmi_data, "HMI", self.components
-            )
-
-        return normalizations
-
-    def compute_stat(self, key, data):
-        """Compute a statistic based on key and log if it's zero."""
-
-        OPS = {
-            "sum": lambda x: da.nansum(x),
-            "max": lambda x: da.nanmax(x),
-            "min": lambda x: da.nanmin(x),
-            "std": lambda x: da.nanstd(x),
-            "mean": lambda x: da.nanmean(x),
-            "median": lambda x: da.percentile(x[~da.isnan(x)], 50),
-            "q1": lambda x: da.percentile(x[~da.isnan(x)], 25),
-            "q3": lambda x: da.percentile(
-                x[~da.isnan(x)],
-                75,
-            ),
-        }
-
-        if key in OPS:
-            with ProgressBar():
-                return float(OPS[key](data).compute())
-        elif key == "image_count":
-            return data.shape[0]
-        elif key == "pixel_count":
-            return data.size
-        else:
-            raise ValueError(f"Invalid key type: {key}")
-
-    def check_existing_stat_info(self, target_file_name):
-        if os.path.exists(target_file_name):
-            logger.info(f"Cache is found: {target_file_name}")
-            with open(target_file_name, "r") as json_file:
-                stat = json.load(json_file)
-                return stat
-        else:
-            return {}
-
-    def _compute_data_statistic(
-        self, normalizations_align, sdoml_data, instrument, channels
-    ) -> dict[str, dict[str, float]]:
-        normalizations_stat: dict[str, dict[str, float]] = {}
-        for ch in channels:
-            file_name = (
-                self.cache_dir
-                + f"/{instrument}/"
-                + ch
-                + "_"
-                + "_".join(self.cache_id.split("_")[-1:])
-                + f"_norm-{self.normalization.type}"
-                + ".json"
-            )
-
-            # check components
-            check_list = [
-                "sum",
-                "max",
-                "min",
-                "mean",
-                "std",
-                "median",
-                "q1",
-                "q3",
-                "image_count",
-                "pixel_count",
-            ]
-
-            normalizations_stat[ch] = self.check_existing_stat_info(file_name)
-            check_list = [
-                k for k in check_list if k not in normalizations_stat[ch].keys()
-            ]
-
-            # if all the statistics exist, pass.
-            if len(check_list) == 0:
-                continue
-
-            ch_arr = []
-            for year in self.training_years:
-                ch_data_year = da.from_array(sdoml_data[str(year)][ch])
-                ch_idices = normalizations_align.loc[
-                    normalizations_align.index.year == year, f"idx_{ch}"
-                ]
-                ch_data_year = ch_data_year[ch_idices]
-
-                # put nan to limb
-                mask_expanded = self.hmi_mask.cpu().numpy()[None, :, :].astype(bool)
-                ch_data_year = da.where(
-                    mask_expanded == 1, ch_data_year, np.nan
-                )  # outter area to nan
-
-                ch_arr.append(ch_data_year.flatten())
-            ch_data = da.concatenate(ch_arr)
-
-            if self.normalization.type == "log":
-                ch_data = (
-                    ch_data * self.normalization.scaler_factor
-                    if self.normalization.scaler_factor is not None
-                    else ch_data
-                )
-                ch_data = da.sign(ch_data) * da.log1p(da.abs(ch_data))
-
-            elif (
-                self.normalization.type == "zscore"
-                and self.normalization.clipping.enabled
-            ):
-                low, high = self.normalization.clipping[ch]
-                if self.normalization.clipping.enabled:
-                    ch_data = da.clip(ch_data, low, high)
-
-            print(f"\nCalculating normalizations for wavelength {ch}:")
-            print("-" * 50)
-
-            for stat_measure in check_list:
-                logger.info(f"Computing {stat_measure} of {ch}")
-                stat_value = self.compute_stat(stat_measure, ch_data)
-                if stat_value == 0:
-                    logger.warning(
-                        f"Value of {stat_measure} is Zero!, wavelength: {ch}"
-                    )
-                normalizations_stat[ch][stat_measure] = stat_value
-
-            # save statistics of each wavelength
-            with open(file_name, "w") as json_file:
-                json.dump(normalizations_stat[ch], json_file)
-
-        return normalizations_stat
-
-    def __make_hmi_mask(self):
-        if Path(self.hmi_mask_cache_filename).exists():
-            loaded_mask = np.load(self.hmi_mask_cache_filename)
-            hmi_mask = torch.Tensor(loaded_mask).to(dtype=torch.uint8)
-            print(
-                f"[* CACHE SYSTEM *] Found cached HMI mask data in {self.hmi_mask_cache_filename}."
-            )
-            return hmi_mask
-        elif not self.isHMI:
-            raise ValueError(
-                "Mask could not be found in cache and 2010 HMI data is not available to generate it, stopping..."
-            )
-
-        hmi = torch.Tensor(self.hmi_data[str(2010)][ALL_COMPONENTS[0]][0])
-        hmi_mask = (torch.abs(hmi) > 0.0).to(dtype=torch.uint8)
-        hmi_mask_ratio = hmi_mask.sum().item() / hmi_mask.numel()
-        if np.abs(hmi_mask_ratio - 0.496) > 0.2:
-            print(
-                f"WARNING: HMI mask ratio is {hmi_mask_ratio:.2f}, which is significantly different from expected (0.496)"
-            )
-        print(
-            f"[*] Saving HMI mask with ratio {hmi_mask_ratio:.2f} to {self.hmi_mask_cache_filename}."
-        )
-        np.save(self.hmi_mask_cache_filename, hmi_mask.numpy())
-        return hmi_mask
-
     def setup(self, stage=None):
+        if not self.aligndata_dir:
+            raise ValueError("aligndata_dir must be provided to load preprocessed data.")
+
+        # Load aligndata using filenames from config
+        self.aligndata_train = self._load_aligndata(self.aligndata_files.get("train", "aligndata_train.csv"))
+        self.aligndata_val = self._load_aligndata(self.aligndata_files.get("val", "aligndata_val.csv"))
+        self.aligndata_test = self._load_aligndata(self.aligndata_files.get("test", "aligndata_test.csv"))
+
+        # Load mask
+        if self.apply_mask:
+            mask_path = os.path.join(self.aligndata_dir, self.hmi_mask_filename)
+            if os.path.exists(mask_path):
+                self.hmi_mask = torch.Tensor(np.load(mask_path))
+            else:
+                logger.warning(f"HMI mask not found at {mask_path}, applying no mask.")
+                self.hmi_mask = None
+        else:
+            self.hmi_mask = None
+
+        # Load normalization stats
+        if self.normalization.enabled:
+            stats_path = os.path.join(self.aligndata_dir, "stats.yaml")
+            if os.path.exists(stats_path):
+                with open(stats_path, "r") as f:
+                    self.normalization_stat = yaml.safe_load(f)
+            else:
+                logger.warning(
+                    f"Stats not found at {stats_path}, normalization will not be applied."
+                )
+                self.normalization_stat = None
+
+        # Define mask for dataset (numpy array or None)
+        mask_np = self.hmi_mask.numpy() if self.hmi_mask is not None else None
+
+        # Note: Dataset now expects a single aligndata and no months filtering (pre-split)
+        # We pass the specific split aligndata and None for months to disable filtering
+
         self.train_ds = SDOMLDataset(
-            self.aligndata,
+            self.aligndata_train,
             self.hmi_data,
             self.aia_data,
             self.eve_data,
@@ -1126,14 +666,14 @@ class SDOMLDataModule(pl.LightningDataModule):
             self.wavelengths,
             self.ions,
             self.cadence,
-            self.train_months,
+            None,  # months: pre-split, no filtering
             normalization=self.normalization,
             normalization_stat=self.normalization_stat,
-            mask=self.hmi_mask.numpy() if self.apply_mask else None,
+            mask=mask_np,
             num_frames=self.num_frames,
             drop_frame_dim=self.drop_frame_dim,
-            min_date=self.min_date,
-            max_date=self.max_date,
+            min_date=None,  # dates are already filtered in CSV
+            max_date=None,
             precision=self.precision,
         )
         if stage == "fit" or stage is None:
@@ -1141,7 +681,7 @@ class SDOMLDataModule(pl.LightningDataModule):
             logger.info(f"Dataset size: {len(self.train_ds)}")
 
         self.valid_ds = SDOMLDataset(
-            self.aligndata,
+            self.aligndata_val,
             self.hmi_data,
             self.aia_data,
             self.eve_data,
@@ -1149,14 +689,14 @@ class SDOMLDataModule(pl.LightningDataModule):
             self.wavelengths,
             self.ions,
             self.cadence,
-            self.val_months,
+            None,
             normalization=self.normalization,
             normalization_stat=self.normalization_stat,
-            mask=self.hmi_mask.numpy() if self.apply_mask else None,
+            mask=mask_np,
             num_frames=self.num_frames,
             drop_frame_dim=self.drop_frame_dim,
-            min_date=self.min_date,
-            max_date=self.max_date,
+            min_date=None,
+            max_date=None,
             precision=self.precision,
         )
         if stage == "fit" or stage is None:
@@ -1164,7 +704,7 @@ class SDOMLDataModule(pl.LightningDataModule):
             logger.info(f"Dataset size: {len(self.valid_ds)}")
 
         self.test_ds = SDOMLDataset(
-            self.aligndata,
+            self.aligndata_test,
             self.hmi_data,
             self.aia_data,
             self.eve_data,
@@ -1172,42 +712,60 @@ class SDOMLDataModule(pl.LightningDataModule):
             self.wavelengths,
             self.ions,
             self.cadence,
-            self.test_months,
+            None,
             normalization=self.normalization,
             normalization_stat=self.normalization_stat,
-            mask=self.hmi_mask.numpy() if self.apply_mask else None,
+            mask=mask_np,
             num_frames=self.num_frames,
             drop_frame_dim=self.drop_frame_dim,
-            min_date=self.min_date,
-            max_date=self.max_date,
+            min_date=None,
+            max_date=None,
             precision=self.precision,
         )
         if stage == "fit" or stage is None:
             logger.info("test dataloader is ready!")
             logger.info(f"Dataset size: {len(self.test_ds)}")
 
-        self.predict_ds = SDOMLDataset(
-            self.aligndata,
-            self.hmi_data,
-            self.aia_data,
-            self.eve_data,
-            self.components,
-            self.wavelengths,
-            self.ions,
-            self.cadence,
-            self.predict_months,
-            normalization=self.normalization,
-            normalization_stat=self.normalization_stat,
-            mask=self.hmi_mask.numpy() if self.apply_mask else None,
-            num_frames=self.num_frames,
-            drop_frame_dim=self.drop_frame_dim,
-            min_date=self.min_date,
-            max_date=self.max_date,
-            precision=self.precision,
-        )
+        # Handle predict dataset if needed
+        # This is optional and depends on the presence of predict months in aligndata_files
         if stage == "predict":
-            logger.info("test dataloader is ready!")
-            logger.info(f"Dataset size: {len(self.predict_ds)}")
+            predict_filename = self.aligndata_files.get("predict", "aligndata_predict.csv")
+            predict_aligndata_path = os.path.join(self.aligndata_dir, predict_filename)
+            if os.path.exists(predict_aligndata_path):
+                aligndata_predict = self._load_aligndata(predict_filename)
+                self.predict_ds = SDOMLDataset(
+                    aligndata_predict,
+                    self.hmi_data,
+                    self.aia_data,
+                    self.eve_data,
+                    self.components,
+                    self.wavelengths,
+                    self.ions,
+                    self.cadence,
+                    None,
+                    normalization=self.normalization,
+                    normalization_stat=self.normalization_stat,
+                    mask=mask_np,
+                    num_frames=self.num_frames,
+                    drop_frame_dim=self.drop_frame_dim,
+                    min_date=None,
+                    max_date=None,
+                    precision=self.precision,
+                )
+                logger.info("Predict dataloader is ready!")
+                logger.info(f"Dataset size: {len(self.predict_ds)}")
+            else:
+                logger.warning("Predict dataset requested but aligndata_predict.csv not found.")
+
+    def _load_aligndata(self, filename):
+        filepath = os.path.join(self.aligndata_dir, filename)
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Aligndata file not found: {filepath}")
+
+        df = pd.read_csv(filepath)
+        df["Time"] = pd.to_datetime(df["Time"])
+        df.set_index("Time", inplace=True)
+        return df
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(

@@ -8,6 +8,7 @@ from pathlib import Path
 import hydra
 import numpy as np
 import torch
+import torch.multiprocessing as mp
 import wandb
 from loguru import logger as lgr_logger
 from omegaconf import DictConfig, OmegaConf
@@ -516,6 +517,12 @@ def main(cfg: DictConfig) -> None:
 
 if __name__ == "__main__":
     time_start = time.time()
+
+    # set the start method to 'spawn' for safe worker process
+    try:
+        mp.set_start_method("spawn", force=True)
+    except RuntimeError:
+        pass  # Can only be set once
 
     # errors
     os.environ["HYDRA_FULL_ERROR"] = "1"  # Produce a complete stack trace

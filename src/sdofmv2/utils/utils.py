@@ -284,11 +284,6 @@ class AttributeDict(dict):
     __setattr__ = dict.__setitem__
 
 
-aiamap = sunpy.map.Map(
-    sunpy.data.sample.AIA_171_IMAGE
-)  # example image is loaded at 1024x1024
-
-
 def stonyhurst_to_patch_index(lat, lon, patch_size, img_w=512, img_h=512):
     """Convert Heliographic Stonyhurst coordinates to patch indices.
 
@@ -310,6 +305,7 @@ def stonyhurst_to_patch_index(lat, lon, patch_size, img_w=512, img_h=512):
             precision loss in coordinate conversion.
     """
     # Heliographic Stonyhurst coordinates to patch index
+    aiamap = sunpy.map.Map(sunpy.data.sample.AIA_171_IMAGE)  # example image is loaded at 1024x1024
     coord = SkyCoord(lat * u.deg, lon * u.deg, frame=HeliographicStonyhurst)
     x, y = aiamap.wcs.world_to_pixel(coord)  # (x, y) in pixels
     scale_x = 1024 / img_w
@@ -339,9 +335,7 @@ def patchify(imgs, patch_size, tubelet_size):
     """
     p = patch_size
     tub = tubelet_size
-    x = rearrange(
-        imgs, "b c (t tub) (h p) (w q) -> b (t h w) (tub p q c)", tub=tub, p=p, q=p
-    )
+    x = rearrange(imgs, "b c (t tub) (h p) (w q) -> b (t h w) (tub p q c)", tub=tub, p=p, q=p)
 
     return x
 

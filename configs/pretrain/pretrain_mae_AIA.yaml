@@ -7,7 +7,7 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/AIA/
-    weight_name: id_igwdm7mx_mae_epoch=3-val_loss=0.28.ckpt
+    weight_name: id_igwdm7mx_mae_epoch=76-val_loss=0.01.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false

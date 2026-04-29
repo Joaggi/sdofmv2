@@ -38,6 +38,11 @@ data:
   # data split information
   min_date: 2010-05-01 00:00:00  # NOT IMPLEMENTED # minimum is '2010-09-09 00:00:11.08'
   max_date: 2018-12-31 23:59:59  # NOT IMPLEMENTED # maximum is '2023-05-26 06:36:08.072' '2025-07-22 23:59:59.99'
+  year_splits:
+    train: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
+    val: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
+    test: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
+
   month_splits: # non selected months will form training set 
     train: [1,2,3,4,5,6,7,8,9,10] #,2,3,4,5,6,7,8,9,10]
     val: [11]

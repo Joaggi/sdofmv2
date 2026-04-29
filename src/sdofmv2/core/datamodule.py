@@ -1,7 +1,7 @@
 # Adapted to be general from https://github.com/FrontierDevelopmentLab/2023-FDL-X-ARD-EVE/blob/main/src/irradiance/utilities/data_loader.py
-
-import json
 import os
+from pathlib import Path
+import re
 import time
 from pathlib import Path
 from loguru import logger
@@ -34,33 +34,30 @@ def get_dtype_from_precision(precision):
         return torch.float32
 
 
-def zscore_norm(data, instument, channel, normalization_stat, clip_value):
+def zscore_norm(data, channel, normalization_stat, clip_value):
     if clip_value is not None:
         low, high = clip_value
         data = np.clip(data, low, high)
-    data -= normalization_stat[instument][channel]["mean"]
-    data /= normalization_stat[instument][channel]["std"]
+    data -= normalization_stat[channel]["mean"]
+    data /= normalization_stat[channel]["std"]
     return data
 
 
-def min_max_norm(data, instument, channel, normalization_stat):
-    data -= normalization_stat[instument][channel]["min"]
-    data /= (
-        normalization_stat[instument][channel]["max"]
-        - normalization_stat[instument][channel]["min"]
-    )
+def min_max_norm(data, channel, normalization_stat):
+    data -= normalization_stat[channel]["min"]
+    data /= normalization_stat[channel]["max"] - normalization_stat[channel]["min"]
     return data
 
 
-def log_norm(data, normalization_stat, instrument, channel, scaler_factor):
+def log_norm(data, normalization_stat, channel, scaler_factor):
     x = data * scaler_factor if scaler_factor is not None else data
 
     # Log transform
     x_log = np.sign(x) * np.log1p(np.abs(x))
 
     # zscore norm
-    x_transformed = (x_log - normalization_stat[instrument][channel]["mean"]) / (
-        normalization_stat[instrument][channel]["std"] + 1e-8
+    x_transformed = (x_log - normalization_stat[channel]["mean"]) / (
+        normalization_stat[channel]["std"] + 1e-8
     )
 
     return x_transformed
@@ -79,13 +76,12 @@ def inverse_zscore_norm(data, instrument, channel, normalization_stat):
 def inverse_log_norm(
     data_transformed,
     normalization_stat,
-    instrument,
     channel,
     scaler_factor=None,
 ):
     # Retrieve the exact log-domain statistics used during forward normalization
-    mean = normalization_stat[instrument][channel]["mean"]
-    std = normalization_stat[instrument][channel]["std"]
+    mean = normalization_stat[channel]["mean"]
+    std = normalization_stat[channel]["std"]
 
     # Reverse the Z-score standardization
     # x_transformed = (x_log - mean) / std  ->  x_log = (x_transformed * std) + mean
@@ -159,17 +155,11 @@ class SDOMLDataset(Dataset):
         components,
         wavelengths,
         ions,
-        freq,
-        months,
         normalization=None,
         normalization_stat=None,
         mask=None,
-        patch_size=16,
-        img_size=512,
         num_frames=1,
         drop_frame_dim=False,
-        min_date=None,
-        max_date=None,
         get_header=False,  # Optional[list] = [],
         precision="32",
     ):
@@ -179,10 +169,7 @@ class SDOMLDataset(Dataset):
         self.aia_data = aia_data
         self.eve_data = eve_data
         self.hmi_data = hmi_data
-
         self.mask = mask
-        self.patch_size = patch_size
-        self.img_size = img_size
         self.get_header = get_header
         self.precision = precision
 
@@ -207,21 +194,8 @@ class SDOMLDataset(Dataset):
             if self.ions is None:
                 self.ions = ALL_IONS
             self.ions.sort()
-        self.cadence = freq
-        self.months = months
         self.normalization = normalization
         self.normalization_stat = normalization_stat
-
-        # get data from path
-        # Apply month filtering only if months is provided and not empty
-        if months is not None and len(months) > 0:
-            self.aligndata = self.aligndata.loc[self.aligndata.index.month.isin(self.months), :]
-
-        # Apply date filtering only if min_date or max_date is provided
-        if min_date is not None or max_date is not None:
-            self.aligndata = self.aligndata[
-                (self.aligndata.index >= min_date) & (self.aligndata.index <= max_date)
-            ]
 
         # number of frames to return per sample
         self.num_frames = num_frames
@@ -231,7 +205,7 @@ class SDOMLDataset(Dataset):
 
     def __len__(self):
         # report slightly smaller such that all frame sets requested are available
-        return self.aligndata.shape[0] - (self.num_frames - 1)
+        return len(self.aligndata) - (self.num_frames - 1)
 
     def __getitem__(self, idx):
         image_stack = None
@@ -281,7 +255,6 @@ class SDOMLDataset(Dataset):
             return log_norm(
                 data,
                 self.normalization_stat,
-                instrument,
                 channel,
                 self.normalization.scaler_factor,
             )
@@ -289,7 +262,6 @@ class SDOMLDataset(Dataset):
         elif self.normalization.type == "zscore":
             return zscore_norm(
                 data,
-                instrument,
                 channel,
                 self.normalization_stat,
                 (
@@ -300,7 +272,7 @@ class SDOMLDataset(Dataset):
             )
 
         elif self.normalization.type == "min-max":
-            return min_max_norm(data, instrument, channel, self.normalization_stat)
+            return min_max_norm(data, channel, self.normalization_stat)
 
     def loading_data_retry(
         self,
@@ -474,7 +446,6 @@ class SDOMLDataModule(pl.LightningDataModule):
         components (list[str]): List of magnetic field components to load from HMI.
         wavelengths (list[int] or list[str]): List of AIA wavelengths to load.
         ions (list[str]): List of EVE ions or spectral lines to load.
-        frequency (str): Temporal cadence used to align the data (e.g., '12min').
         batch_size (int, optional): Number of samples per batch. Defaults to 32.
         num_workers (int, optional): Number of subprocesses to use for data
             loading. Defaults to None.
@@ -483,19 +454,7 @@ class SDOMLDataModule(pl.LightningDataModule):
         persistent_workers (bool, optional): If True, the data loader will not
             shutdown worker processes after a dataset has been consumed once.
             Defaults to False.
-        val_months (list[int], optional): List of months (1-12) used to create
-            the validation split. Defaults to [10, 1].
-        test_months (list[int], optional): List of months (1-12) used to create
-            the testing split. Defaults to [11, 12].
-        holdout_months (list[int], optional): List of months reserved as a strict
-            holdout set. Defaults to {}.
-        predict_months (list[int], optional): List of months used specifically
-            for the Lightning prediction stage. Defaults to [].
         normalization (dict): specific normalization strategy to use. Defaults to False.
-        aligndata_dir (str, optional): Path to the directory containing preprocessed
-            aligndata (CSV) and statistics (YAML). Defaults to "".
-        aligndata_files (dict, optional): Dictionary mapping split names to CSV filenames.
-            Defaults to {"train": "aligndata_train.csv", "val": "aligndata_val.csv", "test": "aligndata_test.csv"}.
         hmi_mask (str, optional): Filename for the HMI mask. Defaults to "hmi_mask_512x512.npy".
         apply_mask (bool, optional): Whether to apply the solar limb mask to the
             spatial data. Defaults to True.
@@ -518,26 +477,19 @@ class SDOMLDataModule(pl.LightningDataModule):
         components,
         wavelengths,
         ions,
-        frequency,
         batch_size: int = 32,
         num_workers=None,
         pin_memory=False,
         persistent_workers=False,
-        val_months=[10, 1],
-        test_months=[11, 12],
-        holdout_months=[],
-        predict_months=[],
         normalization={},
-        aligndata_dir="",
-        aligndata_files={"train": "aligndata_train.csv", "val": "aligndata_val.csv", "test": "aligndata_test.csv"},
+        normalization_stat_path="",
+        train_index="",
+        val_index="",
+        test_index="",
         hmi_mask="hmi_mask_512x512.npy",
         apply_mask=True,
         num_frames=1,
-        patch_size=16,
-        img_size=512,
         drop_frame_dim=False,
-        min_date=None,
-        max_date=None,
         precision="32",
     ):
         super().__init__()
@@ -548,22 +500,19 @@ class SDOMLDataModule(pl.LightningDataModule):
         self.aia_path = aia_path
         self.eve_path = eve_path
         self.batch_size = batch_size
-        self.cadence = frequency
-        self.val_months = val_months
-        self.test_months = test_months
-        self.holdout_months = holdout_months
-        self.predict_months = predict_months
         self.apply_mask = apply_mask
         self.num_frames = num_frames
-        self.patch_size = patch_size
-        self.img_size = img_size
         self.drop_frame_dim = drop_frame_dim
-        self.min_date = pd.to_datetime(min_date) if min_date is not None else None
-        self.max_date = pd.to_datetime(max_date) if max_date is not None else None
         self.isAIA = True if self.aia_path is not None else False
         self.isHMI = True if self.hmi_path is not None else False
         self.isEVE = True if self.eve_path is not None else False
         self.precision = precision
+
+        # index data
+        # the indices of all data channels with timestamps
+        self.train_index = train_index
+        self.val_index = val_index
+        self.test_index = test_index
 
         # Select alls
         self.components = components
@@ -594,24 +543,37 @@ class SDOMLDataModule(pl.LightningDataModule):
         else:
             self.eve_data = None
 
-        self.train_months = [
-            i
-            for i in range(1, 13)
-            if i not in self.test_months + self.val_months + self.holdout_months
-        ]
-
         # Preprocessed data paths
-        self.aligndata_dir = aligndata_dir
-        self.aligndata_files = aligndata_files
-        self.hmi_mask_filename = hmi_mask
+        self.hmi_mask = hmi_mask
         self.normalization = normalization
-        self.normalization_stat = None  # Loaded in setup()
-        self.hmi_mask = None  # Loaded in setup()
+        self.normalization_stat_path = normalization_stat_path
+        self.timeinterval = re.compile(
+            r"(\d{4}-\d{2}-\d{2}\d{2}:\d{2}:\d{2}-\d{4}-\d{2}-\d{2}\d{2}:\d{2}:\d{2})"
+        )
+        self.normalization_stat = self._load_norm_stats()
 
-        # Initialize aligndata placeholders
-        self.aligndata_train = None
-        self.aligndata_val = None
-        self.aligndata_test = None
+    def _load_norm_stats(self):
+        match = self.timeinterval.search(self.train_index)
+        if not match:
+            raise ValueError("Can't find statistics for normalization")
+
+        time_range = match.group(1)
+
+        base_path = Path(self.normalization_stat_path)
+        pattern = f"*{time_range}_norm-{self.normalization.type}*.json"
+
+        files = list(base_path.glob(pattern))
+        if not files:
+            raise FileNotFoundError(f"No normalization stats found for {time_range}")
+
+        stats = {}
+        for f in files:
+            ch = f.stem.split("_")[0]  # safer than splitting full path
+
+            with f.open("r") as fp:
+                stats[ch] = yaml.safe_load(fp)
+
+        return stats
 
     def __str__(self):
         output = ""
@@ -620,36 +582,16 @@ class SDOMLDataModule(pl.LightningDataModule):
         return output
 
     def setup(self, stage=None):
-        if not self.aligndata_dir:
-            raise ValueError("aligndata_dir must be provided to load preprocessed data.")
-
-        # Load aligndata using filenames from config
-        self.aligndata_train = self._load_aligndata(self.aligndata_files.get("train", "aligndata_train.csv"))
-        self.aligndata_val = self._load_aligndata(self.aligndata_files.get("val", "aligndata_val.csv"))
-        self.aligndata_test = self._load_aligndata(self.aligndata_files.get("test", "aligndata_test.csv"))
 
         # Load mask
         if self.apply_mask:
-            mask_path = os.path.join(self.aligndata_dir, self.hmi_mask_filename)
-            if os.path.exists(mask_path):
-                self.hmi_mask = torch.Tensor(np.load(mask_path))
+            if os.path.exists(self.hmi_mask):
+                self.hmi_mask = torch.Tensor(np.load(self.hmi_mask))
             else:
-                logger.warning(f"HMI mask not found at {mask_path}, applying no mask.")
+                logger.warning(f"HMI mask not found at {self.hmi_mask}, applying no mask.")
                 self.hmi_mask = None
         else:
             self.hmi_mask = None
-
-        # Load normalization stats
-        if self.normalization.enabled:
-            stats_path = os.path.join(self.aligndata_dir, "stats.yaml")
-            if os.path.exists(stats_path):
-                with open(stats_path, "r") as f:
-                    self.normalization_stat = yaml.safe_load(f)
-            else:
-                logger.warning(
-                    f"Stats not found at {stats_path}, normalization will not be applied."
-                )
-                self.normalization_stat = None
 
         # Define mask for dataset (numpy array or None)
         mask_np = self.hmi_mask.numpy() if self.hmi_mask is not None else None
@@ -658,22 +600,18 @@ class SDOMLDataModule(pl.LightningDataModule):
         # We pass the specific split aligndata and None for months to disable filtering
 
         self.train_ds = SDOMLDataset(
-            self.aligndata_train,
+            self._load_aligndata(self.train_index),
             self.hmi_data,
             self.aia_data,
             self.eve_data,
             self.components,
             self.wavelengths,
             self.ions,
-            self.cadence,
-            None,  # months: pre-split, no filtering
             normalization=self.normalization,
             normalization_stat=self.normalization_stat,
             mask=mask_np,
             num_frames=self.num_frames,
             drop_frame_dim=self.drop_frame_dim,
-            min_date=None,  # dates are already filtered in CSV
-            max_date=None,
             precision=self.precision,
         )
         if stage == "fit" or stage is None:
@@ -681,22 +619,18 @@ class SDOMLDataModule(pl.LightningDataModule):
             logger.info(f"Dataset size: {len(self.train_ds)}")
 
         self.valid_ds = SDOMLDataset(
-            self.aligndata_val,
+            self._load_aligndata(self.val_index),
             self.hmi_data,
             self.aia_data,
             self.eve_data,
             self.components,
             self.wavelengths,
             self.ions,
-            self.cadence,
-            None,
             normalization=self.normalization,
             normalization_stat=self.normalization_stat,
             mask=mask_np,
             num_frames=self.num_frames,
             drop_frame_dim=self.drop_frame_dim,
-            min_date=None,
-            max_date=None,
             precision=self.precision,
         )
         if stage == "fit" or stage is None:
@@ -704,22 +638,18 @@ class SDOMLDataModule(pl.LightningDataModule):
             logger.info(f"Dataset size: {len(self.valid_ds)}")
 
         self.test_ds = SDOMLDataset(
-            self.aligndata_test,
+            self._load_aligndata(self.test_index),
             self.hmi_data,
             self.aia_data,
             self.eve_data,
             self.components,
             self.wavelengths,
             self.ions,
-            self.cadence,
-            None,
             normalization=self.normalization,
             normalization_stat=self.normalization_stat,
             mask=mask_np,
             num_frames=self.num_frames,
             drop_frame_dim=self.drop_frame_dim,
-            min_date=None,
-            max_date=None,
             precision=self.precision,
         )
         if stage == "fit" or stage is None:
@@ -729,40 +659,29 @@ class SDOMLDataModule(pl.LightningDataModule):
         # Handle predict dataset if needed
         # This is optional and depends on the presence of predict months in aligndata_files
         if stage == "predict":
-            predict_filename = self.aligndata_files.get("predict", "aligndata_predict.csv")
-            predict_aligndata_path = os.path.join(self.aligndata_dir, predict_filename)
-            if os.path.exists(predict_aligndata_path):
-                aligndata_predict = self._load_aligndata(predict_filename)
-                self.predict_ds = SDOMLDataset(
-                    aligndata_predict,
-                    self.hmi_data,
-                    self.aia_data,
-                    self.eve_data,
-                    self.components,
-                    self.wavelengths,
-                    self.ions,
-                    self.cadence,
-                    None,
-                    normalization=self.normalization,
-                    normalization_stat=self.normalization_stat,
-                    mask=mask_np,
-                    num_frames=self.num_frames,
-                    drop_frame_dim=self.drop_frame_dim,
-                    min_date=None,
-                    max_date=None,
-                    precision=self.precision,
-                )
-                logger.info("Predict dataloader is ready!")
-                logger.info(f"Dataset size: {len(self.predict_ds)}")
-            else:
-                logger.warning("Predict dataset requested but aligndata_predict.csv not found.")
+            self.predict_ds = SDOMLDataset(
+                self._load_aligndata(self.test_index),
+                self.hmi_data,
+                self.aia_data,
+                self.eve_data,
+                self.components,
+                self.wavelengths,
+                self.ions,
+                normalization=self.normalization,
+                normalization_stat=self.normalization_stat,
+                mask=mask_np,
+                num_frames=self.num_frames,
+                drop_frame_dim=self.drop_frame_dim,
+                precision=self.precision,
+            )
+            logger.info("Predict dataloader is ready!")
+            logger.info(f"Dataset size: {len(self.predict_ds)}")
 
     def _load_aligndata(self, filename):
-        filepath = os.path.join(self.aligndata_dir, filename)
-        if not os.path.exists(filepath):
-            raise FileNotFoundError(f"Aligndata file not found: {filepath}")
+        if not os.path.exists(filename):
+            raise FileNotFoundError(f"Aligndata file not found: {filename}")
 
-        df = pd.read_csv(filepath)
+        df = pd.read_csv(filename)
         df["Time"] = pd.to_datetime(df["Time"])
         df.set_index("Time", inplace=True)
         return df

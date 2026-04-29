@@ -7,7 +7,9 @@ significantly speeding up the start of training and evaluation.
 Usage:
     python scripts/preprocess.py --config-name pretrain_mae_HMI
 """
+
 import os
+from re import L
 
 import hydra
 import numpy as np
@@ -21,7 +23,9 @@ from sdofmv2.core.preprocessing import aligntime, calc_normalizations, make_hmi_
 from sdofmv2.utils import ALL_COMPONENTS, ALL_IONS, ALL_WAVELENGTHS
 
 
-@hydra.main(version_base=None, config_path="../configs/pretrain", config_name="pretrain_mae_HMI.yaml")
+@hydra.main(
+    version_base=None, config_path="../configs/pretrain", config_name="pretrain_mae_AIA.yaml"
+)
 def main(cfg: DictConfig):
     """Main preprocessing function."""
     logger.info("Starting preprocessing script...")
@@ -34,7 +38,7 @@ def main(cfg: DictConfig):
     # Resolve paths
     base_dir = sdoml_cfg.base_directory
     sub_dir = sdoml_cfg.sub_directory
-    save_dir = sdoml_cfg.save_directory
+    output_dir = cfg.data.index_save_path
 
     hmi_path = os.path.join(base_dir, sub_dir.hmi) if sub_dir.hmi else None
     aia_path = os.path.join(base_dir, sub_dir.aia) if sub_dir.aia else None
@@ -96,14 +100,14 @@ def main(cfg: DictConfig):
     ids = []
     if hmi_data:
         if len(components) == 3:
-            component_id = "HMI_FULL"
+            component_id = "HMI_all"
         elif len(components) > 0 and len(components) < 3:
             component_id = "_".join(components)
         ids.append(component_id)
 
     if aia_data:
         if len(wavelengths) == 9:
-            wavelength_id = "AIA_FULL"
+            wavelength_id = "AIA_all"
         elif len(wavelengths) > 0 and len(wavelengths) < 9:
             wavelength_id = "_".join(wavelengths)
         ids.append(wavelength_id)
@@ -116,7 +120,7 @@ def main(cfg: DictConfig):
         ids.append(ions_id)
 
     if (min_date is None) and (max_date is None):
-        cache_id = f"{'_'.join(sorted(ids))}_{frequency}_fulldata"
+        cache_id = f"{'_'.join(sorted(ids))}_{frequency}_fullyear"
     else:
         cache_id = f"{'_'.join(sorted(ids))}_{frequency}_{str(min_date).replace(' ', '')}-{str(max_date).replace(' ', '')}"
 
@@ -124,22 +128,30 @@ def main(cfg: DictConfig):
         cache_id += "_small"
 
     # Output directory
-    output_dir = os.path.join(save_dir, sub_dir.cache, cache_id)
     os.makedirs(output_dir, exist_ok=True)
-    logger.info(f"Output directory: {output_dir}")
 
     # 1. Compute Aligndata
-    logger.info("Computing aligndata...")
-    aligndata = aligntime(
-        aia_data,
-        hmi_data,
-        eve_data,
-        wavelengths,
-        components,
-        ions,
-        frequency,
-        training_years,
-    )
+    full_aligndata_path = os.path.join(output_dir, cache_id + "_aligndata_full.csv")
+    exist_aligndata_full = False
+    if os.path.exists(full_aligndata_path):
+        logger.info(f"Aligndata exists in {full_aligndata_path}")
+        aligndata = pd.read_csv(full_aligndata_path)
+        aligndata["Time"] = pd.to_datetime(aligndata["Time"])
+        aligndata.set_index("Time", inplace=True)
+        aligndata.sort_index(inplace=True)
+        exist_aligndata_full = True
+    else:
+        logger.info("Aligndata does not exist. Computing aligndata...")
+        aligndata = aligntime(
+            aia_data,
+            hmi_data,
+            eve_data,
+            wavelengths,
+            components,
+            ions,
+            frequency,
+            training_years,
+        )
 
     # Apply date filters
     if min_date:
@@ -152,7 +164,6 @@ def main(cfg: DictConfig):
     hmi_mask = make_hmi_mask(hmi_data, output_dir)
 
     # 3. Compute Normalizations (on training data only)
-    normalizations = None
     if normalization.enabled:
         logger.info("Computing normalizations...")
         # Get train months
@@ -161,8 +172,8 @@ def main(cfg: DictConfig):
         # Filter aligndata for training months
         aligndata_train = aligndata.loc[aligndata.index.month.isin(train_months)]
 
-        normalizations = calc_normalizations(
-            aligndata_train, # Use train split for stats
+        _ = calc_normalizations(
+            aligndata_train,  # Use train split for stats
             hmi_data,
             aia_data,
             eve_data,
@@ -184,28 +195,22 @@ def main(cfg: DictConfig):
     holdout_months = cfg.data.month_splits.get("holdout", [])
 
     def save_aligndata(data, filename):
-        data.to_csv(os.path.join(output_dir, filename))
-        logger.info(f"saved {filename} with {len(data)} samples.")
+        data.to_csv(os.path.join(output_dir, cache_id + filename))
+        logger.info(f"saved {cache_id + filename} with {len(data)} samples.")
 
     aligndata_train = aligndata.loc[aligndata.index.month.isin(train_months)]
     aligndata_val = aligndata.loc[aligndata.index.month.isin(val_months)]
     aligndata_test = aligndata.loc[aligndata.index.month.isin(test_months)]
 
-    save_aligndata(aligndata, "aligndata_full.csv")
-    save_aligndata(aligndata_train, "aligndata_train.csv")
-    save_aligndata(aligndata_val, "aligndata_val.csv")
-    save_aligndata(aligndata_test, "aligndata_test.csv")
+    if not exist_aligndata_full:
+        save_aligndata(aligndata, "_aligndata_full.csv")
+    save_aligndata(aligndata_train, "_aligndata_train.csv")
+    save_aligndata(aligndata_val, "_aligndata_val.csv")
+    save_aligndata(aligndata_test, "_aligndata_test.csv")
 
     if holdout_months:
         aligndata_holdout = aligndata.loc[aligndata.index.month.isin(holdout_months)]
         save_aligndata(aligndata_holdout, "aligndata_holdout.csv")
-
-    # 5. Save Stats
-    if normalizations:
-        stats_path = os.path.join(output_dir, "stats.yaml")
-        with open(stats_path, "w") as f:
-            yaml.dump(normalizations, f)
-        logger.info(f"Saved stats to {stats_path}")
 
     logger.info("Preprocessing complete!")
     logger.info(f"Output directory: {output_dir}")

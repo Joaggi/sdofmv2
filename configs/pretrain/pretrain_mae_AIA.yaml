@@ -35,6 +35,7 @@ experiment:
 
 # dataset configuration
 data:
+  # data split information
   min_date: 2010-05-01 00:00:00  # NOT IMPLEMENTED # minimum is '2010-09-09 00:00:11.08'
   max_date: 2018-12-31 23:59:59  # NOT IMPLEMENTED # maximum is '2023-05-26 06:36:08.072' '2025-07-22 23:59:59.99'
   month_splits: # non selected months will form training set 
@@ -42,6 +43,16 @@ data:
     val: [11]
     test: [12]
     holdout: []
+  
+  # index path
+  index_save_path: ./assets/cache/
+  train_index: "./assets/cache/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv"
+  val_index: "./assets/cache/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv"
+  test_index: "./assets/cache/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv"
+  hmi_mask: ./assets/cache/hmi_mask_512x512.npy
+  normalization_stat_path: ./assets/cache/AIA/
+
+  # for dataloader
   num_workers: 24    # set appropriately for your machine
   pin_memory: true
   prefetch_factor: 2
@@ -50,20 +61,12 @@ data:
   drop_frame_dim: false
   # output_directory: "wandb_output"
   sdoml:
-    save_directory: ./assets/
     base_directory: /mnt/baobab
     sub_directory:
       hmi: null
       aia: AIA.zarr
       eve: null
       cache: cache
-    aligndata_dir: ${sdoml.save_directory}/${sdoml.sub_directory.cache}/AIA_FULL_12min_fulldata
-    aligndata_files:
-      train: aligndata_train.csv
-      val: aligndata_val.csv
-      test: aligndata_test.csv
-      full: aligndata_full.csv
-    hmi_mask: hmi_mask_512x512.npy
     components: null # null for select all magnetic components ["Bx", "By", "Bz"]
     wavelengths: null # null for select all wavelengths channels ["131A","1600A","1700A","171A","193A","211A","304A","335A","94A"]
     ions: null # null to select all ion channels ["C III", "Fe IX", "Fe VIII", "Fe X", "Fe XI", "Fe XII", "Fe XIII", "Fe XIV", "Fe XIX", "Fe XV", "Fe XVI", "Fe XVIII", "Fe XVI_2", "Fe XX", "Fe XX_2", "Fe XX_3", "H I", "H I_2", "H I_3", "He I", "He II", "He II_2", "He I_2", "Mg IX", "Mg X", "Mg X_2", "Ne VII", "Ne VIII", "O II", "O III", "O III_2", "O II_2", "O IV", "O IV_2", "O V", "O VI", "S XIV", "Si XII", "Si XII_2"]

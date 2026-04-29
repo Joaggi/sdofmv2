@@ -2,6 +2,7 @@
 
 This module contains functions for computing aligndata and normalization statistics.
 """
+
 import os
 from loguru import logger
 
@@ -95,17 +96,13 @@ def aligntime(
                             "Time": pd.to_datetime(
                                 t_obs_aia_channel[valid_indices], format="mixed"
                             ),
-                            f"idx_{wavelength}": np.arange(
-                                0, len(t_obs_aia_channel)
-                            )[valid_indices],
+                            f"idx_{wavelength}": np.arange(0, len(t_obs_aia_channel))[
+                                valid_indices
+                            ],
                         }
                     )
-                    if df_t_aia[f"idx_{wavelength}"].max() >= len(
-                        t_obs_aia_channel
-                    ):
-                        logger.warning(
-                            "Max index is greater than number of instances in zarr file"
-                        )
+                    if df_t_aia[f"idx_{wavelength}"].max() >= len(t_obs_aia_channel):
+                        logger.warning("Max index is greater than number of instances in zarr file")
 
                 else:
                     df_tmp_aia = pd.DataFrame(
@@ -115,23 +112,19 @@ def aligntime(
                                 format="mixed",
                                 utc=True,
                             ),
-                            f"idx_{wavelength}": np.arange(
-                                0, len(t_obs_aia_channel)
-                            )[valid_indices],
+                            f"idx_{wavelength}": np.arange(0, len(t_obs_aia_channel))[
+                                valid_indices
+                            ],
                         }
                     )
-                    if df_tmp_aia[f"idx_{wavelength}"].max() >= len(
-                        t_obs_aia_channel
-                    ):
-                        logger.warning(
-                            "Max index is greater than number of instances in zarr file"
-                        )
+                    if df_tmp_aia[f"idx_{wavelength}"].max() >= len(t_obs_aia_channel):
+                        logger.warning("Max index is greater than number of instances in zarr file")
                     df_t_aia = pd.concat([df_t_aia, df_tmp_aia], ignore_index=True)
 
             # Enforcing same datetime format
-            transform_datetime = lambda x: pd.to_datetime(
-                x, format="mixed"
-            ).strftime("%Y-%m-%d %H:%M:%S")
+            transform_datetime = lambda x: pd.to_datetime(x, format="mixed").strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
             df_t_aia["Time"] = df_t_aia["Time"].apply(transform_datetime)
             df_t_aia["Time"] = pd.to_datetime(df_t_aia["Time"]).dt.tz_localize(
                 None
@@ -154,10 +147,9 @@ def aligntime(
             idx_col = f"idx_{wavelength}"
 
             for year in training_years:
-                if (
-                    (join_series.loc[join_series.index.year == year, idx_col]).max()
-                    >= aia_data[str(year)][wavelength].shape[0]
-                ):
+                if (join_series.loc[join_series.index.year == year, idx_col]).max() >= aia_data[
+                    str(year)
+                ][wavelength].shape[0]:
                     logger.warning(f"Max id is greater than number instances in zarr file")
                     logger.warning(f"year: {year}, channel: {wavelength}")
 
@@ -168,9 +160,7 @@ def aligntime(
         logger.info("Aligning HMI data")
         for i, component in enumerate(components):
             logger.info(f"Aligning HMI data for component: {component}")
-            for j, year in enumerate(
-                tqdm((training_years))
-            ):  # EVE data only goes up to 2014
+            for j, year in enumerate(tqdm((training_years))):  # EVE data only goes up to 2014
                 hmi_channel = hmi_data[year][component]
 
                 # get observation time
@@ -213,9 +203,7 @@ def aligntime(
                                 format="mixed",
                                 utc=True,
                             ),
-                            f"idx_{component}": np.arange(
-                                0, len(t_obs_hmi_channel)
-                            )[valid_indices],
+                            f"idx_{component}": np.arange(0, len(t_obs_hmi_channel))[valid_indices],
                         }
                     )
 
@@ -227,17 +215,15 @@ def aligntime(
                                 format="mixed",
                                 utc=True,
                             ),
-                            f"idx_{component}": np.arange(
-                                0, len(t_obs_hmi_channel)
-                            )[valid_indices],
+                            f"idx_{component}": np.arange(0, len(t_obs_hmi_channel))[valid_indices],
                         }
                     )
                     df_t_hmi = pd.concat([df_t_hmi, df_tmp_hmi], ignore_index=True)
 
             # Enforcing same datetime format
-            transform_datetime = lambda x: pd.to_datetime(
-                x, format="mixed"
-            ).strftime("%Y-%m-%d %H:%M:%S")
+            transform_datetime = lambda x: pd.to_datetime(x, format="mixed").strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
             df_t_hmi["Time"] = df_t_hmi["Time"].apply(transform_datetime)
             df_t_hmi["Time"] = pd.to_datetime(df_t_hmi["Time"]).dt.tz_localize(
                 None
@@ -265,9 +251,7 @@ def aligntime(
             }
         )
         df_t_eve["Time"] = pd.to_datetime(df_t_eve["Time"]).dt.round(cadence)
-        df_t_obs_eve = df_t_eve.drop_duplicates(
-            subset="Time", keep="first"
-        ).set_index("Time")
+        df_t_obs_eve = df_t_eve.drop_duplicates(subset="Time", keep="first").set_index("Time")
 
         if join_series is None:
             join_series = df_t_obs_eve
@@ -314,20 +298,47 @@ def calc_normalizations(
 
     if eve_data is not None:
         normalizations["EVE"] = _compute_data_statistic(
-            normalizations_align, eve_data, "EVE", ions,
-            hmi_mask, components, wavelengths, training_years, normalization_cfg, cache_id, cache_dir
+            normalizations_align,
+            eve_data,
+            "EVE",
+            ions,
+            hmi_mask,
+            components,
+            wavelengths,
+            training_years,
+            normalization_cfg,
+            cache_id,
+            cache_dir,
         )
 
     if aia_data is not None:
         normalizations["AIA"] = _compute_data_statistic(
-            normalizations_align, aia_data, "AIA", wavelengths,
-            hmi_mask, components, wavelengths, training_years, normalization_cfg, cache_id, cache_dir
+            normalizations_align,
+            aia_data,
+            "AIA",
+            wavelengths,
+            hmi_mask,
+            components,
+            wavelengths,
+            training_years,
+            normalization_cfg,
+            cache_id,
+            cache_dir,
         )
 
     if hmi_data is not None:
         normalizations["HMI"] = _compute_data_statistic(
-            normalizations_align, hmi_data, "HMI", components,
-            hmi_mask, components, wavelengths, training_years, normalization_cfg, cache_id, cache_dir
+            normalizations_align,
+            hmi_data,
+            "HMI",
+            components,
+            hmi_mask,
+            components,
+            wavelengths,
+            training_years,
+            normalization_cfg,
+            cache_id,
+            cache_dir,
         )
 
     return normalizations
@@ -380,9 +391,7 @@ def _compute_data_statistic(
             with open(file_name, "r") as json_file:
                 stat = json.load(json_file)
                 normalizations_stat[ch] = stat
-                check_list = [
-                    k for k in check_list if k not in normalizations_stat[ch].keys()
-                ]
+                check_list = [k for k in check_list if k not in normalizations_stat[ch].keys()]
                 if len(check_list) == 0:
                     continue
         else:
@@ -412,17 +421,10 @@ def _compute_data_statistic(
 
         if normalization_cfg.type == "log":
             scaler_factor = normalization_cfg.get("scaler_factor", None)
-            ch_data = (
-                ch_data * scaler_factor
-                if scaler_factor is not None
-                else ch_data
-            )
+            ch_data = ch_data * scaler_factor if scaler_factor is not None else ch_data
             ch_data = da.sign(ch_data) * da.log1p(da.abs(ch_data))
 
-        elif (
-            normalization_cfg.type == "zscore"
-            and normalization_cfg.clipping.enabled
-        ):
+        elif normalization_cfg.type == "zscore" and normalization_cfg.clipping.enabled:
             low, high = normalization_cfg.clipping[ch]
             if normalization_cfg.clipping.enabled:
                 ch_data = da.clip(ch_data, low, high)
@@ -434,15 +436,14 @@ def _compute_data_statistic(
             logger.info(f"Computing {stat_measure} of {ch}")
             stat_value = compute_stat(stat_measure, ch_data)
             if stat_value == 0:
-                logger.warning(
-                    f"Value of {stat_measure} is Zero!, wavelength: {ch}"
-                )
+                logger.warning(f"Value of {stat_measure} is Zero!, wavelength: {ch}")
             normalizations_stat[ch][stat_measure] = stat_value
 
         # save statistics of each wavelength
         os.makedirs(os.path.dirname(file_name), exist_ok=True)
         with open(file_name, "w") as json_file:
             json.dump(normalizations_stat[ch], json_file)
+            logger.info(f"Saved stats to {file_name}")
 
     return normalizations_stat
 
@@ -453,9 +454,7 @@ def make_hmi_mask(hmi_data, cache_dir):
     if Path(hmi_mask_cache_filename).exists():
         loaded_mask = np.load(hmi_mask_cache_filename)
         hmi_mask = torch.Tensor(loaded_mask).to(dtype=torch.uint8)
-        logger.info(
-            f"[* CACHE SYSTEM *] Found cached HMI mask data in {hmi_mask_cache_filename}."
-        )
+        logger.info(f"[* CACHE SYSTEM *] Found cached HMI mask data in {hmi_mask_cache_filename}.")
         return hmi_mask
     elif hmi_data is None:
         raise ValueError(

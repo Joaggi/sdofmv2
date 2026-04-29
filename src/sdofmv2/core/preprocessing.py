@@ -14,7 +14,7 @@ import dask.array as da
 from dask.diagnostics import ProgressBar
 import pandas as pd
 from tqdm import tqdm
-from pathlib import Path
+# from pathlib import Path # Removing unused import if desired, but keeping for safety
 
 from ..utils import ALL_COMPONENTS, ALL_WAVELENGTHS
 
@@ -55,6 +55,9 @@ def aligntime(
     ions,
     cadence,
     training_years,
+    target_months=None,
+    min_date=None,
+    max_date=None,
 ):
     """Extracts common indexes across AIA, HMI, and EVE datasets."""
     join_series = None
@@ -74,8 +77,22 @@ def aligntime(
                     logger.warning("The length of zarr does not match with T_OBS!")
                     logger.warning(f"year: {year}, wavelength: {wavelength}")
 
+                # Pre-filter by month and date range to save time on NaN checks
+                t_obs_dt = pd.to_datetime(t_obs_aia_channel, format="mixed")
+                mask = np.ones(len(t_obs_dt), dtype=bool)
+                if target_months is not None:
+                    mask &= t_obs_dt.month.isin(target_months)
+                if min_date is not None:
+                    mask &= t_obs_dt >= pd.to_datetime(min_date)
+                if max_date is not None:
+                    mask &= t_obs_dt <= pd.to_datetime(max_date)
+
+                valid_indices_in_range = np.where(mask)[0]
+                if len(valid_indices_in_range) == 0:
+                    continue
+
                 # check indices of images without nan
-                images = da.from_array(aia_channel, chunks=(512, 512, 512))
+                images = da.from_array(aia_channel, chunks=(512, 512, 512))[valid_indices_in_range]
 
                 # Compute mask of valid images
                 valid_mask = ~da.isnan(images).any(axis=(1, 2))
@@ -83,13 +100,15 @@ def aligntime(
                 # Get indices (requires computation)
                 logger.info(f"Checking Nans in images, {year} & {wavelength}")
                 with ProgressBar():
-                    valid_indices = da.nonzero(valid_mask)[0].compute()
+                    valid_rel_indices = da.nonzero(valid_mask)[0].compute()
+                
+                valid_indices = valid_indices_in_range[valid_rel_indices]
                 total_nan = len(valid_indices)
                 logger.info(
-                    f"Total {images.shape[0] - total_nan} {(images.shape[0] - total_nan) * 100 / images.shape[0]:.0f}% images have Nan."
+                    f"Total {len(valid_indices_in_range) - total_nan} {(len(valid_indices_in_range) - total_nan) * 100 / len(valid_indices_in_range):.0f}% images in range have Nan."
                 )
 
-                if j == 0:
+                if j == 0 and (join_series is None or f"idx_{wavelength}" not in join_series.columns):
                     # transform to DataFrame
                     df_t_aia = pd.DataFrame(
                         {
@@ -119,7 +138,18 @@ def aligntime(
                     )
                     if df_tmp_aia[f"idx_{wavelength}"].max() >= len(t_obs_aia_channel):
                         logger.warning("Max index is greater than number of instances in zarr file")
-                    df_t_aia = pd.concat([df_t_aia, df_tmp_aia], ignore_index=True)
+                    
+                    # If this is not the first year for this wavelength, concat to df_t_aia
+                    # If it IS the first year but we have other wavelengths, we need to handle it.
+                    # The original code used 'if j == 0' which assumes j=0 is always the first year with data.
+                    # With filtering, j=0 might not have data.
+                    if 'df_t_aia' in locals():
+                        df_t_aia = pd.concat([df_t_aia, df_tmp_aia], ignore_index=True)
+                    else:
+                        df_t_aia = df_tmp_aia
+
+            if 'df_t_aia' not in locals():
+                continue
 
             # Enforcing same datetime format
             transform_datetime = lambda x: pd.to_datetime(x, format="mixed").strftime(
@@ -143,43 +173,48 @@ def aligntime(
             else:
                 join_series = join_series.join(df_t_obs_aia, how="inner")
 
-            # after all years for this wavelength are processed
-            idx_col = f"idx_{wavelength}"
+            # Clean up for next wavelength
+            del df_t_aia
 
-            for year in training_years:
-                if (join_series.loc[join_series.index.year == year, idx_col]).max() >= aia_data[
-                    str(year)
-                ][wavelength].shape[0]:
-                    logger.warning(f"Max id is greater than number instances in zarr file")
-                    logger.warning(f"year: {year}, channel: {wavelength}")
-
-        logger.info(f"AIA alignment completed with {join_series.shape[0]} samples.")
+        logger.info(f"AIA alignment completed with {join_series.shape[0] if join_series is not None else 0} samples.")
 
     # HMI
     if hmi_data is not None:
         logger.info("Aligning HMI data")
         for i, component in enumerate(components):
             logger.info(f"Aligning HMI data for component: {component}")
-            for j, year in enumerate(tqdm((training_years))):  # EVE data only goes up to 2014
-                hmi_channel = hmi_data[year][component]
+            for j, year in enumerate(tqdm((training_years))):
+                hmi_channel = hmi_data[str(year)][component]
 
                 # get observation time
                 t_obs_hmi_channel_pre = hmi_channel.attrs["T_OBS"]
-
-                for idx, time_val in enumerate(t_obs_hmi_channel_pre):
-                    t_obs_hmi_channel_pre[idx] = time_val[:19]
-
-                # substitute characters
+                
+                # Pre-processing times for filtering
+                t_obs_hmi_channel_processed = []
                 replacements = {".": "-", "_": "T", "TTAI": "", "60": "59"}
-                t_obs_hmi_channel = []
                 for word in t_obs_hmi_channel_pre:
+                    word = word[:19]
                     for old_char, new_char in replacements.items():
                         word = word.replace(old_char, new_char)
-                    t_obs_hmi_channel.append(word)
-                t_obs_hmi_channel = np.array(t_obs_hmi_channel)
+                    t_obs_hmi_channel_processed.append(word)
+                
+                t_obs_dt = pd.to_datetime(t_obs_hmi_channel_processed, format="mixed", utc=True)
+                
+                # Pre-filter
+                mask = np.ones(len(t_obs_dt), dtype=bool)
+                if target_months is not None:
+                    mask &= t_obs_dt.month.isin(target_months)
+                if min_date is not None:
+                    mask &= t_obs_dt >= pd.to_datetime(min_date).tz_localize("UTC")
+                if max_date is not None:
+                    mask &= t_obs_dt <= pd.to_datetime(max_date).tz_localize("UTC")
+                
+                valid_indices_in_range = np.where(mask)[0]
+                if len(valid_indices_in_range) == 0:
+                    continue
 
                 # check indices of images without nan
-                images = da.from_array(hmi_channel, chunks=(512, 512, 512))
+                images = da.from_array(hmi_channel, chunks=(512, 512, 512))[valid_indices_in_range]
 
                 # Compute mask of valid images
                 valid_mask = ~da.isnan(images).any(axis=(1, 2))
@@ -187,38 +222,36 @@ def aligntime(
                 # Get indices (requires computation)
                 logger.info(f"Checking Nans in images, {year} & {component}")
                 with ProgressBar():
-                    valid_indices = da.nonzero(valid_mask)[0].compute()
+                    valid_rel_indices = da.nonzero(valid_mask)[0].compute()
+                
+                valid_indices = valid_indices_in_range[valid_rel_indices]
                 total_nan = len(valid_indices)
                 logger.info(
-                    f"Total {images.shape[0] - total_nan} {(images.shape[0] - total_nan) * 100 / images.shape[0]:.0f}% images have Nan."
+                    f"Total {len(valid_indices_in_range) - total_nan} {(len(valid_indices_in_range) - total_nan) * 100 / len(valid_indices_in_range):.0f}% images in range have Nan."
                 )
 
-                if j == 0:
+                if j == 0 and (join_series is None or f"idx_{component}" not in join_series.columns):
                     # transform to DataFrame
-                    # HMI
                     df_t_hmi = pd.DataFrame(
                         {
-                            "Time": pd.to_datetime(
-                                t_obs_hmi_channel[valid_indices],
-                                format="mixed",
-                                utc=True,
-                            ),
-                            f"idx_{component}": np.arange(0, len(t_obs_hmi_channel))[valid_indices],
+                            "Time": t_obs_dt[valid_indices],
+                            f"idx_{component}": np.arange(0, len(t_obs_hmi_channel_pre))[valid_indices],
                         }
                     )
-
                 else:
                     df_tmp_hmi = pd.DataFrame(
                         {
-                            "Time": pd.to_datetime(
-                                t_obs_hmi_channel[valid_indices],
-                                format="mixed",
-                                utc=True,
-                            ),
-                            f"idx_{component}": np.arange(0, len(t_obs_hmi_channel))[valid_indices],
+                            "Time": t_obs_dt[valid_indices],
+                            f"idx_{component}": np.arange(0, len(t_obs_hmi_channel_pre))[valid_indices],
                         }
                     )
-                    df_t_hmi = pd.concat([df_t_hmi, df_tmp_hmi], ignore_index=True)
+                    if 'df_t_hmi' in locals():
+                        df_t_hmi = pd.concat([df_t_hmi, df_tmp_hmi], ignore_index=True)
+                    else:
+                        df_t_hmi = df_tmp_hmi
+
+            if 'df_t_hmi' not in locals():
+                continue
 
             # Enforcing same datetime format
             transform_datetime = lambda x: pd.to_datetime(x, format="mixed").strftime(
@@ -238,8 +271,10 @@ def aligntime(
                 join_series = df_t_obs_hmi
             else:
                 join_series = join_series.join(df_t_obs_hmi, how="inner")
+            
+            del df_t_hmi
 
-    logger.info(f"HMI alignment completed with {join_series.shape[0]} samples.")
+    logger.info(f"HMI alignment completed with {join_series.shape[0] if join_series is not None else 0} samples.")
 
     # EVE
     if eve_data is not None:
@@ -251,6 +286,15 @@ def aligntime(
             }
         )
         df_t_eve["Time"] = pd.to_datetime(df_t_eve["Time"]).dt.round(cadence)
+        
+        # Apply filters to EVE
+        if target_months is not None:
+            df_t_eve = df_t_eve[df_t_eve["Time"].dt.month.isin(target_months)]
+        if min_date is not None:
+            df_t_eve = df_t_eve[df_t_eve["Time"] >= pd.to_datetime(min_date)]
+        if max_date is not None:
+            df_t_eve = df_t_eve[df_t_eve["Time"] <= pd.to_datetime(max_date)]
+            
         df_t_obs_eve = df_t_eve.drop_duplicates(subset="Time", keep="first").set_index("Time")
 
         if join_series is None:
@@ -402,7 +446,8 @@ def _compute_data_statistic(
             continue
 
         ch_arr = []
-        for year in training_years:
+        years_in_data = sorted(normalizations_align.index.year.unique())
+        for year in years_in_data:
             ch_data_year = da.from_array(sdoml_data[str(year)][ch])
             ch_idices = normalizations_align.loc[
                 normalizations_align.index.year == year, f"idx_{ch}"
@@ -417,6 +462,11 @@ def _compute_data_statistic(
                 )  # outter area to nan
 
             ch_arr.append(ch_data_year.flatten())
+        
+        if not ch_arr:
+             logger.warning(f"No data for {ch} in the specified range.")
+             continue
+             
         ch_data = da.concatenate(ch_arr)
 
         if normalization_cfg.type == "log":
@@ -450,6 +500,7 @@ def _compute_data_statistic(
 
 def make_hmi_mask(hmi_data, cache_dir):
     """Generate and save HMI mask."""
+    from pathlib import Path
     hmi_mask_cache_filename = f"{cache_dir}/hmi_mask_512x512.npy"
     if Path(hmi_mask_cache_filename).exists():
         loaded_mask = np.load(hmi_mask_cache_filename)

@@ -3,6 +3,7 @@
 *.egg-info
 *.log
 *.csv
+AGENTS.md
 
 .vscode/
 assets/

@@ -119,9 +119,7 @@ class MAE(BaseModule):
                 func=np.max,
             )
             limb_mask_ids = torch.tensor(
-                np.argwhere(
-                    new_matrix.reshape((img_size // self.patch_size) ** 2) == 0
-                ).reshape(-1)
+                np.argwhere(new_matrix.reshape((img_size // self.patch_size) ** 2) == 0).reshape(-1)
             )
 
         self.autoencoder = MaskedAutoencoderViT3D(
@@ -153,11 +151,10 @@ class MAE(BaseModule):
         Returns:
             torch.Tensor: The training loss value.
         """
-        # training_step defines the train loop.
-        x, timestamps = batch
+        x, timestamps = batch[:2]
+
         loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
 
-        # logs
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
@@ -168,54 +165,61 @@ class MAE(BaseModule):
             batch: A tuple containing (images, timestamps).
             batch_idx: The index of the current batch.
         """
-        x, timestamps = batch
-        x_patchified = patchify(x, self.patch_size, self.tubelet_size)
+        x, timestamps = batch[:2]
+
         loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
-        x_hat_reconstructed = unpatchify(
-            x_hat, self.img_size, self.patch_size, self.tubelet_size
-        )
+        x_hat_reconstructed = unpatchify(x_hat, self.img_size, self.patch_size, self.tubelet_size)
 
-        # only masked patches
-        active_mask = mask == 1
+        # Transfer both tensors to CPU once, outside all loops
+        x_np = x.detach().cpu().numpy()  # [B, C, T, H, W]
+        x_hat_np = x_hat_reconstructed.detach().cpu().numpy()
 
-        # 2d mask tensor
         batch_size = mask.shape[0]
-        grid_size = 512 // self.patch_size
-        # Reshape to grid: [B, Grid, Grid]
-        mask_grid = (
-            mask.reshape(batch_size, grid_size, grid_size).detach().cpu().numpy()
-        )
+        num_frames = x.shape[2]
+        if self.limb_mask is not None:
 
-        # Use np.repeat instead of np.kron for better control over the batch dimension
-        # This inflates [B, 32, 32] to [B, 512, 512]
-        mask_full = mask_grid.repeat(self.patch_size, axis=1).repeat(
-            self.patch_size, axis=2
-        )
-        mask_full = mask_full.astype(bool)
+            # Build full-resolution mask once for the entire batch: [B, 512, 512]
+            grid_size = self.img_size // self.patch_size
+            mask_full = (
+                mask.reshape(batch_size, grid_size, grid_size)
+                .detach()
+                .cpu()
+                .numpy()
+                .repeat(self.patch_size, axis=1)
+                .repeat(self.patch_size, axis=2)
+                .astype(bool)
+            )
 
-        for i in range(batch_size):
-            # Get the 2D mask for this specific sample in the batch
-            current_mask = mask_full[i]  # [512, 512]
-
-            for frame in range(x.shape[2]):
-                # Extract pixels for all channels simultaneously
-                # Resulting shape: [C, Num_Masked_Pixels]
-                target_pixels = x[i, :, frame, current_mask]
-                pred_pixels = x_hat_reconstructed[i, :, frame, current_mask]
-
-                # Calculate metrics (bench_recon should handle the [C, N] input)
-                metrics = bench_recon.get_metrics_for_masked_patches(
-                    target_pixels.detach().cpu().numpy(),
-                    pred_pixels.detach().cpu().numpy(),
+            step_metrics = [
+                bench_recon.get_metrics_for_masked_patches(
+                    x_np[i, :, frame, mask_full[i]],
+                    x_hat_np[i, :, frame, mask_full[i]],
                     self.chan_types,
                 )
-                self.validation_metrics.append(metrics)
+                for i in range(batch_size)
+                for frame in range(num_frames)
+            ]
+
+            x_patchified = patchify(x, self.patch_size, self.tubelet_size)
+            active_mask = mask == 1
+            masked_mse = F.mse_loss(x_patchified[active_mask], x_hat[active_mask])
+
+        else:
+            step_metrics = [
+                bench_recon.get_metrics(
+                    x_np[i, :, frame, :, :],
+                    x_hat_np[i, :, frame, :, :],
+                    self.chan_types,
+                )
+                for i in range(batch_size)
+                for frame in range(num_frames)
+            ]
+
+        self.validation_metrics.extend(step_metrics)
 
         self.log("val_loss", loss)
-        self.log(
-            "val_MSEloss_in_masked_patches",
-            F.mse_loss(x_patchified[active_mask], x_hat[active_mask]),
-        )
+        if self.limb_mask is not None:
+            self.log("val_MSEloss_in_masked_patches", masked_mse)
 
     def forward(self, x, mask_ratio=None):
         """Perform a forward pass through the MAE.
@@ -288,46 +292,61 @@ class MAE(BaseModule):
             batch: A tuple containing (images, timestamps).
             batch_idx: The index of the current batch.
         """
-        x, timestamps = batch
-        x_patchified = patchify(x, self.patch_size, self.tubelet_size)
+        x, timestamps = batch[:2]
+
         loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
-        x_hat_reconstructed = unpatchify(
-            x_hat, self.img_size, self.patch_size, self.tubelet_size
-        )
+        x_hat_reconstructed = unpatchify(x_hat, self.img_size, self.patch_size, self.tubelet_size)
 
-        active_mask = mask == 1
+        # Transfer both tensors to CPU once, outside all loops
+        x_np = x.detach().cpu().numpy()  # [B, C, T, H, W]
+        x_hat_np = x_hat_reconstructed.detach().cpu().numpy()
+
         batch_size = mask.shape[0]
-        grid_size = 512 // self.patch_size
-        mask_grid = (
-            mask.reshape(batch_size, grid_size, grid_size).detach().cpu().numpy()
-        )
+        num_frames = x.shape[2]
 
-        mask_full = mask_grid.repeat(self.patch_size, axis=1).repeat(
-            self.patch_size, axis=2
-        )
-        mask_full = mask_full.astype(bool)
+        if self.limb_mask is not None:
+            # Build full-resolution mask once for the entire batch: [B, 512, 512]
+            grid_size = self.img_size // self.patch_size
+            mask_full = (
+                mask.reshape(batch_size, grid_size, grid_size)
+                .detach()
+                .cpu()
+                .numpy()
+                .repeat(self.patch_size, axis=1)
+                .repeat(self.patch_size, axis=2)
+                .astype(bool)
+            )
 
-        step_metrics = []
-        for i in range(batch_size):
-            current_mask = mask_full[i]
-            for frame in range(x.shape[2]):
-                target_pixels = x[i, :, frame, current_mask].detach().cpu().numpy()
-                pred_pixels = (
-                    x_hat_reconstructed[i, :, frame, current_mask]
-                    .detach()
-                    .cpu()
-                    .numpy()
+            step_metrics = [
+                bench_recon.get_metrics_for_masked_patches(
+                    x_np[i, :, frame, mask_full[i]],
+                    x_hat_np[i, :, frame, mask_full[i]],
+                    self.chan_types,
                 )
+                for i in range(batch_size)
+                for frame in range(num_frames)
+            ]
 
-                metrics = bench_recon.get_metrics_for_masked_patches(
-                    target_pixels, pred_pixels, self.chan_types
+            x_patchified = patchify(x, self.patch_size, self.tubelet_size)
+            active_mask = mask == 1
+            masked_mse = F.mse_loss(x_patchified[active_mask], x_hat[active_mask])
+
+        else:
+            step_metrics = [
+                bench_recon.get_metrics(
+                    x_np[i, :, frame, :, :],
+                    x_hat_np[i, :, frame, :, :],
+                    self.chan_types,
                 )
-                step_metrics.append(metrics)
+                for i in range(batch_size)
+                for frame in range(num_frames)
+            ]
 
-        masked_mse = F.mse_loss(x_patchified[active_mask], x_hat[active_mask])
-        self.log("test_loss", loss)
-        self.log("test_MSEloss_in_masked_patches", masked_mse)
         self.test_results.extend(step_metrics)
+
+        self.log("test_loss", loss)
+        if self.limb_mask is not None:
+            self.log("test_MSEloss_in_masked_patches", masked_mse)
 
     def on_test_epoch_end(self):
         """Called at the end of the test epoch.
@@ -348,9 +367,7 @@ class MAE(BaseModule):
         cols = df.columns.tolist()
         final_df = df[[cols[-1]] + cols[:-1]]
 
-        output_path = os.path.join(
-            self.trainer.default_root_dir, "test_metrics_summary.csv"
-        )
+        output_path = os.path.join(self.trainer.default_root_dir, "test_metrics_summary.csv")
         final_df.to_csv(output_path, index=False)
         print(f"\n[INFO] Test results saved to: {output_path}")
 

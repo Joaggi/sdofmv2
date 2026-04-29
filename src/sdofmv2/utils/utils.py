@@ -284,11 +284,6 @@ class AttributeDict(dict):
     __setattr__ = dict.__setitem__
 
 
-aiamap = sunpy.map.Map(
-    sunpy.data.sample.AIA_171_IMAGE
-)  # example image is loaded at 1024x1024
-
-
 def stonyhurst_to_patch_index(lat, lon, patch_size, img_w=512, img_h=512):
     """Convert Heliographic Stonyhurst coordinates to patch indices.
 
@@ -310,6 +305,7 @@ def stonyhurst_to_patch_index(lat, lon, patch_size, img_w=512, img_h=512):
             precision loss in coordinate conversion.
     """
     # Heliographic Stonyhurst coordinates to patch index
+    aiamap = sunpy.map.Map(sunpy.data.sample.AIA_171_IMAGE)  # example image is loaded at 1024x1024
     coord = SkyCoord(lat * u.deg, lon * u.deg, frame=HeliographicStonyhurst)
     x, y = aiamap.wcs.world_to_pixel(coord)  # (x, y) in pixels
     scale_x = 1024 / img_w
@@ -339,11 +335,35 @@ def patchify(imgs, patch_size, tubelet_size):
     """
     p = patch_size
     tub = tubelet_size
-    x = rearrange(
-        imgs, "b c (t tub) (h p) (w q) -> b (t h w) (tub p q c)", tub=tub, p=p, q=p
-    )
+    x = rearrange(imgs, "b c (t tub) (h p) (w q) -> b (t h w) (tub p q c)", tub=tub, p=p, q=p)
 
     return x
+
+
+def spatial_to_patch_mask(
+    mask_2d: torch.Tensor, patch_size: int, num_frames: int = 1
+) -> torch.Tensor:
+    """Convert 2D spatial mask to patch-level mask.
+
+    Args:
+        mask_2d: 2D binary mask of shape (H, W).
+        patch_size: Spatial size of each patch.
+        num_frames: Number of frames (temporal). Default: 1.
+
+    Returns:
+        torch.Tensor: 1D boolean tensor of shape (L,) where True = off-limb patch.
+    """
+    H, W = mask_2d.shape
+    p = patch_size
+
+    h = H // p
+    w = W // p
+
+    mask_3d = mask_2d.unsqueeze(0).unsqueeze(0).expand(num_frames, 1, -1, -1)
+    patches = rearrange(mask_3d, "(t c) (h p) (w q) -> (t h w) (p q c)", p=p, q=p)
+
+    patch_is_zero = patches.sum(dim=(-1, -2)) == 0
+    return patch_is_zero
 
 
 def unpatchify(x, img_size, patch_size, tubelet_size):

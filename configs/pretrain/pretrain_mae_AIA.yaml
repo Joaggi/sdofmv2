@@ -1,20 +1,20 @@
 # general
 experiment:
-  name: mae-pretrain-aia # generate random name in wandb
+  name: mae-pretrain-aia-split_pixel_loss-huber # generate random name in wandb
   project: sdofm
   model: mae
   backbone:
     model: mae
     is_backbone: true
-    ckpt_dir: ./assets/check_point/backbone/AIA/
-    weight_name: AIA_MSEloss_epoch=171-val_loss=0.00.ckpt
+    ckpt_dir: ./assets/checkpoints/backbone/AIA/
+    weight_name: id_igwdm7mx_mae_epoch=76-val_loss=0.01.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
   
   wandb:
     enable: true
-    run_id: null
+    run_id: igwdm7mx
     entity: allshaman
     group: ""
     job_type: pretrain
@@ -23,14 +23,7 @@ experiment:
     output_directory: ./assets/wandb
     log_model: False # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
     offline: false
-  
-  gcp_storage: # this will checkpoint all epoches, perhaps clean up this config
-    enabled: False
-    bucket: sdofm-checkpoints
   fold: null
-  evaluate: false     # skip training and only evaluate (requires checkpoint to be set)
-  checkpoint: null    # this is the wandb run_id of the checkpoint to load
-  save_results: true  # save full results to file and wandb
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
   # lightining pretrainer
   precision: 32 #-true'       # (32, 64) for cuda, ('32-true', '16-true', 'bf16-true') for tpu
@@ -49,9 +42,9 @@ data:
     val: [11]
     test: [12]
     holdout: []
-  num_workers: 4    # set appropriately for your machine
+  num_workers: 24    # set appropriately for your machine
   pin_memory: true
-  prefetch_factor: 8
+  prefetch_factor: 2
   persistent_workers: true
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
   drop_frame_dim: false
@@ -62,8 +55,15 @@ data:
     sub_directory:
       hmi: null
       aia: AIA.zarr
-      eve: EVE_legacy.zarr
+      eve: null
       cache: cache
+    aligndata_dir: ${sdoml.save_directory}/${sdoml.sub_directory.cache}/AIA_FULL_12min_fulldata
+    aligndata_files:
+      train: aligndata_train.csv
+      val: aligndata_val.csv
+      test: aligndata_test.csv
+      full: aligndata_full.csv
+    hmi_mask: hmi_mask_512x512.npy
     components: null # null for select all magnetic components ["Bx", "By", "Bz"]
     wavelengths: null # null for select all wavelengths channels ["131A","1600A","1700A","171A","193A","211A","304A","335A","94A"]
     ions: null # null to select all ion channels ["C III", "Fe IX", "Fe VIII", "Fe X", "Fe XI", "Fe XII", "Fe XIII", "Fe XIV", "Fe XIX", "Fe XV", "Fe XVI", "Fe XVIII", "Fe XVI_2", "Fe XX", "Fe XX_2", "Fe XX_3", "H I", "H I_2", "H I_3", "He I", "He II", "He II_2", "He I_2", "Mg IX", "Mg X", "Mg X_2", "Ne VII", "Ne VIII", "O II", "O III", "O III_2", "O II_2", "O IV", "O IV_2", "O V", "O VI", "S XIV", "Si XII", "Si XII_2"]
@@ -77,7 +77,6 @@ data:
       enabled: true
       type: log #log, zscore, min-max
       scaler_factor: 1
-      scaler_div_factor: null
 
 # model configurations
 model:
@@ -96,15 +95,15 @@ model:
     decoder_num_heads: 16
     mlp_ratio: 4.0
     norm_layer: LayerNorm
-    masking_ratio: 0.5
+    masking_ratio: 0.0
 
   # for loss
   loss:
     space: patch # pixel, patch
-    type: patch_weight_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
-    exclude_limb: true
+    type: split_patch_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
+    # exclude_limb: true
     norm_pix_loss: false
-    only_masked_patches: false # patch space
+    # only_masked_patches: true # patch space
 
     pixel_weight_loss:
       base_loss: mae
@@ -117,13 +116,31 @@ model:
     patch_weight_loss:
       base_loss:
         type: huber
-        delta: 0.1
-      weight_on_patches: [0.35, 0.65]
+        delta: 1.0
+      weight_on_patches: [0.75, 0.2, 0.05]
+
+    split_patch_loss:
+      alpha: 0.8
+      beta: 0.2
+      base_type: huber
+      huber_delta: 1.0
+      use_4corner_detection: true
+      corner_size: 16
+      corner_ratio: 0.9
+
+    sparse_dense_loss:
+      alpha: 0.8
+      beta: 0.2
+      base_type: huber
+      huber_delta: 1.0
+      use_4corner_detection: true
+      corner_size: 16
+      corner_ratio: 0.9
 
   # for optimizer
   optimizer: 
     use: adamw
-    learning_rate: 3.0e-4
+    learning_rate: 1.0e-4
     weight_decay: 0.05
   
   # for scheduler
@@ -145,7 +162,7 @@ model:
       gamma: 0.95
     
   misc:
-    limb_mask: true
+    limb_mask: false
     epochs: 300
     batch_size: 16
     accumulate_grad_batches: 16 # accumulate grad for 32 steps

@@ -8,7 +8,9 @@ from pathlib import Path
 import hydra
 import numpy as np
 import torch
+import torch.multiprocessing as mp
 import wandb
+from einops import rearrange
 from loguru import logger as lgr_logger
 from omegaconf import DictConfig, OmegaConf
 
@@ -55,6 +57,35 @@ class Pretrainer(object):
         model (MAE): The initialized MAE model.
     """
 
+    def _compute_ids_limb_mask(self, limb_mask_2d):
+        """Convert 2D limb mask to patch-level indices.
+
+        Args:
+            limb_mask_2d: 2D binary tensor (H, W) where 1=solar disk, 0=space.
+
+        Returns:
+            torch.Tensor: 1D tensor of patch indices outside the solar disk.
+        """
+
+        patch_size = self.cfg.model.mae.patch_size
+        num_frames = self.cfg.model.mae.num_frames
+        img_size = self.cfg.model.mae.img_size
+
+        mask_3d = limb_mask_2d.unsqueeze(0).unsqueeze(0)
+        mask_3d = mask_3d.expand(num_frames, 1, img_size, img_size)
+
+        patches = rearrange(
+            mask_3d.float(),
+            "(t c) (h p) (w q) -> (t h w) (p q c)",
+            p=patch_size,
+            q=patch_size,
+        )
+
+        patch_sum = patches.sum(dim=(-1, -2))
+        off_limb_indices = (patch_sum == 0).nonzero(as_tuple=True)[0]
+
+        return off_limb_indices
+
     def __init__(self, cfg, logger=None, is_backbone=False):
         self.cfg = cfg
         self.logger = logger
@@ -67,8 +98,7 @@ class Pretrainer(object):
             ModelCheckpoint(
                 dirpath=cfg.experiment.backbone.ckpt_dir,
                 filename=(
-                    f"id_{logger.experiment.id}_{cfg.experiment.model}_"
-                    "{epoch}-{val_loss:.2f}"
+                    f"id_{logger.experiment.id}_{cfg.experiment.model}_{{epoch}}-{{val_loss:.2f}}"
                 ),
                 verbose=True,
                 monitor="val_loss",
@@ -150,13 +180,14 @@ class Pretrainer(object):
             val_months=self.cfg.data.month_splits.val,
             test_months=self.cfg.data.month_splits.test,
             holdout_months=self.cfg.data.month_splits.holdout,
-            cache_dir=os.path.join(
-                self.cfg.data.sdoml.save_directory,
-                self.cfg.data.sdoml.sub_directory.cache,
-            ),
+            aligndata_dir=self.cfg.data.sdoml.aligndata_dir,
+            aligndata_files=self.cfg.data.sdoml.get("aligndata_files", {}),
+            hmi_mask=self.cfg.data.sdoml.get("hmi_mask", "hmi_mask_512x512.npy"),
             min_date=self.cfg.data.min_date,
             max_date=self.cfg.data.max_date,
             num_frames=self.cfg.model.mae.num_frames,
+            patch_size=self.cfg.model.mae.patch_size,
+            img_size=self.cfg.model.mae.img_size,
             drop_frame_dim=self.cfg.data.drop_frame_dim,
             apply_mask=self.cfg.data.sdoml.apply_mask,
             precision=self.cfg.experiment.precision,
@@ -164,12 +195,12 @@ class Pretrainer(object):
         )
         self.data_module.setup()
 
+        limb_mask_2d = self.data_module.hmi_mask if cfg.model.misc.limb_mask is True else None
+
         model_hyperparams = {
             **cfg.model.mae,
             "chan_types": self.chan_types,
-            "limb_mask": (
-                self.data_module.hmi_mask if cfg.model.misc.limb_mask is True else None
-            ),
+            "limb_mask": limb_mask_2d,
             "loss_dict": self.cfg.model.loss,
             "optimizer_dict": self.cfg.model.optimizer,
             "scheduler_dict": self.cfg.model.scheduler,
@@ -282,15 +313,13 @@ class Pretrainer(object):
         # check input channels
         aia_list = (
             ALL_WAVELENGTHS
-            if self.cfg.data.sdoml.sub_directory.aia
-            and self.cfg.data.sdoml.wavelengths is None
+            if self.cfg.data.sdoml.sub_directory.aia and self.cfg.data.sdoml.wavelengths is None
             else self.cfg.data.sdoml.wavelengths or []
         )
 
         hmi_list = (
             ALL_COMPONENTS
-            if self.cfg.data.sdoml.sub_directory.hmi
-            and self.cfg.data.sdoml.components is None
+            if self.cfg.data.sdoml.sub_directory.hmi and self.cfg.data.sdoml.components is None
             else self.cfg.data.sdoml.components or []
         )
 
@@ -328,10 +357,9 @@ class Pretrainer(object):
             val_months=self.cfg.data.month_splits.val,
             test_months=self.cfg.data.month_splits.test,
             holdout_months=self.cfg.data.month_splits.holdout,
-            cache_dir=os.path.join(
-                self.cfg.data.sdoml.save_directory,
-                self.cfg.data.sdoml.sub_directory.cache,
-            ),
+            aligndata_dir=self.cfg.data.sdoml.aligndata_dir,
+            aligndata_files=self.cfg.data.sdoml.get("aligndata_files", {}),
+            hmi_mask=self.cfg.data.sdoml.get("hmi_mask", "hmi_mask_512x512.npy"),
             min_date=self.cfg.data.min_date,
             max_date=self.cfg.data.max_date,
             num_frames=self.cfg.model.mae.num_frames,
@@ -346,9 +374,7 @@ class Pretrainer(object):
             **self.cfg.model.mae,
             "chan_types": self.chan_types,
             "limb_mask": (
-                self.data_module.hmi_mask
-                if self.cfg.model.misc.limb_mask is True
-                else None
+                self.data_module.hmi_mask if self.cfg.model.misc.limb_mask is True else None
             ),
             "loss_dict": self.cfg.model.loss,
             "optimizer_dict": self.cfg.model.optimizer,
@@ -415,7 +441,7 @@ class Pretrainer(object):
 
 @hydra.main(
     config_path="../configs/pretrain/",
-    config_name="pretrain_mae_HMI.yaml",
+    config_name="pretrain_mae_AIA.yaml",
 )
 def main(cfg: DictConfig) -> None:
     # set seed
@@ -447,20 +473,15 @@ def main(cfg: DictConfig) -> None:
         wandb.login()
         output_dir = Path(cfg.experiment.wandb.output_directory)
         output_dir.mkdir(exist_ok=True, parents=True)
-        print(
-            f"Created directory for storing results: {cfg.experiment.wandb.output_directory}"
-        )
+        print(f"Created directory for storing results: {cfg.experiment.wandb.output_directory}")
         cache_dir = Path(f"{cfg.experiment.wandb.output_directory}/.cache")
         cache_dir.mkdir(exist_ok=True, parents=True)
 
-        os.environ["WANDB_CACHE_DIR"] = (
-            f"{cfg.experiment.wandb.output_directory}/.cache"
-        )
+        os.environ["WANDB_CACHE_DIR"] = f"{cfg.experiment.wandb.output_directory}/.cache"
 
         logger = WandbLogger(
             # WandbLogger params
-            name=cfg.experiment.name
-            + f"_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            name=cfg.experiment.name,
             project=cfg.experiment.project,
             dir=cfg.experiment.wandb.output_directory,
             log_model=cfg.experiment.wandb.log_model,
@@ -491,12 +512,14 @@ def main(cfg: DictConfig) -> None:
 if __name__ == "__main__":
     time_start = time.time()
 
+    # set the start method to 'spawn' for safe worker process
+    try:
+        mp.set_start_method("spawn", force=True)
+    except RuntimeError:
+        pass  # Can only be set once
+
     # errors
     os.environ["HYDRA_FULL_ERROR"] = "1"  # Produce a complete stack trace
 
     main()
-    print(
-        "\nTotal duration: {}".format(
-            utils.days_hours_mins_secs_str(time.time() - time_start)
-        )
-    )
+    print("\nTotal duration: {}".format(utils.days_hours_mins_secs_str(time.time() - time_start)))

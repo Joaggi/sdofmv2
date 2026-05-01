@@ -1,7 +1,5 @@
 # general
 experiment:
-  name: mae-pretrain-hmi # generate random name in wandb
-  project: sdofm
   model: mae
   backbone:
     model: mae
@@ -14,8 +12,10 @@ experiment:
   
   wandb:
     enable: true
+    name: mae-pretrain-hmi # generate random name in wandb
     run_id: null
     entity: allshaman
+    project: sdofm
     group: ""
     job_type: pretrain
     tags: []

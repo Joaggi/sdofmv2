@@ -472,8 +472,8 @@ def main(cfg: DictConfig) -> None:
 
         logger = WandbLogger(
             # WandbLogger params
-            name=cfg.experiment.name,
-            project=cfg.experiment.project,
+            name=cfg.experiment.wandb.name,
+            project=cfg.experiment.wandb.project,
             dir=cfg.experiment.wandb.output_directory,
             log_model=cfg.experiment.wandb.log_model,
             # kwargs for wandb.init

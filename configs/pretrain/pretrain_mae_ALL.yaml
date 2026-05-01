@@ -3,23 +3,23 @@ experiment:
   model: mae
   backbone:
     model: mae
-    is_backbone: true
-    ckpt_dir: ./assets/checkpoints/backbone/AIA/
-    weight_name: id_igwdm7mx_mae_epoch=76-val_loss=0.01.ckpt
+    is_backbone: false
+    ckpt_dir: ./assets/checkpoints/backbone/ALL/
+    weight_name: null
     weights_only: false
   seed: 0
   disable_cuda: false
   
   wandb:
     enable: true
-    name: mae-pretrain-aia-split_pixel_loss-huber
-    run_id: igwdm7mx
+    name: mae-pretrain-all-split_pixel_loss-huber
+    run_id: null
     entity: allshaman
     project: sdofm
     group: ""
     job_type: pretrain
     tags: []
-    notes: AIA-pretrain
+    notes: ALL-pretrain
     output_directory: ./assets/wandb
     log_model: False # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
     offline: false
@@ -51,11 +51,11 @@ data:
   
   # index path
   index_save_path: ./assets/cache/
-  train_index: "./assets/cache/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv"
-  val_index: "./assets/cache/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv"
-  test_index: "./assets/cache/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv"
+  train_index: "./assets/cache/ALL_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv"
+  val_index: "./assets/cache/ALL_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv"
+  test_index: "./assets/cache/ALL_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv"
   hmi_mask: ./assets/cache/hmi_mask_512x512.npy
-  normalization_stat_path: ./assets/cache/AIA/
+  normalization_stat_path: ./assets/cache/ALL/
 
   # for dataloader
   num_workers: 24    # set appropriately for your machine
@@ -68,7 +68,7 @@ data:
   sdoml:
     base_directory: /mnt/baobab
     sub_directory:
-      hmi: null
+      hmi: HMI.zarr
       aia: AIA.zarr
       eve: null
       cache: cache
@@ -172,8 +172,8 @@ model:
   misc:
     limb_mask: false
     epochs: 300
-    batch_size: 16
-    accumulate_grad_batches: 16 # accumulate grad for 32 steps
+    batch_size: 8
+    accumulate_grad_batches: 32 # accumulate grad for 32 steps
     limit_train_batches: null
 
 defaults:

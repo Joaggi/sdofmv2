@@ -50,10 +50,10 @@ data:
     holdout: []
   
   # index path
-  index_save_path: ./assets/cache/
-  train_index: "./assets/cache/ALL_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv"
-  val_index: "./assets/cache/ALL_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv"
-  test_index: "./assets/cache/ALL_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv"
+  index_save_path: ./assets/cache/ALL/
+  train_index: "./assets/cache/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv"
+  val_index: "./assets/cache/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv"
+  test_index: "./assets/cache/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv"
   hmi_mask: ./assets/cache/hmi_mask_512x512.npy
   normalization_stat_path: ./assets/cache/ALL/
 

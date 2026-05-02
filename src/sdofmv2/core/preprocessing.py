@@ -116,7 +116,7 @@ def aligntime(
                     df_t_aia = pd.DataFrame(
                         {
                             "Time": pd.to_datetime(
-                                t_obs_aia_channel[valid_indices], format="mixed"
+                                t_obs_aia_channel[valid_indices], format="mixed", utc=True
                             ),
                             f"idx_{wavelength}": np.arange(0, len(t_obs_aia_channel))[
                                 valid_indices

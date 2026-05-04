@@ -217,9 +217,9 @@ class MAE(BaseModule):
 
         self.validation_metrics.extend(step_metrics)
 
-        self.log("val_loss", loss)
+        self.log("val_loss", loss, sync_dist=True)
         if self.limb_mask is not None:
-            self.log("val_MSEloss_in_masked_patches", masked_mse)
+            self.log("val_MSEloss_in_masked_patches", masked_mse, sync_dist=True)
 
     def forward(self, x, mask_ratio=None):
         """Perform a forward pass through the MAE.
@@ -274,7 +274,7 @@ class MAE(BaseModule):
             )
             for k, v in batch_metrics.items():
                 for i, j in v.items():
-                    self.log(f"val_{k}_{i}", j)
+                    self.log(f"val_{k}_{i}", j, sync_dist=True)
 
         else:
             for k in batch_metrics.keys():
@@ -344,9 +344,9 @@ class MAE(BaseModule):
 
         self.test_results.extend(step_metrics)
 
-        self.log("test_loss", loss)
+        self.log("test_loss", loss, sync_dist=True)
         if self.limb_mask is not None:
-            self.log("test_MSEloss_in_masked_patches", masked_mse)
+            self.log("test_MSEloss_in_masked_patches", masked_mse, sync_dist=True)
 
     def on_test_epoch_end(self):
         """Called at the end of the test epoch.
@@ -375,6 +375,6 @@ class MAE(BaseModule):
             self.logger.log_table(key="test_reconstruction_summary", dataframe=final_df)
             for chan, metrics in batch_metrics.items():
                 for m_name, val in metrics.items():
-                    self.log(f"test_{chan}_{m_name}", val)
+                    self.log(f"test_{chan}_{m_name}", val, sync_dist=True)
 
         self.test_results.clear()

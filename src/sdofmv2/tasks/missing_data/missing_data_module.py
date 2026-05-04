@@ -155,4 +155,4 @@ class MissingDataModel(BaseModule):
                     )
                 )
 
-        self.log("val_loss", loss)
+        self.log("val_loss", loss, sync_dist=True)

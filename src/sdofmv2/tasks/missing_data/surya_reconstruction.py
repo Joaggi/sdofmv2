@@ -200,7 +200,57 @@ class SuryaReconstructionModel(pl.LightningModule):
         pred = predicted_x[:, dropped_channel, :, :]
 
         loss = F.mse_loss(pred, target)
-        self.log("train_loss", loss, prog_bar=True)
+        self.log("train_loss", loss, prog_bar=True, sync_dist=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        """Validation step.
+
+        Args:
+            batch (dict): Batch dictionary.
+            batch_idx (int): Batch index.
+
+        Returns:
+            torch.Tensor: The computed loss.
+        """
+        original_x = batch["ts"]
+        masked_x, dropped_channel = self.mask_input(original_x)
+
+        model_input = batch.copy()
+        model_input["ts"] = masked_x
+
+        predicted_x = self(model_input)
+
+        target = original_x[:, dropped_channel, -1, :, :]
+        pred = predicted_x[:, dropped_channel, :, :]
+
+        loss = F.mse_loss(pred, target)
+        self.log("val_loss", loss, prog_bar=True, sync_dist=True)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        """Test step.
+
+        Args:
+            batch (dict): Batch dictionary.
+            batch_idx (int): Batch index.
+
+        Returns:
+            torch.Tensor: The computed loss.
+        """
+        original_x = batch["ts"]
+        masked_x, dropped_channel = self.mask_input(original_x)
+
+        model_input = batch.copy()
+        model_input["ts"] = masked_x
+
+        predicted_x = self(model_input)
+
+        target = original_x[:, dropped_channel, -1, :, :]
+        pred = predicted_x[:, dropped_channel, :, :]
+
+        loss = F.mse_loss(pred, target)
+        self.log("test_loss", loss, prog_bar=True, sync_dist=True)
         return loss
 
     def configure_optimizers(self):

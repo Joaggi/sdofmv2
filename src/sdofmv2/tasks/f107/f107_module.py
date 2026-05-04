@@ -134,7 +134,7 @@ class MultiLayerPerceptron(BaseModule):
         imgs, timestamps, y = batch
         logits = self(imgs).squeeze(-1)
         loss = self.criterion(logits, y)
-        self.log("val_loss", loss, prog_bar=True)
+        self.log("val_loss", loss, prog_bar=True, sync_dist=True)
         return loss
 
     def test_step(self, batch, batch_idx):
@@ -142,7 +142,7 @@ class MultiLayerPerceptron(BaseModule):
         imgs, timestamps, y = batch
         logits = self(imgs).squeeze(-1)
         loss = self.criterion(logits, y)
-        self.log("test_loss", loss, prog_bar=True)
+        self.log("test_loss", loss, prog_bar=True, sync_dist=True)
 
         preds_real = logits.detach().cpu().numpy()
         labels_real = y.cpu().numpy()

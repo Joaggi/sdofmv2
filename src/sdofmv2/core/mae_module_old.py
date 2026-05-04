@@ -102,7 +102,7 @@ class MAE_old(BaseModule):
                     )
                 )
 
-        self.log("val_loss", loss)
+        self.log("val_loss", loss, sync_dist=True)
 
     def forward(self, x):
         loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
@@ -134,7 +134,7 @@ class MAE_old(BaseModule):
             for k, v in batch_metrics.items():
                 # sync_dist as this tries to include all
                 for i, j in v.items():
-                    self.log(f"val_{k}_{i}", j)
+                    self.log(f"val_{k}_{i}", j, sync_dist=True)
 
             # model_artifact = wandb.Artifact("model", type="model")
             # model_artifact.add_reference(f"gs://sdofm-checkpoints/{wandb.run.id}-{wandb.run.name}/model-step{wandb.run.step}.ckpt")
@@ -189,8 +189,8 @@ class MAE_old(BaseModule):
                 step_metrics.append(metrics)
 
         masked_mse = F.mse_loss(x_patchified[active_mask], x_hat[active_mask])
-        self.log("test_loss", loss)
-        self.log("test_MSEloss_in_masked_patches", masked_mse)
+        self.log("test_loss", loss, sync_dist=True)
+        self.log("test_MSEloss_in_masked_patches", masked_mse, sync_dist=True)
         self.test_results.extend(step_metrics)
 
     def on_test_epoch_end(self):
@@ -217,6 +217,6 @@ class MAE_old(BaseModule):
             self.logger.log_table(key="test_reconstruction_summary", dataframe=final_df)
             for chan, metrics in batch_metrics.items():
                 for m_name, val in metrics.items():
-                    self.log(f"test_{chan}_{m_name}", val)
+                    self.log(f"test_{chan}_{m_name}", val, sync_dist=True)
 
         self.test_results.clear()

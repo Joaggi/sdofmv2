@@ -6,19 +6,11 @@ import torch.nn.functional as F
 import wandb
 
 from lightning.pytorch.utilities import grad_norm
-from torchmetrics import (
-    Accuracy,
-    AUROC,
-    CohenKappa,
-    F1Score,
-    MatthewsCorrCoef,
-    Precision,
-    Recall,
-)
 
 from sdofmv2.core import BaseModule
 from .focal_loss import focal_loss_multiclass
 from .head_networks import ClsLinear, SimpleLinear, SkipLinearHead, TransformerHead
+from .metrics import SolarWindMetrics
 
 
 class SWClassifier(BaseModule):
@@ -115,57 +107,10 @@ class SWClassifier(BaseModule):
         self.attn_maps = []
         self.loss_dict = loss_dict
 
-        # evaluation metrics for training
-        self.train_acc = Accuracy(
-            task="multiclass", num_classes=self.num_classes, average="macro"
-        )
-        self.train_f1 = F1Score(
-            task="multiclass", num_classes=self.num_classes, average="macro"
-        )
-        self.val_f1 = F1Score(
-            task="multiclass", num_classes=self.num_classes, average="macro"
-        )
-        self.test_f1 = F1Score(
-            task="multiclass", num_classes=self.num_classes, average="macro"
-        )
-
-        # evaluation metrics for validation
-        self.val_precision = Precision(
-            task="multiclass", num_classes=self.num_classes, average="macro"
-        )
-        self.val_recall = Recall(
-            task="multiclass", num_classes=self.num_classes, average="macro"
-        )
-        self.val_acc = Accuracy(
-            task="multiclass", num_classes=self.num_classes, average="micro"
-        )  # Single value
-        self.val_auroc = AUROC(
-            task="multiclass", num_classes=self.num_classes, average="macro"
-        )  # Single value
-        self.val_mcc = MatthewsCorrCoef(
-            task="multiclass", num_classes=self.num_classes
-        )  # Single value
-        self.val_kappa = CohenKappa(
-            task="multiclass", num_classes=self.num_classes
-        )  # Single value
-
-        # evaluation metrics for validation
-        self.test_precision = Precision(
-            task="multiclass", num_classes=self.num_classes, average="macro"
-        )
-        self.test_recall = Recall(
-            task="multiclass", num_classes=self.num_classes, average="macro"
-        )
-        self.test_acc = Accuracy(
-            task="multiclass", num_classes=self.num_classes, average="macro"
-        )  # Single value
-        self.test_auroc = AUROC(
-            task="multiclass", num_classes=self.num_classes, average="macro"
-        )  # Single value
-        self.test_mcc = MatthewsCorrCoef(
-            task="multiclass", num_classes=self.num_classes
-        )  # Single value
-        self.test_kappa = CohenKappa(task="multiclass", num_classes=self.num_classes)
+        # evaluation metrics
+        self.train_metrics = SolarWindMetrics(num_classes=self.num_classes, stage="train")
+        self.val_metrics = SolarWindMetrics(num_classes=self.num_classes, stage="val")
+        self.test_metrics = SolarWindMetrics(num_classes=self.num_classes, stage="test")
 
         # Storage for validation data
         self.val_all_imgs = []
@@ -327,9 +272,7 @@ class SWClassifier(BaseModule):
         loss = self.loss_fn(y_hat, target)
 
         # Update metrics
-        preds = torch.argmax(y_hat, dim=1)
-        self.train_f1.update(preds, target)
-        self.train_acc.update(preds, target)
+        self.train_metrics.update(y_hat, target)
 
         self.log(
             "train_loss",
@@ -343,24 +286,7 @@ class SWClassifier(BaseModule):
         # Log current learning rate from optimizer
         lr = self.trainer.optimizers[0].param_groups[0]["lr"]
         self.log("lr", lr, on_epoch=True, prog_bar=False, logger=True, sync_dist=True)
-        self.log(
-            "train_f1",
-            self.train_f1,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            sync_dist=True,
-        )
-        self.log(
-            "train_acc",
-            self.train_acc,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=False,
-            logger=True,
-            sync_dist=True,
-        )
+        self.log_dict(self.train_metrics.compute(), on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
 
         return loss
 
@@ -381,14 +307,7 @@ class SWClassifier(BaseModule):
         val_loss = self.loss_fn(y_hat, target)
 
         # Update metrics
-        preds = torch.argmax(y_hat, dim=1)
-        self.val_f1.update(preds, target)
-        self.val_precision.update(preds, target)
-        self.val_recall.update(preds, target)
-        self.val_acc.update(preds, target)
-        self.val_auroc.update(y_hat, target)
-        self.val_mcc.update(preds, target)
-        self.val_kappa.update(preds, target)
+        self.val_metrics.update(y_hat, target)
 
         self.log(
             "val_loss",
@@ -399,7 +318,9 @@ class SWClassifier(BaseModule):
             logger=True,
             sync_dist=True,
         )
+
         # Store data for epoch-end analysis
+        preds = torch.argmax(y_hat, dim=1)
         if batch_idx < 5:  # Only store first few batches
             # Store data for epoch-end analysis
             self.val_all_imgs.append(imgs.cpu())
@@ -428,26 +349,12 @@ class SWClassifier(BaseModule):
         test_loss = self.loss_fn(y_hat, target)
         preds = torch.argmax(y_hat, dim=1)
 
-        # Update the F1 metric with predictions and targets
-        self.test_f1.update(preds, target)
-        self.test_precision.update(preds, target)
-        self.test_recall.update(preds, target)
-        self.test_acc.update(preds, target)
-        self.test_auroc.update(y_hat, target)
-        self.test_mcc.update(preds, target)
-        self.test_kappa.update(preds, target)
+        # Update metrics
+        self.test_metrics.update(y_hat, target)
 
         self.log(
             "test_loss",
             test_loss,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            sync_dist=True,
-        )
-        self.log(
-            "test_f1",
-            self.test_f1,
             on_epoch=True,
             prog_bar=True,
             logger=True,
@@ -470,65 +377,16 @@ class SWClassifier(BaseModule):
         (confusion matrix, class distributions), and clears stored buffers.
         """
         # Compute and log all accumulated metrics
-        self.log(
-            "val_f1",
-            self.val_f1.compute(),
+        self.log_dict(
+            self.val_metrics.compute(),
             on_epoch=True,
             prog_bar=True,
-            logger=True,
-            sync_dist=True,
-        )
-        self.log(
-            "val_precision",
-            self.val_precision.compute(),
-            on_epoch=True,
-            logger=True,
-            sync_dist=True,
-        )
-        self.log(
-            "val_recall",
-            self.val_recall.compute(),
-            on_epoch=True,
-            logger=True,
-            sync_dist=True,
-        )
-        self.log(
-            "val_acc",
-            self.val_acc.compute(),
-            on_epoch=True,
-            logger=True,
-            sync_dist=True,
-        )
-        self.log(
-            "val_auroc",
-            self.val_auroc.compute(),
-            on_epoch=True,
-            logger=True,
-            sync_dist=True,
-        )
-        self.log(
-            "val_mcc",
-            self.val_mcc.compute(),
-            on_epoch=True,
-            logger=True,
-            sync_dist=True,
-        )
-        self.log(
-            "val_kappa",
-            self.val_kappa.compute(),
-            on_epoch=True,
             logger=True,
             sync_dist=True,
         )
 
         # WandB logging (only at epoch end to avoid slowdown)
         if len(self.val_all_preds) > 0 and len(self.val_all_targets) > 0:
-            # Concatenate all stored data
-            # all_imgs = torch.cat(self.val_all_imgs, dim=0)
-            # all_timestamps = torch.cat(self.val_all_timestamps, dim=0)
-            # all_targets = torch.cat(self.val_all_targets, dim=0)
-            # all_preds = torch.cat(self.val_all_preds, dim=0)
-            # all_positions = torch.cat(self.val_all_positions, dim=0)
             all_barplot_targets = torch.cat(self.val_barplot_targets, dim=0)
             all_barplot_preds = torch.cat(self.val_barplot_preds, dim=0)
 
@@ -592,16 +450,7 @@ class SWClassifier(BaseModule):
         self.val_barplot_targets.clear()
         self.val_barplot_preds.clear()
 
-        for metric in [
-            self.val_f1,
-            self.val_precision,
-            self.val_recall,
-            self.val_acc,
-            self.val_auroc,
-            self.val_mcc,
-            self.val_kappa,
-        ]:
-            metric.reset()
+        self.val_metrics.reset()
 
         gc.collect()
         torch.cuda.empty_cache()
@@ -611,6 +460,7 @@ class SWClassifier(BaseModule):
 
         Performs garbage collection and clears CUDA cache to free memory.
         """
+        self.train_metrics.reset()
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -621,55 +471,13 @@ class SWClassifier(BaseModule):
         accuracy, AUROC, MCC, and Cohen's Kappa.
         """
         # Log all test metrics
-        self.log(
-            "test_f1",
-            self.test_f1.compute(),
+        self.log_dict(
+            self.test_metrics.compute(),
             on_epoch=True,
             logger=True,
             sync_dist=True,
         )
-        self.log(
-            "test_precision",
-            self.test_precision.compute(),
-            on_epoch=True,
-            logger=True,
-            sync_dist=True,
-        )
-        self.log(
-            "test_recall",
-            self.test_recall.compute(),
-            on_epoch=True,
-            logger=True,
-            sync_dist=True,
-        )
-        self.log(
-            "test_acc",
-            self.test_acc.compute(),
-            on_epoch=True,
-            logger=True,
-            sync_dist=True,
-        )
-        self.log(
-            "test_auroc",
-            self.test_auroc.compute(),
-            on_epoch=True,
-            logger=True,
-            sync_dist=True,
-        )
-        self.log(
-            "test_mcc",
-            self.test_mcc.compute(),
-            on_epoch=True,
-            logger=True,
-            sync_dist=True,
-        )
-        self.log(
-            "test_kappa",
-            self.test_kappa.compute(),
-            on_epoch=True,
-            logger=True,
-            sync_dist=True,
-        )
+        self.test_metrics.reset()
 
     def on_before_optimizer_step(self, optimizer):
         """Called before each optimizer step to log gradient norms.

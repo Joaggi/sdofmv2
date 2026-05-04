@@ -3,17 +3,17 @@ experiment:
   model: mae
   backbone:
     model: mae
-    is_backbone: true
+    is_backbone: false
     ckpt_dir: ./assets/checkpoints/backbone/AIA/
-    weight_name: id_igwdm7mx_mae_epoch=129-val_loss=0.01.ckpt
+    weight_name: id_igwdm7mx_mae_epoch=76-val_loss=0.01.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
   
   wandb:
     enable: true
-    name: mae-pretrain-aia-split_pixel_loss-huber
-    run_id: igwdm7mx
+    name: test-debug2
+    run_id: test-debug2
     entity: allshaman
     project: sdofm
     group: ""
@@ -31,7 +31,7 @@ experiment:
   accelerator: gpu  # options are "auto", "gpu", "tpu", "ipu", or "cpu"
   distributed:
     enabled: true
-    devices: [0] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
+    devices: [1] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
 
 # dataset configuration
 data:

@@ -562,7 +562,7 @@ class SDOMLDataModule(pl.LightningDataModule):
         base_path = Path(self.normalization_stat_path)
         pattern = f"*{time_range}_norm-{self.normalization.type}*.json"
 
-        files = list(base_path.glob(pattern))
+        files = list(base_path.rglob(pattern))
         if not files:
             raise FileNotFoundError(f"No normalization stats found for {time_range}")
 

@@ -89,9 +89,13 @@ class Pretrainer(object):
     def __init__(self, cfg, logger=None, is_backbone=False):
         self.cfg = cfg
         self.logger = logger
-        self.ckpt_path = os.path.join(
-            self.cfg.experiment.backbone.ckpt_dir,
-            self.cfg.experiment.backbone.weight_name,
+        self.ckpt_path = (
+            os.path.join(
+                self.cfg.experiment.backbone.ckpt_dir,
+                self.cfg.experiment.backbone.weight_name,
+            )
+            if self.cfg.experiment.backbone.weight_name is not None
+            else None
         )
 
         self.callbacks = [

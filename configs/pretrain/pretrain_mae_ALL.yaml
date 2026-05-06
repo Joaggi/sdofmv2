@@ -21,7 +21,7 @@ experiment:
     tags: []
     notes: ALL-pretrain
     output_directory: ./assets/wandb
-    log_model: False # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
+    log_model: false # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
     offline: false
   fold: null
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
@@ -51,10 +51,10 @@ data:
   
   # index path
   index_save_path: ./assets/cache/ALL/
-  train_index: "./assets/cache/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv"
-  val_index: "./assets/cache/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv"
-  test_index: "./assets/cache/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv"
-  hmi_mask: ./assets/cache/hmi_mask_512x512.npy
+  train_index: "./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv"
+  val_index: "./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv"
+  test_index: "./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv"
+  hmi_mask: ./assets/cache/ALL/hmi_mask_512x512.npy
   normalization_stat_path: ./assets/cache/ALL/
 
   # for dataloader
@@ -66,7 +66,7 @@ data:
   drop_frame_dim: false
   # output_directory: "wandb_output"
   sdoml:
-    base_directory: /mnt/baobab
+    base_directory: /mnt/jade
     sub_directory:
       hmi: HMI.zarr
       aia: AIA.zarr
@@ -94,7 +94,7 @@ model:
     patch_size: 16
     num_frames: 1
     tubelet_size: 1
-    in_chans: 9
+    in_chans: 12
     embed_dim: 768
     depth: 12
     num_heads: 12

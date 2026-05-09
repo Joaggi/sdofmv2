@@ -9,10 +9,10 @@ hydra:
     dir: .
 
 data:
-  sdo_data_root_path: /nobackupnfs1/sroy14/processed_data/Helio/nc 
-  train_data_path: ./data/surya-bench_sdo.csv
-  valid_data_path: ./data/surya-bench_sdo.csv
-  test_data_path: ./data/surya-bench_sdo.csv
+  sdo_data_root_path: /home/jinsu/surya-bench/
+  train_data_path: ./assets/cache/surya/surya_index.csv
+  valid_data_path: ./assets/cache/surya/surya_index.csv
+  test_data_path: ./assets/cache/surya/surya_index.csv
   channels: ['aia94', 'aia131', 'aia171', 'aia193', 'aia211', 'aia304', 'aia335', 'aia1600', 'hmi_m', 'hmi_bx', 'hmi_by', 'hmi_bz', 'hmi_v']
   time_delta_input_minutes: [-60, 0]
   time_delta_target_minutes: 0
@@ -24,7 +24,7 @@ data:
   persistent_workers: true
   pooling: 1
   random_vert_flip: false
-  scalers_path: ./data/scalers.yaml
+  scalers_path: ./assets/cache/surya/scalers.yaml
 
 backbone:
   img_size: 4096
@@ -49,7 +49,7 @@ backbone:
   checkpoint_layers: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
   nglo: 0
   freeze_backbone: True
-  path_weights: ./data/Surya-1.0/surya.366m.v1.pt
+  path_weights: ./assets/checkpoints/surya/surya.366m.v1.pt
 
 optimizer:
   type: adamw
@@ -65,8 +65,18 @@ etc:
   gradient_clip_val: 1.0
 
 wandb:
-  project: helio-fm
-  name: surya_reconstruction
+  enable: true
+  name: surya_missing_channel
+  run_id: null
+  entity: allshaman
+  project: sdofm
+  group: ""
+  job_type: finetune
+  tags: []
+  notes: surya missing channel
+  output_directory: ./assets/wandb
+  log_model: False # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
+  offline: true
 
 lora:
   use: true

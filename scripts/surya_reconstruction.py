@@ -7,9 +7,14 @@ from sdofmv2.tasks.missing_data import (
     SuryaReconstructionDataModule,
     SuryaReconstructionModel,
 )
+from sdofmv2.utils import flatten_dict
 
 
-@hydra.main(config_path="../configs/downstream", config_name="reconstruct_missing_channel", version_base="1.3")
+@hydra.main(
+    config_path="../configs/downstream",
+    config_name="reconstruct_missing_channel",
+    version_base=None,
+)
 def main(config: DictConfig):
     """Main entry point for the reconstruction script using Hydra."""
     print(OmegaConf.to_yaml(config))
@@ -27,6 +32,24 @@ def main(config: DictConfig):
             name=config.wandb.name,
             entity=config.wandb.get("entity", None),
             save_dir=config.wandb.get("save_dir", "./results"),
+        )
+
+        logger = WandbLogger(
+            # WandbLogger params
+            name=config.wandb.name,
+            project=config.wandb.project,
+            dir=config.wandb.output_directory,
+            log_model=config.wandb.log_model,
+            # kwargs for wandb.init
+            tags=config.wandb.tags,
+            notes=config.wandb.notes,
+            group=config.wandb.group,
+            save_code=True,
+            job_type=config.wandb.job_type,
+            config=flatten_dict(config),
+            id=config.wandb.run_id,
+            resume="allow",
+            mode="offline" if config.wandb.offline else "online",
         )
 
     trainer = pl.Trainer(

@@ -3,9 +3,9 @@ experiment:
   model: mae
   backbone:
     model: mae
-    is_backbone: false
+    is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: null
+    weight_name: id_uj0jxwrn_mae_epoch=13-val_loss=0.05.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
@@ -13,7 +13,7 @@ experiment:
   wandb:
     enable: true
     name: mae-pretrain-all-split_pixel_loss-huber
-    run_id: null
+    run_id: uj0jxwrn
     entity: allshaman
     project: sdofm
     group: ""
@@ -51,14 +51,14 @@ data:
   
   # index path
   index_save_path: ./assets/cache/ALL/
-  train_index: "./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv"
-  val_index: "./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv"
-  test_index: "./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv"
+  train_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv
+  val_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv
+  test_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv
   hmi_mask: ./assets/cache/ALL/hmi_mask_512x512.npy
   normalization_stat_path: ./assets/cache/ALL/
 
   # for dataloader
-  num_workers: 24    # set appropriately for your machine
+  num_workers: 12    # set appropriately for your machine
   pin_memory: true
   prefetch_factor: 2
   persistent_workers: true

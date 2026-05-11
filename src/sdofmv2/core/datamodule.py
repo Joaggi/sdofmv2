@@ -1,14 +1,11 @@
 # Adapted to be general from https://github.com/FrontierDevelopmentLab/2023-FDL-X-ARD-EVE/blob/main/src/irradiance/utilities/data_loader.py
 import os
-from pathlib import Path
 import re
 import time
 from pathlib import Path
 from loguru import logger
 
-import torch
 import yaml
-
 import dask.array as da
 from dask.diagnostics import ProgressBar
 

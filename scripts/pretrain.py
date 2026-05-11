@@ -508,10 +508,10 @@ if __name__ == "__main__":
     time_start = time.time()
 
     # set the start method to 'spawn' for safe worker process
-    try:
-        mp.set_start_method("spawn", force=True)
-    except RuntimeError:
-        pass  # Can only be set once
+    # try:
+    #     mp.set_start_method("spawn", force=True)
+    # except RuntimeError:
+    #     pass  # Can only be set once
 
     # errors
     os.environ["HYDRA_FULL_ERROR"] = "1"  # Produce a complete stack trace

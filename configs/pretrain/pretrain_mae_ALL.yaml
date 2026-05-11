@@ -108,7 +108,7 @@ model:
   # for loss
   loss:
     space: patch # pixel, patch
-    type: split_patch_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
+    type: split_pixel_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
     # exclude_limb: true
     norm_pix_loss: false
     # only_masked_patches: true # patch space
@@ -127,7 +127,7 @@ model:
         delta: 1.0
       weight_on_patches: [0.75, 0.2, 0.05]
 
-    split_patch_loss:
+    split_pixel_loss:
       alpha: 0.8
       beta: 0.2
       base_type: huber

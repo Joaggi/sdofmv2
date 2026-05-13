@@ -478,6 +478,7 @@ class SDOMLDataModule(pl.LightningDataModule):
         num_workers=None,
         pin_memory=False,
         persistent_workers=False,
+        multiprocessing_context=None,
         normalization={},
         normalization_stat_path="",
         train_index="",
@@ -493,6 +494,7 @@ class SDOMLDataModule(pl.LightningDataModule):
         self.num_workers = num_workers if num_workers is not None else os.cpu_count() // 2
         self.pin_memory = pin_memory
         self.persistent_workers = persistent_workers
+        self.multiprocessing_context = multiprocessing_context
         self.hmi_path = hmi_path
         self.aia_path = aia_path
         self.eve_path = eve_path
@@ -692,6 +694,7 @@ class SDOMLDataModule(pl.LightningDataModule):
             drop_last=True,
             pin_memory=self.pin_memory,
             persistent_workers=self.persistent_workers,
+            multiprocessing_context=self.multiprocessing_context,
         )
 
     def val_dataloader(self):
@@ -701,6 +704,7 @@ class SDOMLDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             persistent_workers=self.persistent_workers,
+            multiprocessing_context=self.multiprocessing_context,
         )
 
     def test_dataloader(self):
@@ -710,4 +714,5 @@ class SDOMLDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             persistent_workers=self.persistent_workers,
+            multiprocessing_context=self.multiprocessing_context,
         )

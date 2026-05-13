@@ -5,7 +5,7 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_uj0jxwrn_mae_epoch=13-val_loss=0.05.ckpt
+    weight_name: id_uj0jxwrn_mae_epoch=39-val_loss=0.03.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
@@ -58,10 +58,11 @@ data:
   normalization_stat_path: ./assets/cache/ALL/
 
   # for dataloader
-  num_workers: 12    # set appropriately for your machine
-  pin_memory: true
-  prefetch_factor: 2
+  num_workers: 8    # set appropriately for your machine
+  pin_memory: false
+  prefetch_factor: 1
   persistent_workers: true
+  multiprocessing_context: spawn
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
   drop_frame_dim: false
   # output_directory: "wandb_output"

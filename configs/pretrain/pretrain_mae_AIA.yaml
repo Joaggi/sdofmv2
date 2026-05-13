@@ -58,7 +58,7 @@ data:
   normalization_stat_path: ./assets/cache/AIA/
 
   # for dataloader
-  num_workers: 24    # set appropriately for your machine
+  num_workers: 12    # set appropriately for your machine
   pin_memory: true
   prefetch_factor: 2
   persistent_workers: true

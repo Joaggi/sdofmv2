@@ -6,10 +6,41 @@ import torch
 import torch.nn.functional as F
 from loguru import logger
 from torch.utils.data import DataLoader
-from omegaconf import DictConfig
+from torch.utils.data._utils.collate import default_collate
+from omegaconf import DictConfig, OmegaConf
 
 from terratorch_surya.datasets.helio import HelioNetCDFDataset
 from terratorch_surya.downstream_examples.ar_segmentation.models import HelioSpectformer2D
+
+
+def safe_collate(batch):
+    """
+    Intercepts the batch to fix datetime objects before the default
+    collator tries to turn them into tensors.
+    """
+    for sample in batch:
+        # Check if the sample is a tuple (data, metadata)
+        if isinstance(sample, tuple) and len(sample) == 2:
+            metadata = sample[1]
+            # Convert datetime64 to strings or unix timestamps
+            if "timestamps_input" in metadata:
+                metadata["timestamps_input"] = [str(t) for t in metadata["timestamps_input"]]
+            if "timestamps_targets" in metadata:
+                metadata["timestamps_targets"] = [str(t) for t in metadata["timestamps_targets"]]
+
+    return default_collate(batch)
+
+
+# def safe_collate(batch):
+#     """
+#     Strips metadata and returns only the data dictionary,
+#     collated into a single batch.
+#     """
+#     # Extract only the first part of the tuple (the dictionary of tensors)
+#     data_only_batch = [sample[0] for sample in batch]
+
+#     # default_collate will now only see standard tensors/numbers
+#     return default_collate(data_only_batch)
 
 
 class SuryaReconstructionDataModule(pl.LightningDataModule):
@@ -23,6 +54,7 @@ class SuryaReconstructionDataModule(pl.LightningDataModule):
         super().__init__()
         self.config = config
         self.dataset = None
+        self.scalers = OmegaConf.load(self.config.data.scalers_path)
 
     def setup(self, stage: str | None = None):
         """Sets up the dataset.
@@ -30,35 +62,78 @@ class SuryaReconstructionDataModule(pl.LightningDataModule):
         Args:
             stage (str, optional): The stage (train, val, test). Defaults to None.
         """
-        # Mapping config to HelioNetCDFDataset arguments
-        self.dataset = HelioNetCDFDataset(
-            index_path=self.config.data.train_data_path,
+        common_kwargs = dict(
             time_delta_input_minutes=list(self.config.data.time_delta_input_minutes),
             time_delta_target_minutes=self.config.data.time_delta_target_minutes,
             n_input_timestamps=self.config.data.n_input_timestamps,
-            rollout_steps=0, # As per config rollout_steps: 0
+            rollout_steps=0,
             num_mask_aia_channels=0,
-            phase="train",
             channels=list(self.config.data.channels),
             sdo_data_root_path=self.config.data.sdo_data_root_path,
             pooling=self.config.data.pooling,
             random_vert_flip=self.config.data.random_vert_flip,
+            scalers=self.scalers,
         )
 
-    def train_dataloader(self) -> DataLoader:
-        """Returns the training dataloader.
+        # Setup train and val datasets for the 'fit' (training) stage
+        if stage == "fit" or stage is None:
+            self.train_dataset = HelioNetCDFDataset(
+                index_path=self.config.data.train_data_path,
+                phase="train",
+                **common_kwargs,
+            )
 
-        Returns:
-            DataLoader: The training dataloader.
-        """
+            self.val_dataset = HelioNetCDFDataset(
+                index_path=self.config.data.valid_data_path,
+                phase="val",
+                **common_kwargs,
+            )
+
+        # Setup test dataset for the 'test' stage
+        if stage == "test" or stage is None:
+            self.test_dataset = HelioNetCDFDataset(
+                index_path=self.config.data.test_data_path,
+                phase="test",
+                **common_kwargs,
+            )
+
+    def train_dataloader(self) -> DataLoader:
+        """Returns the training dataloader."""
         return DataLoader(
-            self.dataset,
+            self.train_dataset,
             batch_size=self.config.data.batch_size,
             shuffle=True,
             num_workers=self.config.data.num_data_workers,
             pin_memory=self.config.data.pin_memory,
             prefetch_factor=self.config.data.prefetch_factor,
             persistent_workers=self.config.data.persistent_workers,
+            collate_fn=safe_collate,
+        )
+
+    def val_dataloader(self) -> DataLoader:
+        """Returns the validation dataloader."""
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.config.data.batch_size,
+            shuffle=False,  # No need to shuffle validation data
+            num_workers=self.config.data.num_data_workers,
+            pin_memory=self.config.data.pin_memory,
+            prefetch_factor=self.config.data.prefetch_factor,
+            persistent_workers=self.config.data.persistent_workers,
+            collate_fn=safe_collate,
+        )
+
+    def test_dataloader(self) -> DataLoader:
+        """Returns the testing dataloader."""
+        return DataLoader(
+            self.test_dataset,
+            batch_size=self.config.data.batch_size,
+            shuffle=False,  # No need to shuffle test data
+            num_workers=self.config.data.num_data_workers,
+            pin_memory=self.config.data.pin_memory,
+            prefetch_factor=self.config.data.prefetch_factor,
+            persistent_workers=self.config.data.persistent_workers,
+            collate_fn=safe_collate,
         )
 
 
@@ -73,7 +148,7 @@ class SuryaReconstructionModel(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.config = config
-        
+
         in_channels = len(config.data.channels)
 
         model_config = {
@@ -186,11 +261,12 @@ class SuryaReconstructionModel(pl.LightningModule):
         Returns:
             torch.Tensor: The computed loss.
         """
-        original_x = batch["ts"]
+        data, metadata = batch
+        original_x = data["ts"]
 
         masked_x, dropped_channel = self.mask_input(original_x)
 
-        model_input = batch.copy()
+        model_input = data.copy()
         model_input["ts"] = masked_x
 
         predicted_x = self(model_input)
@@ -213,10 +289,11 @@ class SuryaReconstructionModel(pl.LightningModule):
         Returns:
             torch.Tensor: The computed loss.
         """
-        original_x = batch["ts"]
+        data, metadata = batch
+        original_x = data["ts"]
         masked_x, dropped_channel = self.mask_input(original_x)
 
-        model_input = batch.copy()
+        model_input = data.copy()
         model_input["ts"] = masked_x
 
         predicted_x = self(model_input)
@@ -238,10 +315,11 @@ class SuryaReconstructionModel(pl.LightningModule):
         Returns:
             torch.Tensor: The computed loss.
         """
-        original_x = batch["ts"]
+        data, metadata = batch
+        original_x = data["ts"]
         masked_x, dropped_channel = self.mask_input(original_x)
 
-        model_input = batch.copy()
+        model_input = data.copy()
         model_input["ts"] = masked_x
 
         predicted_x = self(model_input)

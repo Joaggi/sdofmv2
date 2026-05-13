@@ -7,6 +7,9 @@ from pathlib import Path
 
 import hydra
 import numpy as np
+import numcodecs
+
+numcodecs.blosc.use_threads = False
 import torch
 import torch.multiprocessing as mp
 import wandb
@@ -180,6 +183,7 @@ class Pretrainer(object):
             num_workers=self.cfg.data.num_workers,
             pin_memory=self.cfg.data.pin_memory,
             persistent_workers=self.cfg.data.persistent_workers,
+            multiprocessing_context=self.cfg.data.multiprocessing_context,
             train_index=self.cfg.data.train_index,
             val_index=self.cfg.data.val_index,
             test_index=self.cfg.data.test_index,
@@ -205,33 +209,6 @@ class Pretrainer(object):
         }
 
         self.model = self.load_from_ckpt(model_hyperparams)
-
-    def load_from_ckpt(self, model_hyperparams):
-        """Loads the model from a checkpoint or initializes it from scratch.
-
-        Args:
-            model_hyperparams (dict): Hyperparameters for the MAE model.
-
-        Returns:
-            MAE: The initialized model instance.
-        """
-        if self.cfg.experiment.backbone.is_backbone:
-            if self.cfg.experiment.backbone.weights_only:
-                ckpt = torch.load(
-                    self.ckpt_path,
-                    weights_only=False,
-                    map_location="cpu",
-                )
-                lgr_logger.info("Loading weights only from checkpoint...")
-                model = MAE(**model_hyperparams)
-                model.load_state_dict(ckpt["state_dict"], strict=False)
-            else:
-                lgr_logger.info("Resuming training from checkpoint...")
-        else:
-            lgr_logger.info("No checkpoint, training from scratch")
-
-        model = MAE(**model_hyperparams)
-        return model
 
     def run(self):
         """Executes the pre-training loop.
@@ -266,117 +243,6 @@ class Pretrainer(object):
             weights_only=False,
         )
 
-        self.callbacks = [
-            ModelCheckpoint(
-                dirpath=self.cfg.experiment.backbone.ckpt_dir,
-                filename=(
-                    f"id_{self.logger.experiment.id}_{self.cfg.experiment.model}_"
-                    "{epoch}-{val_loss:.2f}"
-                ),
-                verbose=True,
-                monitor="val_loss",  # Specify which metric to monitor
-                mode="min",  # Use "min" for loss (lower is better)
-                save_top_k=3,  # Keep top 3 checkpoints with lowest val_loss
-                save_last=True,
-                save_weights_only=False,  # Change to True if you only want weights
-                enable_version_counter=True,
-            ),
-            Timer(),
-            RichProgressBar(),
-            LearningRateMonitor(logging_interval="step"),
-        ]
-
-        if self.cfg.experiment.distributed.enabled:
-            self.trainer = pl.Trainer(
-                accumulate_grad_batches=self.cfg.model.misc.accumulate_grad_batches,
-                devices=self.cfg.experiment.distributed.devices,
-                accelerator=self.cfg.experiment.accelerator,
-                max_epochs=self.cfg.model.misc.epochs,
-                precision=self.cfg.experiment.precision,
-                logger=self.logger,
-                enable_checkpointing=True,
-                log_every_n_steps=self.cfg.experiment.log_every_n_steps,
-                callbacks=self.callbacks,
-                limit_train_batches=self.cfg.model.misc.limit_train_batches,
-            )
-        else:
-            self.trainer = pl.Trainer(
-                accelerator=self.cfg.experiment.accelerator,
-                max_epochs=self.cfg.model.misc.epochs,
-                logger=self.logger,
-                callbacks=self.callbacks,
-                limit_train_batches=self.cfg.experiment.limit_train_batches,
-            )
-
-        # check input channels
-        aia_list = (
-            ALL_WAVELENGTHS
-            if self.cfg.data.sdoml.sub_directory.aia and self.cfg.data.sdoml.wavelengths is None
-            else self.cfg.data.sdoml.wavelengths or []
-        )
-
-        hmi_list = (
-            ALL_COMPONENTS
-            if self.cfg.data.sdoml.sub_directory.hmi and self.cfg.data.sdoml.components is None
-            else self.cfg.data.sdoml.components or []
-        )
-
-        aia_list.sort()
-        hmi_list.sort()
-        self.chan_types = aia_list + hmi_list
-
-        # data module
-        self.data_module = SDOMLDataModule(
-            hmi_path=(
-                os.path.join(
-                    self.cfg.data.sdoml.base_directory,
-                    self.cfg.data.sdoml.sub_directory.hmi,
-                )
-                if self.cfg.data.sdoml.sub_directory.hmi
-                else None
-            ),
-            aia_path=(
-                os.path.join(
-                    self.cfg.data.sdoml.base_directory,
-                    self.cfg.data.sdoml.sub_directory.aia,
-                )
-                if self.cfg.data.sdoml.sub_directory.aia
-                else None
-            ),
-            eve_path=None,
-            components=self.cfg.data.sdoml.components,
-            wavelengths=self.cfg.data.sdoml.wavelengths,
-            ions=self.cfg.data.sdoml.ions,
-            train_index=self.cfg.data.train_index,
-            val_index=self.cfg.data.val_index,
-            test_index=self.cfg.data.test_index,
-            hmi_mask=self.cfg.data.sdomlhmi_mask,
-            batch_size=self.cfg.model.misc.batch_size,
-            num_workers=self.cfg.data.num_workers,
-            pin_memory=self.cfg.data.pin_memory,
-            persistent_workers=self.cfg.data.persistent_workers,
-            num_frames=self.cfg.model.mae.num_frames,
-            drop_frame_dim=self.cfg.data.drop_frame_dim,
-            apply_mask=self.cfg.data.sdoml.apply_mask,
-            precision=self.cfg.experiment.precision,
-            normalization=self.cfg.data.sdoml.normalization,
-            normalization_stat_path=self.cfg.data.normalization_stat_path,
-        )
-        self.data_module.setup()
-
-        model_hyperparams = {
-            **self.cfg.model.mae,
-            "chan_types": self.chan_types,
-            "limb_mask": (
-                self.data_module.hmi_mask if self.cfg.model.misc.limb_mask is True else None
-            ),
-            "loss_dict": self.cfg.model.loss,
-            "optimizer_dict": self.cfg.model.optimizer,
-            "scheduler_dict": self.cfg.model.scheduler,
-        }
-
-        self.model = self.load_from_ckpt(model_hyperparams)
-
     def load_from_ckpt(self, model_hyperparams):
         # load backbone weights if specified
         # NOTE: weights_only=False is required because we need hyper_parameters
@@ -406,32 +272,6 @@ class Pretrainer(object):
         model = MAE(**model_hyperparams)
         return model
 
-    def run(self):
-        print("\nPRE-TRAINING\n")
-        self.trainer.fit(
-            model=self.model,
-            datamodule=self.data_module,
-            ckpt_path=(
-                self.ckpt_path
-                if self.cfg.experiment.backbone.is_backbone
-                and not self.cfg.experiment.backbone.weights_only
-                else None
-            ),
-            weights_only=False,
-        )
-        return self.trainer
-
-    def evaluate(self):
-        self.trainer.evaluate()
-
-    def test(self):
-        self.trainer.test(
-            model=self.model,
-            datamodule=self.data_module,
-            ckpt_path=self.ckpt_path,
-            weights_only=False,
-        )
-
 
 @hydra.main(
     config_path="../configs/pretrain/",
@@ -444,17 +284,6 @@ def main(cfg: DictConfig) -> None:
     np.random.seed(cfg.experiment.seed)
     random.seed(cfg.experiment.seed)
     seed_everything(cfg.experiment.seed)
-
-    # set precision of torch tensors
-    match cfg.experiment.precision:
-        case 64:
-            torch.set_default_tensor_type(torch.DoubleTensor)
-        case 32:
-            torch.set_default_tensor_type(torch.FloatTensor)
-        case _:
-            warnings.warn(
-                f"Setting precision {cfg.experiment.precision} will pass through to the trainer but not other operations."
-            )
 
     # run experiment
     print(f"\nRunning with config:")
@@ -508,10 +337,10 @@ if __name__ == "__main__":
     time_start = time.time()
 
     # set the start method to 'spawn' for safe worker process
-    # try:
-    #     mp.set_start_method("spawn", force=True)
-    # except RuntimeError:
-    #     pass  # Can only be set once
+    try:
+        mp.set_start_method("spawn", force=True)
+    except RuntimeError:
+        pass  # Can only be set once
 
     # errors
     os.environ["HYDRA_FULL_ERROR"] = "1"  # Produce a complete stack trace

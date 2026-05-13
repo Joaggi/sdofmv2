@@ -1,4 +1,5 @@
 import hydra
+import torch
 import lightning.pytorch as pl
 from lightning.pytorch.loggers import WandbLogger
 from omegaconf import DictConfig, OmegaConf
@@ -8,6 +9,8 @@ from sdofmv2.tasks.missing_data import (
     SuryaReconstructionModel,
 )
 from sdofmv2.utils import flatten_dict
+
+torch.set_float32_matmul_precision("medium")
 
 
 @hydra.main(

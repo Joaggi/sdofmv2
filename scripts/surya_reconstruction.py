@@ -1,7 +1,8 @@
 import hydra
 import torch
 import lightning.pytorch as pl
-from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
+from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import DictConfig, OmegaConf
 
 from sdofmv2.tasks.missing_data import (
@@ -27,18 +28,10 @@ def main(config: DictConfig):
     datamodule = SuryaReconstructionDataModule(config)
     model = SuryaReconstructionModel(config)
 
-    # Initialize WandB logger if config exists
-    logger = None
+    # Initialize Loggers
+    loggers = []
     if "wandb" in config:
-        logger = WandbLogger(
-            project=config.wandb.project,
-            name=config.wandb.name,
-            entity=config.wandb.get("entity", None),
-            save_dir=config.wandb.get("save_dir", "./results"),
-        )
-
-        logger = WandbLogger(
-            # WandbLogger params
+        loggers.append(WandbLogger(
             name=config.wandb.name,
             project=config.wandb.project,
             dir=config.wandb.output_directory,
@@ -53,7 +46,19 @@ def main(config: DictConfig):
             id=config.wandb.run_id,
             resume="allow",
             mode="offline" if config.wandb.offline else "online",
-        )
+        ))
+
+    loggers.append(CSVLogger(save_dir=config.wandb.get("output_directory", "./results"), name="csv_logs"))
+
+    # Callbacks
+    checkpoint_callback = ModelCheckpoint(
+        monitor="val_loss",
+        mode="min",
+        save_top_k=1,
+        dirpath=config.wandb.get("output_directory", "./results"),
+        filename="reconstruction-best-{epoch:02d}-{val_loss:.4f}"
+    )
+    lr_monitor = LearningRateMonitor(logging_interval='epoch')
 
     trainer = pl.Trainer(
         max_epochs=config.etc.max_epochs,
@@ -62,7 +67,8 @@ def main(config: DictConfig):
         precision=config.etc.precision,
         accumulate_grad_batches=config.etc.get("accumulate_grad_batches", 1),
         gradient_clip_val=config.etc.get("gradient_clip_val", None),
-        logger=logger,
+        logger=loggers,
+        callbacks=[checkpoint_callback, lr_monitor]
     )
 
     trainer.fit(model, datamodule=datamodule)

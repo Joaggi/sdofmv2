@@ -10,7 +10,7 @@ from torch.utils.data._utils.collate import default_collate
 from omegaconf import DictConfig, OmegaConf
 
 from terratorch_surya.datasets.helio import HelioNetCDFDataset
-from terratorch_surya.downstream_examples.ar_segmentation.models import HelioSpectformer2D
+from terratorch_surya.models.helio_spectformer import HelioSpectFormer
 
 
 def safe_collate(batch):
@@ -151,14 +151,7 @@ class SuryaReconstructionModel(pl.LightningModule):
 
         in_channels = len(config.data.channels)
 
-        model_config = {
-            "model": {
-                "ft_unembedding_type": "linear",
-                "ft_out_chans": in_channels,
-            }
-        }
-
-        self.model = HelioSpectformer2D(
+        self.model = HelioSpectFormer(
             img_size=config.backbone.img_size,
             patch_size=config.backbone.patch_size,
             in_chans=in_channels,
@@ -174,11 +167,9 @@ class SuryaReconstructionModel(pl.LightningModule):
             learned_flow=config.backbone.learned_flow,
             use_latitude_in_learned_flow=config.backbone.use_latitude_in_learned_flow,
             init_weights=config.backbone.init_weights,
-            dtype=torch.float32,
             checkpoint_layers=list(config.backbone.checkpoint_layers),
             rpe=config.backbone.rpe,
-            finetune=config.backbone.finetune,
-            config=model_config,
+            finetune=False, # Use original decoder
         )
 
         pretrained_path = config.backbone.path_weights
@@ -188,38 +179,13 @@ class SuryaReconstructionModel(pl.LightningModule):
             msg = self.model.load_state_dict(checkpoint, strict=False)
             logger.info(f"Checkpoint load result: {msg}")
 
-        # Apply LoRA or handle backbone freezing
-        if config.get("lora") and config.lora.get("use"):
-            from peft import LoraConfig, get_peft_model
-
-            logger.info("Applying PEFT LoRA")
-            lora_cfg = config.lora.config
-            peft_config = LoraConfig(
-                r=lora_cfg.get("r", 8),
-                lora_alpha=lora_cfg.get("lora_alpha", 8),
-                target_modules=list(
-                    lora_cfg.get(
-                        "target_modules",
-                        ["q_proj", "v_proj", "k_proj", "out_proj", "fc1", "fc2"],
-                    )
-                ),
-                lora_dropout=lora_cfg.get("lora_dropout", 0.1),
-                bias=lora_cfg.get("bias", "none"),
-            )
-            self.model = get_peft_model(self.model, peft_config)
-
-            # Ensure the fresh unembed (decoder) layer is trainable
-            for name, param in self.model.named_parameters():
-                if "unembed" in name:
-                    param.requires_grad = True
-
-        elif config.backbone.get("freeze_backbone"):
-            logger.info("Freezing backbone (only training decoder)")
-            for param in self.model.parameters():
+        # Freeze encoder, finetune decoder
+        logger.info("Freezing encoder (embedding/backbone), finetuning decoder (unembed)")
+        for name, param in self.model.named_parameters():
+            if "unembed" in name:
+                param.requires_grad = True
+            else:
                 param.requires_grad = False
-            for name, param in self.model.named_parameters():
-                if "unembed" in name:
-                    param.requires_grad = True
 
     def mask_input(self, x: torch.Tensor) -> tuple[torch.Tensor, int]:
         """Randomly masks one channel across all time steps.

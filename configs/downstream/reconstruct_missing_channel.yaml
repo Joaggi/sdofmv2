@@ -41,7 +41,7 @@ backbone:
   use_latitude_in_learned_flow: false
   rpe: false
   ensemble: null
-  finetune: True
+  finetune: False
   time_embedding:
     type: linear
     time_dim: 2

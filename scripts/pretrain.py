@@ -1,17 +1,14 @@
-import datetime
 import os
 import random
 import time
-import warnings
 from pathlib import Path
 
 import hydra
 import numpy as np
-import numcodecs
-
-numcodecs.blosc.use_threads = False
 import torch
 import torch.multiprocessing as mp
+
+mp.set_sharing_strategy("file_system")
 import wandb
 from einops import rearrange
 from loguru import logger as lgr_logger
@@ -335,12 +332,6 @@ def main(cfg: DictConfig) -> None:
 
 if __name__ == "__main__":
     time_start = time.time()
-
-    # set the start method to 'spawn' for safe worker process
-    try:
-        mp.set_start_method("spawn", force=True)
-    except RuntimeError:
-        pass  # Can only be set once
 
     # errors
     os.environ["HYDRA_FULL_ERROR"] = "1"  # Produce a complete stack trace

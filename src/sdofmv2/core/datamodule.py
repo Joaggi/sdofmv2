@@ -242,6 +242,12 @@ class SDOMLDataset(Dataset):
         timestamps = self.aligndata.index[idx : idx + self.num_frames].astype("int")
         timestamps = timestamps[0] if self.num_frames <= 1 else timestamps
 
+        # remove large numpy array
+        if "aia_images" in locals():
+            del aia_images
+        if "hmi_images" in locals():
+            del hmi_images
+
         if not self.get_header:
             if self.eve_data is not None:
                 eve_data = self.get_eve(idx)

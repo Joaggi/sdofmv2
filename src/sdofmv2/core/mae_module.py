@@ -155,7 +155,7 @@ class MAE(BaseModule):
 
         loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
 
-        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_loss", loss.detach(), on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -217,9 +217,9 @@ class MAE(BaseModule):
 
         self.validation_metrics.extend(step_metrics)
 
-        self.log("val_loss", loss, sync_dist=True)
+        self.log("val_loss", loss.detach(), sync_dist=True)
         if self.limb_mask is not None:
-            self.log("val_MSEloss_in_masked_patches", masked_mse, sync_dist=True)
+            self.log("val_MSEloss_in_masked_patches", masked_mse.detach(), sync_dist=True)
 
     def forward(self, x, mask_ratio=None):
         """Perform a forward pass through the MAE.
@@ -270,7 +270,7 @@ class MAE(BaseModule):
             self.logger.log_table(
                 key="val_reconstruction",
                 dataframe=df[cols[-1:] + cols[:-1]],
-                step=self.validation_step,
+                step=self.global_step,
             )
             for k, v in batch_metrics.items():
                 for i, j in v.items():
@@ -344,9 +344,9 @@ class MAE(BaseModule):
 
         self.test_results.extend(step_metrics)
 
-        self.log("test_loss", loss, sync_dist=True)
+        self.log("test_loss", loss.detach(), sync_dist=True)
         if self.limb_mask is not None:
-            self.log("test_MSEloss_in_masked_patches", masked_mse, sync_dist=True)
+            self.log("test_MSEloss_in_masked_patches", masked_mse.detach(), sync_dist=True)
 
     def on_test_epoch_end(self):
         """Called at the end of the test epoch.

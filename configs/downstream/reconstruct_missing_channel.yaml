@@ -18,10 +18,10 @@ data:
   time_delta_target_minutes: 0
   n_input_timestamps: 2
   batch_size: 1
-  num_data_workers: 0
-  pin_memory: false
-  prefetch_factor: null
-  persistent_workers: false
+  num_data_workers: 6
+  pin_memory: true
+  prefetch_factor: 2
+  persistent_workers: true
   pooling: 1
   random_vert_flip: false
   scalers_path: ./assets/cache/surya/scalers.yaml
@@ -76,7 +76,7 @@ wandb:
   notes: surya missing channel
   output_directory: ./assets/wandb
   log_model: False # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
-  offline: true
+  offline: false
 
 lora:
   use: true

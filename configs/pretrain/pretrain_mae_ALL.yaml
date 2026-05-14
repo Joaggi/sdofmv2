@@ -61,7 +61,7 @@ data:
   num_workers: 8    # set appropriately for your machine
   pin_memory: false
   prefetch_factor: 1
-  persistent_workers: true
+  persistent_workers: false
   multiprocessing_context: spawn
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
   drop_frame_dim: false

@@ -5,16 +5,14 @@ import time
 from pathlib import Path
 from loguru import logger
 
-import yaml
-import dask.array as da
-from dask.diagnostics import ProgressBar
-
 import lightning.pytorch as pl
+import numcodecs
 import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-from tqdm import tqdm
+import torch.multiprocessing as mp
+import yaml
 import zarr
 
 from ..utils import ALL_COMPONENTS, ALL_IONS, ALL_WAVELENGTHS
@@ -146,9 +144,9 @@ class SDOMLDataset(Dataset):
     def __init__(
         self,
         aligndata,
-        hmi_data,
-        aia_data,
-        eve_data,
+        hmi_path,
+        aia_path,
+        eve_path,
         components,
         wavelengths,
         ions,
@@ -163,9 +161,9 @@ class SDOMLDataset(Dataset):
         super().__init__()
 
         self.aligndata = aligndata
-        self.aia_data = aia_data
-        self.eve_data = eve_data
-        self.hmi_data = hmi_data
+        self.aia_path = aia_path
+        self.eve_path = eve_path
+        self.hmi_path = hmi_path
         self.mask = mask
         self.get_header = get_header
         self.precision = precision
@@ -174,25 +172,13 @@ class SDOMLDataset(Dataset):
         self.components = components
         self.wavelengths = wavelengths
         self.ions = ions
-
-        # Loading data
-        # HMI
-        if self.hmi_data is not None:
-            if self.components is None:
-                self.components = ALL_COMPONENTS
-            self.components.sort()
-        # AIA
-        if self.aia_data is not None:
-            if self.wavelengths is None:
-                self.wavelengths = ALL_WAVELENGTHS
-            self.wavelengths.sort()
-        # EVE
-        if self.eve_data is not None:
-            if self.ions is None:
-                self.ions = ALL_IONS
-            self.ions.sort()
         self.normalization = normalization
         self.normalization_stat = normalization_stat
+
+        # zarr data
+        self.aia_data = None
+        self.hmi_data = None
+        self.eve_data = None
 
         # number of frames to return per sample
         self.num_frames = num_frames
@@ -204,7 +190,37 @@ class SDOMLDataset(Dataset):
         # report slightly smaller such that all frame sets requested are available
         return len(self.aligndata) - (self.num_frames - 1)
 
+    def _init_zarr(self):
+        # OS-level thread lockdown BEFORE importing zarr/numcodecs
+        import os
+
+        os.environ["BLOSC_NTHREADS"] = "1"
+        os.environ["OMP_NUM_THREADS"] = "1"
+        os.environ["MKL_NUM_THREADS"] = "1"
+
+        # PyTorch and Blosc strict single-thread mode
+        torch.set_num_threads(1)  # Stops PyTorch's OpenMP from colliding with Blosc
+        numcodecs.blosc.use_threads = False
+        numcodecs.blosc.set_nthreads(1)  # CRITICAL: Frequently missed secondary thread limit!
+
+        # Change PyTorch sharing strategy to avoid shared memory (/dev/shm) C-level limits
+        try:
+            mp.set_sharing_strategy("file_system")
+        except RuntimeError:
+            pass  # Strategy already set
+
+        if self.aia_path is not None and self.aia_data is None:
+            self.aia_data = zarr.open(self.aia_path, mode="r")
+
+        if self.hmi_path is not None and self.hmi_data is None:
+            self.hmi_data = zarr.open(self.hmi_path, mode="r")
+
+        if self.eve_path is not None and self.eve_data is None:
+            self.eve_data = zarr.open(self.eve_path, mode="r")
+
     def __getitem__(self, idx):
+        self._init_zarr()
+
         image_stack = None
         header_stack = {}
 
@@ -244,7 +260,7 @@ class SDOMLDataset(Dataset):
             else:
                 return image_stack, timestamps, header_stack
 
-    def _data_norm(self, data, instrument, channel):
+    def _data_norm(self, data, channel):
         """
         data: numpy array of shape H W
         """
@@ -343,7 +359,7 @@ class SDOMLDataset(Dataset):
 
                 if self.normalization.enabled:
                     aia_image_dict[wavelength][-1] = self._data_norm(
-                        aia_image_dict[wavelength][-1], "AIA", wavelength
+                        aia_image_dict[wavelength][-1], wavelength
                     )
 
         aia_image = np.array(list(aia_image_dict.values()))
@@ -389,7 +405,7 @@ class SDOMLDataset(Dataset):
 
                 if self.normalization.enabled:
                     hmi_image_dict[component][-1] = self._data_norm(
-                        hmi_image_dict[component][-1], "HMI", component
+                        hmi_image_dict[component][-1], component
                     )
 
         hmi_image = np.array(list(hmi_image_dict.values()))
@@ -411,7 +427,7 @@ class SDOMLDataset(Dataset):
                 idx_eve = self.aligndata.iloc[idx + frame]["idx_eve"]
                 eve_ion_dict[ion].append(self.eve_data[ion][idx_eve])
                 if self.normalization.enabled:
-                    eve_ion_dict[ion][-1] = self._data_norm(eve_ion_dict[ion][-1], "EVE", ion)
+                    eve_ion_dict[ion][-1] = self._data_norm(eve_ion_dict[ion][-1], ion)
 
         eve_data = np.array(list(eve_ion_dict.values()), dtype=np.float32)
 
@@ -520,7 +536,7 @@ class SDOMLDataModule(pl.LightningDataModule):
 
         # checking if AIA is in the dataset
         if self.isAIA:
-            self.aia_data = zarr.group(zarr.DirectoryStore(self.aia_path))
+            # self.aia_data = zarr.group(zarr.DirectoryStore(self.aia_path))
             if self.wavelengths is None:
                 self.wavelengths = ALL_WAVELENGTHS
         else:
@@ -528,7 +544,7 @@ class SDOMLDataModule(pl.LightningDataModule):
 
         # checking if HMI is in the dataset
         if self.isHMI:
-            self.hmi_data = zarr.group(zarr.DirectoryStore(self.hmi_path))
+            # self.hmi_data = zarr.group(zarr.DirectoryStore(self.hmi_path))
             if self.components is None:
                 self.components = ALL_COMPONENTS
         else:
@@ -536,7 +552,7 @@ class SDOMLDataModule(pl.LightningDataModule):
 
         # checking if EVE is in the dataset
         if self.isEVE:
-            self.eve_data = zarr.group(zarr.DirectoryStore(self.eve_path))
+            # self.eve_data = zarr.group(zarr.DirectoryStore(self.eve_path))
             if self.ions is None:
                 self.ions = ALL_IONS
         else:
@@ -600,9 +616,9 @@ class SDOMLDataModule(pl.LightningDataModule):
 
         self.train_ds = SDOMLDataset(
             self._load_aligndata(self.train_index),
-            self.hmi_data,
-            self.aia_data,
-            self.eve_data,
+            self.hmi_path,
+            self.aia_path,
+            self.eve_path,
             self.components,
             self.wavelengths,
             self.ions,
@@ -619,9 +635,9 @@ class SDOMLDataModule(pl.LightningDataModule):
 
         self.valid_ds = SDOMLDataset(
             self._load_aligndata(self.val_index),
-            self.hmi_data,
-            self.aia_data,
-            self.eve_data,
+            self.hmi_path,
+            self.aia_path,
+            self.eve_path,
             self.components,
             self.wavelengths,
             self.ions,
@@ -638,9 +654,9 @@ class SDOMLDataModule(pl.LightningDataModule):
 
         self.test_ds = SDOMLDataset(
             self._load_aligndata(self.test_index),
-            self.hmi_data,
-            self.aia_data,
-            self.eve_data,
+            self.hmi_path,
+            self.aia_path,
+            self.eve_path,
             self.components,
             self.wavelengths,
             self.ions,
@@ -660,9 +676,9 @@ class SDOMLDataModule(pl.LightningDataModule):
         if stage == "predict":
             self.predict_ds = SDOMLDataset(
                 self._load_aligndata(self.test_index),
-                self.hmi_data,
-                self.aia_data,
-                self.eve_data,
+                self.hmi_path,
+                self.aia_path,
+                self.eve_path,
                 self.components,
                 self.wavelengths,
                 self.ions,
@@ -686,6 +702,7 @@ class SDOMLDataModule(pl.LightningDataModule):
         return df
 
     def train_dataloader(self):
+        spawn_ctx = mp.get_context("spawn") if self.multiprocessing_context == "spawn" else None
         return torch.utils.data.DataLoader(
             self.train_ds,
             batch_size=self.batch_size,
@@ -694,25 +711,27 @@ class SDOMLDataModule(pl.LightningDataModule):
             drop_last=True,
             pin_memory=self.pin_memory,
             persistent_workers=self.persistent_workers,
-            multiprocessing_context=self.multiprocessing_context,
+            multiprocessing_context=spawn_ctx,
         )
 
     def val_dataloader(self):
+        spawn_ctx = mp.get_context("spawn") if self.multiprocessing_context == "spawn" else None
         return torch.utils.data.DataLoader(
             self.valid_ds,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             persistent_workers=self.persistent_workers,
-            multiprocessing_context=self.multiprocessing_context,
+            multiprocessing_context=spawn_ctx,
         )
 
     def test_dataloader(self):
+        spawn_ctx = mp.get_context("spawn") if self.multiprocessing_context == "spawn" else None
         return torch.utils.data.DataLoader(
             self.test_ds,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             persistent_workers=self.persistent_workers,
-            multiprocessing_context=self.multiprocessing_context,
+            multiprocessing_context=spawn_ctx,
         )

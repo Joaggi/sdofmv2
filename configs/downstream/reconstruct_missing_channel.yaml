@@ -53,7 +53,7 @@ backbone:
 
 optimizer:
   type: adamw
-  lr: 1e-5
+  lr: 1e-6
   weight_decay: 0.05
 
 etc:

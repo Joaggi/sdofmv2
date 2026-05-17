@@ -242,6 +242,15 @@ class SuryaReconstructionModel(pl.LightningModule):
         pred = predicted_x[:, dropped_channel, :, :]
 
         loss = F.mse_loss(pred, target)
+
+        if torch.isnan(loss):
+            logger.error(f"NaN detected at batch {batch_idx}")
+            logger.error(f"Dropped channel: {dropped_channel}")
+            if torch.isnan(original_x).any():
+                logger.error("NaN found in input data!")
+            if torch.isnan(predicted_x).any():
+                logger.error("NaN found in predicted data!")
+
         self.log("train_loss", loss, prog_bar=True, sync_dist=True)
         return loss
 

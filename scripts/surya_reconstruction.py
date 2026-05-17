@@ -73,6 +73,7 @@ def main(config: DictConfig):
         precision=config.etc.precision,
         accumulate_grad_batches=config.etc.get("accumulate_grad_batches", 1),
         gradient_clip_val=config.etc.get("gradient_clip_val", None),
+        gradient_clip_algorithm=config.etc.get("gradient_clip_algorithm", "norm"),
         logger=loggers,
         callbacks=[checkpoint_callback, lr_monitor],
     )

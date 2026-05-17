@@ -1,3 +1,4 @@
+import os
 import hydra
 import torch
 import lightning.pytorch as pl
@@ -31,34 +32,39 @@ def main(config: DictConfig):
     # Initialize Loggers
     loggers = []
     if "wandb" in config:
-        loggers.append(WandbLogger(
-            name=config.wandb.name,
-            project=config.wandb.project,
-            dir=config.wandb.output_directory,
-            log_model=config.wandb.log_model,
-            # kwargs for wandb.init
-            tags=config.wandb.tags,
-            notes=config.wandb.notes,
-            group=config.wandb.group,
-            save_code=True,
-            job_type=config.wandb.job_type,
-            config=flatten_dict(config),
-            id=config.wandb.run_id,
-            resume="allow",
-            mode="offline" if config.wandb.offline else "online",
-        ))
+        loggers.append(
+            WandbLogger(
+                name=config.wandb.name,
+                project=config.wandb.project,
+                dir=config.wandb.output_directory,
+                log_model=config.wandb.log_model,
+                # kwargs for wandb.init
+                tags=config.wandb.tags,
+                notes=config.wandb.notes,
+                group=config.wandb.group,
+                save_code=True,
+                job_type=config.wandb.job_type,
+                config=flatten_dict(config),
+                id=config.wandb.run_id,
+                resume="allow",
+                mode="offline" if config.wandb.offline else "online",
+            )
+        )
 
-    loggers.append(CSVLogger(save_dir=config.wandb.get("output_directory", "./results"), name="csv_logs"))
+    loggers.append(
+        CSVLogger(save_dir=config.wandb.get("output_directory", "./results"), name="csv_logs")
+    )
 
     # Callbacks
     checkpoint_callback = ModelCheckpoint(
         monitor="val_loss",
         mode="min",
-        save_top_k=1,
-        dirpath=config.wandb.get("output_directory", "./results"),
-        filename="reconstruction-best-{epoch:02d}-{val_loss:.4f}"
+        save_top_k=3,
+        save_last=True,
+        dirpath=config.etc.ckpt_dir,
+        filename="reconstruction-best-{epoch:02d}-{val_loss:.4f}",
     )
-    lr_monitor = LearningRateMonitor(logging_interval='epoch')
+    lr_monitor = LearningRateMonitor(logging_interval="epoch")
 
     trainer = pl.Trainer(
         max_epochs=config.etc.max_epochs,
@@ -68,10 +74,19 @@ def main(config: DictConfig):
         accumulate_grad_batches=config.etc.get("accumulate_grad_batches", 1),
         gradient_clip_val=config.etc.get("gradient_clip_val", None),
         logger=loggers,
-        callbacks=[checkpoint_callback, lr_monitor]
+        callbacks=[checkpoint_callback, lr_monitor],
     )
 
-    trainer.fit(model, datamodule=datamodule)
+    trainer.fit(
+        model,
+        datamodule=datamodule,
+        ckpt_path=(
+            os.path.join(config.etc.ckpt_dir, config.etc.ckpt_name)
+            if config.etc.ckpt_name is not None
+            else None
+        ),
+        weights_only=False,
+    )
 
 
 if __name__ == "__main__":

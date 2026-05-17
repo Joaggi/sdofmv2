@@ -41,7 +41,7 @@ backbone:
   use_latitude_in_learned_flow: false
   rpe: false
   ensemble: null
-  finetune: False
+  finetune: True
   time_embedding:
     type: linear
     time_dim: 2
@@ -63,6 +63,8 @@ etc:
   max_epochs: 30
   accumulate_grad_batches: 64
   gradient_clip_val: 1.0
+  ckpt_dir: ./assets/checkpoints/surya
+  ckpt_name: reconstruction-best-epoch=00-val_loss=0.3507.ckpt
 
 wandb:
   enable: true

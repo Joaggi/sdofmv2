@@ -51,6 +51,15 @@ data:
     val: [11]
     test: [12]
     holdout: []
+
+    # index path
+  index_save_path: ./assets/cache/ALL/
+  train_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv
+  val_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv
+  test_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv
+  hmi_mask: ./assets/cache/ALL/hmi_mask_512x512.npy
+  normalization_stat_path: ./assets/cache/ALL/
+
   num_workers: 8    # set appropriately for your machine
   pin_memory: true
   prefetch_factor: 3
@@ -60,7 +69,7 @@ data:
   # output_directory: "wandb_output"
   sdoml:
     save_directory: ./assets/
-    base_directory: /mnt/baobab
+    base_directory: /mnt/jade
     sub_directory:
       hmi: null
       aia: AIA.zarr
@@ -86,6 +95,7 @@ data:
         Bx: 2500
         By: 2500
         Bz: 3000
+
 
 # model configurations
 model:

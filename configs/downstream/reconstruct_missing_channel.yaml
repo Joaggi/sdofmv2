@@ -59,17 +59,17 @@ optimizer:
 etc:
   precision: bf16-mixed
   accelerator: gpu
-  devices: 1
+  devices: [1]
   max_epochs: 30
   accumulate_grad_batches: 64
   gradient_clip_val: 1.0
   ckpt_dir: ./assets/checkpoints/surya
-  ckpt_name: reconstruction-best-epoch=00-val_loss=0.3507.ckpt
+  ckpt_name: null
 
 wandb:
   enable: true
   name: surya_missing_channel
-  run_id: null
+  run_id: izmravhm
   entity: allshaman
   project: sdofm
   group: ""

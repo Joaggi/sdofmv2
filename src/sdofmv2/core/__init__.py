@@ -9,6 +9,7 @@ from .losses import (
     mae_loss,
     vector_aware_loss,
     pixel_weight_loss,
+    bright_patch_weighted_loss,
 )
 from .mae3d import MaskedAutoencoderViT3D
 from .mae3d_old import MaskedAutoencoderViT3D_old

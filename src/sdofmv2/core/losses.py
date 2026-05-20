@@ -1,7 +1,8 @@
+from typing import Literal
+
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as functional
 from einops import rearrange
-from typing import Optional, Literal
 
 
 def _get_group_mean(loss: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -57,7 +58,7 @@ def vector_aware_loss(pred, target, base_loss) -> torch.Tensor:
         raise ValueError(f"Not supported loss type: {base_loss}")
 
     # preds, target: [B, 3, Frame, H, W]
-    cos_sim = 1 - F.cosine_similarity(pred, target, dim=1).mean()
+    cos_sim = 1 - functional.cosine_similarity(pred, target, dim=1).mean()
     loss = baseloss + 0.1 * cos_sim
     return loss
 
@@ -163,11 +164,6 @@ def patch_weight_loss(pred, target, loss_dict, mask_hidden, mask_off_limb):
     return final_loss
 
 
-# =============================================================================
-# Patch-level loss functions for non-zero vs all-zero patches
-# =============================================================================
-
-
 def _get_base_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
@@ -190,32 +186,41 @@ def _get_base_loss(
     elif base_type == "mae":
         return torch.abs(pred - target)
     elif base_type == "huber":
-        return F.huber_loss(pred, target, reduction="none", delta=huber_delta)
+        return functional.huber_loss(pred, target, reduction="none", delta=huber_delta)
     else:
         raise ValueError(f"Not supported base loss type: {base_type}")
 
 
-def _get_zero_pixel_mask_from_target(imgs, patch_size=16, corner_size=4, corner_ratio=0.25):
-    B, C, T, H, W = imgs.shape
+def _get_zero_pixel_mask_from_target(
+    imgs, patch_size=16, tubelet_size=1, corner_size=4, corner_ratio=0.25
+):
+    b, c, t, h, w = imgs.shape
     p = patch_size
-    imgs_avg = imgs.mean(dim=2)
+    tub = tubelet_size
 
+    # Calculate corners per frame, channel and batch
+    # Input imgs: [b, c, t, h, w]
     corners = torch.cat(
         [
-            imgs_avg[:, :, :corner_size, :corner_size].reshape(B, C, -1),
-            imgs_avg[:, :, :corner_size, -corner_size:].reshape(B, C, -1),
-            imgs_avg[:, :, -corner_size:, :corner_size].reshape(B, C, -1),
-            imgs_avg[:, :, -corner_size:, -corner_size:].reshape(B, C, -1),
+            imgs[:, :, :, :corner_size, :corner_size].reshape(b, c, t, -1),
+            imgs[:, :, :, :corner_size, -corner_size:].reshape(b, c, t, -1),
+            imgs[:, :, :, -corner_size:, :corner_size].reshape(b, c, t, -1),
+            imgs[:, :, :, -corner_size:, -corner_size:].reshape(b, c, t, -1),
         ],
         dim=-1,
     )
 
-    corner_mean = corners.mean(dim=-1)
-    threshold = corner_ratio * corner_mean
+    threshold = corner_ratio * corners.mean(dim=-1).unsqueeze(-1).unsqueeze(-1)
+    is_zero_pixel = imgs < threshold
 
-    threshold_expanded = threshold.unsqueeze(-1).unsqueeze(-1)
-    is_zero_pixel = imgs_avg < threshold_expanded
-    is_zero_pixel = rearrange(is_zero_pixel, "b c (h p) (w q) -> b (h w) (p q c)", p=p, q=p)
+    # Rearrange to match patchify: [b, l, d] where d = tub * p * q * c
+    is_zero_pixel = rearrange(
+        is_zero_pixel,
+        "b c (t tub) (h p) (w q) -> b (t h w) (tub p q c)",
+        tub=tub,
+        p=p,
+        q=p,
+    )
 
     return is_zero_pixel
 
@@ -229,12 +234,17 @@ def split_pixel_loss(
     huber_delta: float = 1.0,
     imgs: torch.Tensor | None = None,
     patch_size: int = 16,
+    tubelet_size: int = 1,
     corner_size: int = 4,
     corner_ratio: float = 0.25,
 ) -> torch.Tensor:
     element_loss = _get_base_loss(pred, target, base_type, huber_delta)
     is_zero_pixel = _get_zero_pixel_mask_from_target(
-        imgs, patch_size=patch_size, corner_size=corner_size, corner_ratio=corner_ratio
+        imgs,
+        patch_size=patch_size,
+        tubelet_size=tubelet_size,
+        corner_size=corner_size,
+        corner_ratio=corner_ratio,
     )
     is_nonzero_pixel = ~is_zero_pixel
 
@@ -276,3 +286,70 @@ def sparse_dense_loss(
     total_loss = alpha * recon_loss + beta * embedding_size
 
     return total_loss
+
+
+def bright_patch_weighted_loss(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    imgs: torch.Tensor,
+    weight_bright: float = 1.0,
+    weight_dark: float = 0.1,
+    zero_threshold: float = 0.9,
+    base_type: Literal["mse", "mae", "huber"] = "mse",
+    huber_delta: float = 1.0,
+    patch_size: int = 16,
+    tubelet_size: int = 1,
+    corner_size: int = 4,
+    corner_ratio: float = 0.25,
+    mask_hidden: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Calculates weighted loss prioritizing bright patches per channel/frame."""
+    element_loss = _get_base_loss(pred, target, base_type, huber_delta)
+
+    # Get pixel-level zero mask in flattened shape [b, l, d]
+    is_zero_pixel = _get_zero_pixel_mask_from_target(
+        imgs,
+        patch_size=patch_size,
+        tubelet_size=tubelet_size,
+        corner_size=corner_size,
+        corner_ratio=corner_ratio,
+    )
+
+    # D = tub * p * q * C. The channels C are the innermost dimension.
+    b, seq_len, d = target.shape
+    c = imgs.shape[1]
+    d_spatial_temporal = d // c
+
+    # Reshape to separate channel dimension: [b, seq_len, d_spatial_temporal, c]
+    # utils.patchify re-arranges to put c as the innermost dim
+    is_zero_pixel_reshaped = is_zero_pixel.reshape(b, seq_len, d_spatial_temporal, c)
+
+    # Calculate zero ratio per (patch, channel)
+    # Average across the spatial-temporal pixel dimension
+    dark_ratio_per_chan = is_zero_pixel_reshaped.float().mean(dim=2)  # [b, seq_len, c]
+
+    # Per-channel, per-patch decision
+    is_dark_chan = dark_ratio_per_chan > zero_threshold  # [b, seq_len, c]
+
+    # Expand decision back to [b, seq_len, d_spatial_temporal, c] then back to [b, seq_len, d]
+    is_dark_pixel_mask = is_dark_chan.unsqueeze(2).expand(-1, -1, d_spatial_temporal, -1)
+    is_dark_pixel_mask = is_dark_pixel_mask.reshape(b, seq_len, d)
+    is_bright_pixel_mask = ~is_dark_pixel_mask
+
+    # Restrict loss calculation to hidden/masked patches if applicable
+    if mask_hidden is not None:
+        # mask_hidden is [b, l], broadcast it over d
+        is_masked = mask_hidden.bool().unsqueeze(-1)
+        is_dark_pixel_mask = is_dark_pixel_mask & is_masked
+        is_bright_pixel_mask = is_bright_pixel_mask & is_masked
+
+    # Compute group means and weighted sum
+    loss_dark = _get_group_mean(element_loss, is_dark_pixel_mask)
+    loss_bright = _get_group_mean(element_loss, is_bright_pixel_mask)
+
+    # Normalize weights
+    w_sum = weight_bright + weight_dark
+    w_b = weight_bright / w_sum
+    w_d = weight_dark / w_sum
+
+    return (w_b * loss_bright) + (w_d * loss_dark)

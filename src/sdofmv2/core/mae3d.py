@@ -10,17 +10,19 @@ Adapted from: https://github.com/facebookresearch/mae/blob/main/models_mae.py
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from timm.layers import to_2tuple
 from timm.models.vision_transformer import Block
-import torch.nn.functional as F
-from ..utils import get_3d_sincos_pos_embed, unpatchify, patchify
+
+from ..utils import get_3d_sincos_pos_embed, patchify, unpatchify
 from .losses import (
+    bright_patch_weighted_loss,
     mae_loss,
-    vector_aware_loss,
-    pixel_weight_loss,
     patch_weight_loss,
-    split_pixel_loss,
+    pixel_weight_loss,
     sparse_dense_loss,
+    split_pixel_loss,
+    vector_aware_loss,
 )
 
 
@@ -162,7 +164,7 @@ class MaskedAutoencoderViT3D(nn.Module):
         norm_layer="LayerNorm",
         limb_mask=None,
         ids_limb_mask=None,
-        loss_dict={},
+        loss_dict=None,
     ):
         super().__init__()
         self.img_size = img_size
@@ -170,7 +172,7 @@ class MaskedAutoencoderViT3D(nn.Module):
         self.num_frames = num_frames
         self.tubelet_size = tubelet_size
         self.limb_mask = limb_mask
-        self.loss_dict = loss_dict
+        self.loss_dict = loss_dict if loss_dict is not None else {}
 
         # define loss     # define loss
         loss_functions = {
@@ -182,6 +184,7 @@ class MaskedAutoencoderViT3D(nn.Module):
             "patch_weight_loss": patch_weight_loss,
             "split_pixel_loss": split_pixel_loss,
             "sparse_dense_loss": sparse_dense_loss,
+            "bright_patch_weighted_loss": bright_patch_weighted_loss,
         }
         loss_type = self.loss_dict.get("type", "mse")
         if loss_type not in loss_functions:
@@ -303,8 +306,8 @@ class MaskedAutoencoderViT3D(nn.Module):
 
         Args:
             x (torch.Tensor): Input sequence of embedded patches. Expected shape
-                is [N, L, D], where N is batch size, L is sequence length
-                (number of patches), and D is embedding dimension.
+                is [n, l, d], where n is batch size, l is sequence length
+                (number of patches), and d is embedding dimension.
             mask_ratio (float): The fraction of patches to mask out (e.g., 0.75).
                 If a limb mask is provided, this fraction only applies to patches
                 inside the solar disk.
@@ -316,7 +319,7 @@ class MaskedAutoencoderViT3D(nn.Module):
                 - ids_restore (torch.Tensor): Indices needed to unshuffle the patches
                   back to their original spatial order.
         """
-        N, L, D = x.shape  # batch, length, dim
+        n, seq_len, d = x.shape  # batch, length, dim
         device = x.device
         # if using a solar limb mask, we're not interested in predicting outside the
         # disk. For that we override these kept ids to include always keeping the mask
@@ -324,8 +327,8 @@ class MaskedAutoencoderViT3D(nn.Module):
         if self.ids_limb_mask is not None:
             ids_limb = self.ids_limb_mask.to(device).long().flatten()
             # Get indices of patches INSIDE the solar disk
-            all_indices = torch.arange(L, device=device)
-            mask_limb = torch.zeros(L, dtype=torch.bool, device=device)
+            all_indices = torch.arange(seq_len, device=device)
+            mask_limb = torch.zeros(seq_len, dtype=torch.bool, device=device)
             mask_limb[ids_limb] = True
 
             # Indices inside the disk (where we can do masking)
@@ -336,41 +339,41 @@ class MaskedAutoencoderViT3D(nn.Module):
             len_keep_inside = int(num_inside * (1 - mask_ratio))
 
             # Generate random noise only for inside patches
-            noise_inside = torch.rand(N, num_inside, device=device)
+            noise_inside = torch.rand(n, num_inside, device=device)
             ids_shuffle_local = torch.argsort(noise_inside, dim=1)
 
             # Convert local indices back to global indices
-            ids_inside_expand = ids_inside_disk.unsqueeze(0).expand(N, -1)
+            ids_inside_expand = ids_inside_disk.unsqueeze(0).expand(n, -1)
             local_keep = ids_shuffle_local[:, :len_keep_inside]
             ids_keep = torch.gather(ids_inside_expand, dim=1, index=local_keep)
 
             # Gather the kept patches
-            ids_keep_gather = ids_keep.unsqueeze(-1).expand(-1, -1, D)
+            ids_keep_gather = ids_keep.unsqueeze(-1).expand(-1, -1, d)
             x_masked = torch.gather(x, dim=1, index=ids_keep_gather)
 
             # Create binary mask: 0 is keep, 1 is remove
-            mask = torch.ones([N, L], device=device, dtype=torch.long)
+            mask = torch.ones([n, seq_len], device=device, dtype=torch.long)
             mask.scatter_(1, ids_keep, 0)
 
             # Get the removed indices for all samples at once
             # limb ids repeated per-sample (always removed)
-            ids_limb_expand = ids_limb.unsqueeze(0).expand(N, -1)  # [N, num_limb]
+            ids_limb_expand = ids_limb.unsqueeze(0).expand(n, -1)  # [n, num_limb]
             local_removed_inside = ids_shuffle_local[:, len_keep_inside:]
             ids_removed_inside = torch.gather(
                 ids_inside_expand, dim=1, index=local_removed_inside
-            )  # [N, num_removed_inside]
+            )  # [n, num_removed_inside]
             ids_removed = torch.cat([ids_limb_expand, ids_removed_inside], dim=1)
 
             # Concatenate kept and removed for all samples
-            # ids_keep: [N, num_kept], ids_removed: [N, num_removed]
-            full_order = torch.cat([ids_keep, ids_removed], dim=1)  # [N, L]
+            # ids_keep: [n, num_kept], ids_removed: [n, num_removed]
+            full_order = torch.cat([ids_keep, ids_removed], dim=1)  # [n, seq_len]
 
             # Apply argsort to all samples at once
-            ids_restore = torch.argsort(full_order, dim=1)  # [N, L]
+            ids_restore = torch.argsort(full_order, dim=1)  # [n, seq_len]
 
         else:
-            len_keep = int(L * (1 - mask_ratio))
-            noise = torch.rand(N, L, device=device)  # noise in [0, 1]
+            len_keep = int(seq_len * (1 - mask_ratio))
+            noise = torch.rand(n, seq_len, device=device)  # noise in [0, 1]
 
             # sort noise for each sample
             ids_shuffle = torch.argsort(noise, dim=1)  # ascend: small is keep, large is remove
@@ -379,10 +382,10 @@ class MaskedAutoencoderViT3D(nn.Module):
             # keep the first subset
             ids_keep = ids_shuffle[:, :len_keep]
 
-            x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
+            x_masked = torch.gather(x, dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, d))
 
             # generate the binary mask: 0 is keep, 1 is remove
-            mask = torch.ones([N, L], device=device, dtype=torch.long)
+            mask = torch.ones([n, seq_len], device=device, dtype=torch.long)
             mask.scatter_(1, ids_keep, 0)
 
         return x_masked, mask, ids_restore
@@ -493,6 +496,7 @@ class MaskedAutoencoderViT3D(nn.Module):
                     huber_delta=self.loss_dict.split_pixel_loss.get("huber_delta", 1.0),
                     imgs=imgs,
                     patch_size=self.patch_size,
+                    tubelet_size=self.tubelet_size,
                     corner_size=self.loss_dict.split_pixel_loss.get("corner_size", 4),
                     corner_ratio=self.loss_dict.split_pixel_loss.get("corner_ratio", 0.25),
                 )
@@ -508,6 +512,22 @@ class MaskedAutoencoderViT3D(nn.Module):
                     patch_size=self.patch_size,
                     corner_size=self.loss_dict.sparse_dense_loss.get("corner_size", 4),
                     corner_ratio=self.loss_dict.sparse_dense_loss.get("corner_ratio", 0.25),
+                )
+            elif self.loss_dict.type == "bright_patch_weighted_loss":
+                loss = self.loss_fn(
+                    pred,
+                    target_norm if self.loss_dict.norm_pix_loss else target,
+                    imgs=imgs,
+                    weight_bright=self.loss_dict.bright_patch_weighted_loss.get("weight_bright", 1.0),
+                    weight_dark=self.loss_dict.bright_patch_weighted_loss.get("weight_dark", 0.1),
+                    zero_threshold=self.loss_dict.bright_patch_weighted_loss.get("zero_threshold", 0.9),
+                    base_type=self.loss_dict.bright_patch_weighted_loss.get("base_type", "mse"),
+                    huber_delta=self.loss_dict.bright_patch_weighted_loss.get("huber_delta", 1.0),
+                    patch_size=self.patch_size,
+                    tubelet_size=self.tubelet_size,
+                    corner_size=self.loss_dict.bright_patch_weighted_loss.get("corner_size", 4),
+                    corner_ratio=self.loss_dict.bright_patch_weighted_loss.get("corner_ratio", 0.25),
+                    mask_hidden=mask,
                 )
             else:
                 loss = self.loss_fn(

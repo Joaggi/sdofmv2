@@ -6,13 +6,13 @@ experiment:
     is_backbone: false
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
     weight_name: null
-    weights_only: false
+    weights_only: true
   seed: 0
   disable_cuda: false
   
   wandb:
     enable: true
-    name: mae-pretrain-all-bright_path_weighted_loss-huber
+    name: mae-pretrain-all-bright_path_weighted_loss-huber-base
     run_id: null
     entity: allshaman
     project: sdofmv2
@@ -112,9 +112,9 @@ model:
     space: patch # pixel, patch
     type: bright_patch_weighted_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
     bright_patch_weighted_loss:
-      weight_inner: 0.7
+      weight_inner: 0.6
       weight_outer_bright: 0.3
-      weight_outer_dark: 3
+      weight_outer_dark: 0.1
       zero_threshold: 0.9
       base_type: huber
       huber_delta: 1.0

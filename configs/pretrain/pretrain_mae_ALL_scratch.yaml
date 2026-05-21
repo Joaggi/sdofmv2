@@ -3,19 +3,19 @@ experiment:
   model: mae
   backbone:
     model: mae
-    is_backbone: true
+    is_backbone: false
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_uj0jxwrn_mae_epoch=39-val_loss=0.03.ckpt
-    weights_only: false
+    weight_name: null
+    weights_only: true
   seed: 0
   disable_cuda: false
   
   wandb:
     enable: true
-    name: mae-pretrain-all-split_pixel_loss-huber-large
+    name: mae-pretrain-all-bright_path_weighted_loss-huber-scratch
     run_id: null
     entity: allshaman
-    project: sdofm
+    project: sdofmv2
     group: ""
     job_type: pretrain
     tags: []
@@ -31,7 +31,7 @@ experiment:
   accelerator: gpu  # options are "auto", "gpu", "tpu", "ipu", or "cpu"
   distributed:
     enabled: true
-    devices: [0] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
+    devices: [1] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
 
 # dataset configuration
 data:
@@ -58,16 +58,16 @@ data:
   normalization_stat_path: ./assets/cache/ALL/
 
   # for dataloader
-  num_workers: 8    # set appropriately for your machine
-  pin_memory: false
-  prefetch_factor: 1
-  persistent_workers: false
+  num_workers: 12    # set appropriately for your machine
+  pin_memory: true
+  prefetch_factor: 2
+  persistent_workers: true
   multiprocessing_context: spawn
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
   drop_frame_dim: false
   # output_directory: "wandb_output"
   sdoml:
-    base_directory: /mnt/jade
+    base_directory: /mnt/baobab
     sub_directory:
       hmi: HMI.zarr
       aia: AIA.zarr
@@ -96,9 +96,9 @@ model:
     num_frames: 1
     tubelet_size: 1
     in_chans: 12
-    embed_dim: 1024 # small, base, large [384, 768, 1024]
-    depth: 24 # small, base, large [12, 12, 24]
-    num_heads: 16 # small, base, large [6, 12, 16]
+    embed_dim: 768
+    depth: 12
+    num_heads: 12
     decoder_embed_dim: 512
     decoder_depth: 8
     decoder_num_heads: 16
@@ -112,14 +112,14 @@ model:
     space: patch # pixel, patch
     type: bright_patch_weighted_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
     bright_patch_weighted_loss:
-      weight_inner: 1.0
-      weight_outer_bright: 1.0
-      weight_outer_dark: 0.1
+      weight_inner: 0.7
+      weight_outer_bright: 0.3
+      weight_outer_dark: 3
       zero_threshold: 0.9
-      base_type: mse
+      base_type: huber
       huber_delta: 1.0
       corner_size: 4
-      corner_ratio: 0.25
+      corner_ratio: 0.975
 
     # exclude_limb: true
     norm_pix_loss: false
@@ -184,8 +184,8 @@ model:
   misc:
     limb_mask: false
     epochs: 300
-    batch_size: 8
-    accumulate_grad_batches: 32 # accumulate grad for 32 steps
+    batch_size: 16
+    accumulate_grad_batches: 16 # accumulate grad for 32 steps
     limit_train_batches: null
 
 defaults:

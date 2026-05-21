@@ -1,16 +1,12 @@
-import os
-
 import lightning.pytorch as pl
-import pandas as pd
+import numpy as np
 import torch
-import torch.nn.functional as F
 
-from sdofmv2.utils import patchify, spatial_to_patch_mask, unpatchify
+from sdofmv2.core.basemodule import BaseModule
+from sdofmv2.core.mae3d import MaskedAutoencoderViT3D
+from sdofmv2.core.reconstruction import compute_metrics_pytorch
+from sdofmv2.utils import spatial_to_patch_mask, unpatchify
 from sdofmv2.utils.constants import ALL_WAVELENGTHS
-
-from . import reconstruction as bench_recon
-from .basemodule import BaseModule
-from .mae3d import MaskedAutoencoderViT3D
 
 
 class MAE(BaseModule):
@@ -86,16 +82,16 @@ class MAE(BaseModule):
         masking_ratio=0.75,
         mask_only_inner=False,
         limb_mask=None,
-        loss_dict={},
-        optimizer_dict={},
-        scheduler_dict={},
+        loss_dict=None,
+        optimizer_dict=None,
+        scheduler_dict=None,
         # pass to BaseModule
         *args,
         **kwargs,
     ):
         super().__init__(
-            optimizer_dict=optimizer_dict,
-            scheduler_dict=scheduler_dict,
+            optimizer_dict=optimizer_dict if optimizer_dict is not None else {},
+            scheduler_dict=scheduler_dict if scheduler_dict is not None else {},
             *args,
             **kwargs,
         )
@@ -103,12 +99,13 @@ class MAE(BaseModule):
         self.img_size = img_size
         self.patch_size = patch_size
         self.tubelet_size = tubelet_size
+        self.num_frames = num_frames
         self.validation_metrics = []
         self.masking_ratio = masking_ratio
         self.mask_only_inner = mask_only_inner
         self.chan_types = chan_types
         self.limb_mask = limb_mask
-        self.loss_dict = loss_dict
+        self.loss_dict = loss_dict if loss_dict is not None else {}
         self.test_results = []
 
         # compute limb_mask_ids
@@ -119,6 +116,11 @@ class MAE(BaseModule):
             )
             limb_mask_ids = torch.where(mask_bool)[0]
 
+        # Register circular mask for metrics
+        if limb_mask is not None:
+            self.register_buffer("disk_mask", torch.as_tensor(limb_mask, dtype=torch.float32))
+        else:
+            self.register_buffer("disk_mask", torch.ones((img_size, img_size), dtype=torch.float32))
 
         self.autoencoder = MaskedAutoencoderViT3D(
             img_size,
@@ -158,222 +160,104 @@ class MAE(BaseModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        """Perform a single validation step.
-
-        Args:
-            batch: A tuple containing (images, timestamps).
-            batch_idx: The index of the current batch.
-        """
-        x, timestamps = batch[:2]
+        """Perform a single validation step."""
+        x, _ = batch[:2]
 
         loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
         x_hat_reconstructed = unpatchify(x_hat, self.img_size, self.patch_size, self.tubelet_size)
 
-        # Transfer both tensors to CPU once, outside all loops
-        x_np = x.detach().cpu().numpy()  # [B, C, T, H, W]
-        x_hat_np = x_hat_reconstructed.detach().cpu().numpy()
+        # Vectorized metrics on GPU
+        batch_size, num_channels, num_frames_in, height, width = x.shape
+        grid_size = self.img_size // self.patch_size
+        num_frames_p = num_frames_in // self.tubelet_size
 
-        batch_size = mask.shape[0]
-        num_frames = x.shape[2]
+        # [batch_size, num_frames_p, grid_size, grid_size]
+        mask_full = mask.view(batch_size, num_frames_p, grid_size, grid_size)
+
+        # [batch_size, num_frames_in, height, width]
+        mask_full = mask_full.repeat_interleave(self.tubelet_size, dim=1)\
+                             .repeat_interleave(self.patch_size, dim=2)\
+                             .repeat_interleave(self.patch_size, dim=3).bool()
+
+        # Intersect with limb_mask if present
+        # disk_mask is [height, width]
         if self.limb_mask is not None:
+            mask_full = mask_full & (self.disk_mask.bool().unsqueeze(0).unsqueeze(1))
 
-            # Build full-resolution mask once for the entire batch: [B, 512, 512]
-            grid_size = self.img_size // self.patch_size
-            mask_full = (
-                mask.reshape(batch_size, grid_size, grid_size)
-                .detach()
-                .cpu()
-                .numpy()
-                .repeat(self.patch_size, axis=1)
-                .repeat(self.patch_size, axis=2)
-                .astype(bool)
-            )
+        # Compute metrics
+        step_metrics = compute_metrics_pytorch(x, x_hat_reconstructed, mask_full, self.chan_types)
 
-            step_metrics = [
-                bench_recon.get_metrics_for_masked_patches(
-                    x_np[i, :, frame, mask_full[i]],
-                    x_hat_np[i, :, frame, mask_full[i]],
-                    self.chan_types,
-                )
-                for i in range(batch_size)
-                for frame in range(num_frames)
-            ]
-
-            x_patchified = patchify(x, self.patch_size, self.tubelet_size)
-            active_mask = mask == 1
-            masked_mse = F.mse_loss(x_patchified[active_mask], x_hat[active_mask])
-
-        else:
-            step_metrics = [
-                bench_recon.get_metrics(
-                    x_np[i, :, frame, :, :],
-                    x_hat_np[i, :, frame, :, :],
-                    self.chan_types,
-                )
-                for i in range(batch_size)
-                for frame in range(num_frames)
-            ]
-
-        self.validation_metrics.extend(step_metrics)
-
+        self.validation_metrics.append(step_metrics)
         self.log("val_loss", loss.detach(), sync_dist=True)
-        if self.limb_mask is not None:
-            self.log("val_MSEloss_in_masked_patches", masked_mse.detach(), sync_dist=True)
-
-    def forward(self, x, mask_ratio=None):
-        """Perform a forward pass through the MAE.
-
-        Args:
-            x (torch.Tensor): Input images of shape (B, C, H, W).
-            mask_ratio (float, optional): Fraction of patches to mask. If None,
-                uses the default masking_ratio. Defaults to None.
-
-        Returns:
-            Tuple[torch.Tensor, torch.Tensor]: A tuple containing:
-                - x_hat: Reconstructed images.
-                - mask: The applied mask tensor.
-        """
-        if mask_ratio is None:
-            mask_ratio = self.masking_ratio
-        loss, x_hat, mask = self.autoencoder(x, mask_ratio=mask_ratio)
-        x_hat = unpatchify(x_hat, self.img_size, self.patch_size, self.tubelet_size)
-        return x_hat, mask
-
-    def forward_encoder(self, x, mask_ratio):
-        """Perform a forward pass through the encoder only.
-
-        Args:
-            x (torch.Tensor): Input images.
-            mask_ratio (float): Fraction of patches to mask.
-
-        Returns:
-            torch.Tensor: Encoded features from the encoder.
-        """
-        return self.autoencoder.forward_encoder(x, mask_ratio=mask_ratio)
 
     def on_validation_epoch_end(self):
-        """Called at the end of the validation epoch.
+        """Called at the end of the validation epoch."""
+        # Aggregate metrics
+        averaged_metrics = {}
+        for chan in self.chan_types:
+            averaged_metrics[chan] = {}
+            for met in ["rmse_intensity", "flux_difference", "ppe10s", "ppe50s"]:
+                averaged_metrics[chan][met] = np.mean([m[chan][met] for m in self.validation_metrics])
 
-        Aggregates validation metrics, logs them to the logger (WandB or default),
-        and clears the metrics buffer.
-        """
-        merged_metrics = bench_recon.merge_metrics(self.validation_metrics)
-        batch_metrics = bench_recon.mean_metrics(merged_metrics)
-
+        # Logging
         if isinstance(self.logger, pl.loggers.wandb.WandbLogger):
-            # this only occurs on rank zero only
-            df = pd.DataFrame(batch_metrics)
-            df["mean"] = df.mean(numeric_only=True, axis=1)
-            df["metric"] = df.index
-            cols = df.columns.tolist()
-            self.logger.log_table(
-                key="val_reconstruction",
-                dataframe=df[cols[-1:] + cols[:-1]],
-                step=self.global_step,
-            )
-            for k, v in batch_metrics.items():
-                for i, j in v.items():
-                    self.log(f"val_{k}_{i}", j, sync_dist=True)
-
+            for chan, metrics in averaged_metrics.items():
+                for m_name, val in metrics.items():
+                    self.log(f"val_{chan}_{m_name}", val, sync_dist=True)
         else:
-            for k in batch_metrics.keys():
-                batch_metrics[k]["channel"] = k
-            for k, v in batch_metrics.items():
-                self.log_dict(v, sync_dist=True)
+            for metrics in averaged_metrics.values():
+                self.log_dict(metrics, sync_dist=True)
 
-        # reset
         self.validation_metrics.clear()
 
-    def test_step(self, batch, batch_idx):
-        """Perform a single test step.
 
-        Args:
-            batch: A tuple containing (images, timestamps).
-            batch_idx: The index of the current batch.
-        """
-        x, timestamps = batch[:2]
+    def test_step(self, batch, batch_idx):
+        """Perform a single test step."""
+        x, _ = batch[:2]
 
         loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
         x_hat_reconstructed = unpatchify(x_hat, self.img_size, self.patch_size, self.tubelet_size)
 
-        # Transfer both tensors to CPU once, outside all loops
-        x_np = x.detach().cpu().numpy()  # [B, C, T, H, W]
-        x_hat_np = x_hat_reconstructed.detach().cpu().numpy()
+        # Vectorized metrics on GPU
+        batch_size, num_channels, num_frames_in, height, width = x.shape
+        grid_size = self.img_size // self.patch_size
+        num_frames_p = num_frames_in // self.tubelet_size
 
-        batch_size = mask.shape[0]
-        num_frames = x.shape[2]
+        # [batch_size, num_frames_p, grid_size, grid_size]
+        mask_full = mask.view(batch_size, num_frames_p, grid_size, grid_size)
 
+        # [batch_size, num_frames_in, height, width]
+        mask_full = mask_full.repeat_interleave(self.tubelet_size, dim=1)\
+                             .repeat_interleave(self.patch_size, dim=2)\
+                             .repeat_interleave(self.patch_size, dim=3).bool()
+
+        # Intersect with limb_mask if present
         if self.limb_mask is not None:
-            # Build full-resolution mask once for the entire batch: [B, 512, 512]
-            grid_size = self.img_size // self.patch_size
-            mask_full = (
-                mask.reshape(batch_size, grid_size, grid_size)
-                .detach()
-                .cpu()
-                .numpy()
-                .repeat(self.patch_size, axis=1)
-                .repeat(self.patch_size, axis=2)
-                .astype(bool)
-            )
+            mask_full = mask_full & (self.disk_mask.bool().unsqueeze(0).unsqueeze(1))
 
-            step_metrics = [
-                bench_recon.get_metrics_for_masked_patches(
-                    x_np[i, :, frame, mask_full[i]],
-                    x_hat_np[i, :, frame, mask_full[i]],
-                    self.chan_types,
-                )
-                for i in range(batch_size)
-                for frame in range(num_frames)
-            ]
+        # Compute metrics
+        step_metrics = compute_metrics_pytorch(x, x_hat_reconstructed, mask_full, self.chan_types)
 
-            x_patchified = patchify(x, self.patch_size, self.tubelet_size)
-            active_mask = mask == 1
-            masked_mse = F.mse_loss(x_patchified[active_mask], x_hat[active_mask])
-
-        else:
-            step_metrics = [
-                bench_recon.get_metrics(
-                    x_np[i, :, frame, :, :],
-                    x_hat_np[i, :, frame, :, :],
-                    self.chan_types,
-                )
-                for i in range(batch_size)
-                for frame in range(num_frames)
-            ]
-
-        self.test_results.extend(step_metrics)
-
+        self.test_results.append(step_metrics)
         self.log("test_loss", loss.detach(), sync_dist=True)
-        if self.limb_mask is not None:
-            self.log("test_MSEloss_in_masked_patches", masked_mse.detach(), sync_dist=True)
 
     def on_test_epoch_end(self):
-        """Called at the end of the test epoch.
+        """Called at the end of the test epoch."""
+        # Average metrics across samples
+        averaged_metrics = {}
+        for chan in self.chan_types:
+            averaged_metrics[chan] = {}
+            for met in ["rmse_intensity", "flux_difference", "ppe10s", "ppe50s"]:
+                averaged_metrics[chan][met] = np.mean([m[chan][met] for m in self.test_results])
 
-        Aggregates test metrics, saves them to a CSV file, logs to the logger,
-        and clears the results buffer.
-        """
-        if not self.test_results:
-            return
-
-        merged_metrics = bench_recon.merge_metrics(self.test_results)
-        batch_metrics = bench_recon.mean_metrics(merged_metrics)
-
-        df = pd.DataFrame(batch_metrics)
-        df["mean"] = df.mean(numeric_only=True, axis=1)
-        df["metric"] = df.index
-
-        cols = df.columns.tolist()
-        final_df = df[[cols[-1]] + cols[:-1]]
-
-        output_path = os.path.join(self.trainer.default_root_dir, "test_metrics_summary.csv")
-        final_df.to_csv(output_path, index=False)
-        print(f"\n[INFO] Test results saved to: {output_path}")
-
+        # Logging to WandB if enabled, otherwise just log to trainer
         if isinstance(self.logger, pl.loggers.wandb.WandbLogger):
-            self.logger.log_table(key="test_reconstruction_summary", dataframe=final_df)
-            for chan, metrics in batch_metrics.items():
+            for chan, metrics in averaged_metrics.items():
                 for m_name, val in metrics.items():
                     self.log(f"test_{chan}_{m_name}", val, sync_dist=True)
+        else:
+            for metrics in averaged_metrics.values():
+                self.log_dict(metrics, sync_dist=True)
 
         self.test_results.clear()
+

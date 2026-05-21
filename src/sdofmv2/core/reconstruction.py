@@ -42,10 +42,31 @@ def compute_metrics_pytorch(real: torch.Tensor, generated: torch.Tensor, mask: t
     ppe10 = ((torch.abs(diff / (real + 1e-6)) < 0.1).float() * mask_c).sum(dim=[0, 2, 3, 4]) / (mask_c.sum(dim=[0, 2, 3, 4]) + 1e-6)
     ppe50 = ((torch.abs(diff / (real + 1e-6)) < 0.5).float() * mask_c).sum(dim=[0, 2, 3, 4]) / (mask_c.sum(dim=[0, 2, 3, 4]) + 1e-6)
 
-    # Correlation and Contrast are harder with batching.
-    # Let's stick to the per-sample loop for now if they are too complex,
-    # or just return the already computed ones and accept it's a bit slower.
-    # Actually, RMSE and Flux Error are the main bottlenecks.
+    # R2 and Correlation: [C]
+    # Calculate masked means
+    real_mean = real_sum / (mask_c.sum(dim=[0, 2, 3, 4]) + 1e-6)
+
+    # Need to broadcast real_mean for variance calculation
+    # [B, C, T, H, W]
+    real_mean_expanded = real_mean.view(1, -1, 1, 1, 1)
+
+    # SS_tot: [C]
+    ss_tot = (((real - real_mean_expanded)**2) * mask_c).sum(dim=[0, 2, 3, 4])
+
+    # SS_res: [C]
+    ss_res = mse.sum(dim=[0, 2, 3, 4])
+
+    # R2: [C]
+    r2 = 1 - (ss_res / (ss_tot + 1e-6))
+
+    # Pearson Correlation: [C]
+    gen_mean = gen_sum / (mask_c.sum(dim=[0, 2, 3, 4]) + 1e-6)
+    gen_mean_expanded = gen_mean.view(1, -1, 1, 1, 1)
+
+    cov = (((real - real_mean_expanded) * (generated - gen_mean_expanded)) * mask_c).sum(dim=[0, 2, 3, 4])
+    ss_gen = (((generated - gen_mean_expanded)**2) * mask_c).sum(dim=[0, 2, 3, 4])
+
+    correlation = cov / (torch.sqrt(ss_tot + 1e-6) * torch.sqrt(ss_gen + 1e-6) + 1e-6)
 
     metrics = {}
     for c, channel in enumerate(channels):
@@ -54,9 +75,7 @@ def compute_metrics_pytorch(real: torch.Tensor, generated: torch.Tensor, mask: t
             "flux_difference": flux_error[c].item(),
             "ppe10s": ppe10[c].item(),
             "ppe50s": ppe50[c].item(),
-            # For complex ones, we can keep the loop or implement them later
-            "rms_contrast_measure": 0.0,
-            "pixel_correlation": 0.0,
+            "r2_score": r2[c].item(),
+            "pixel_correlation": correlation[c].item(),
         }
 
-    return metrics

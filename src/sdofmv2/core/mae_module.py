@@ -196,7 +196,7 @@ class MAE(BaseModule):
         averaged_metrics = {}
         for chan in self.chan_types:
             averaged_metrics[chan] = {}
-            for met in ["rmse_intensity", "flux_difference", "ppe10s", "ppe50s"]:
+            for met in ["rmse_intensity", "flux_difference", "ppe10s", "ppe50s", "r2_score", "pixel_correlation"]:
                 averaged_metrics[chan][met] = np.mean([m[chan][met] for m in self.validation_metrics])
 
         # Logging
@@ -247,7 +247,7 @@ class MAE(BaseModule):
         averaged_metrics = {}
         for chan in self.chan_types:
             averaged_metrics[chan] = {}
-            for met in ["rmse_intensity", "flux_difference", "ppe10s", "ppe50s"]:
+            for met in ["rmse_intensity", "flux_difference", "ppe10s", "ppe50s", "r2_score", "pixel_correlation"]:
                 averaged_metrics[chan][met] = np.mean([m[chan][met] for m in self.test_results])
 
         # Logging to WandB if enabled, otherwise just log to trainer

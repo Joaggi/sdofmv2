@@ -11,6 +11,7 @@ from .utils import (
     patchify,
     unpatchify,
     norm_target,
+    spatial_to_patch_mask,
     AttributeDict,
 )
 

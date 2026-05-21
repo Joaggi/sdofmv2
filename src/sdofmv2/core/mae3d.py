@@ -212,9 +212,7 @@ class MaskedAutoencoderViT3D(nn.Module):
 
         # Pre-calculate patch-level off-limb mask
         num_patches = (
-            (num_frames // tubelet_size)
-            * (img_size // patch_size)
-            * (img_size // patch_size)
+            (num_frames // tubelet_size) * (img_size // patch_size) * (img_size // patch_size)
         )
         patch_off_limb_mask = torch.zeros(num_patches, dtype=torch.bool)
         if self.ids_limb_mask is not None:
@@ -224,8 +222,6 @@ class MaskedAutoencoderViT3D(nn.Module):
         else:
             patch_off_limb_mask = None
         self.register_buffer("patch_off_limb_mask", patch_off_limb_mask)
-
-
 
         # MAE encoder specifics
         self.patch_embed = PatchEmbed(
@@ -536,15 +532,23 @@ class MaskedAutoencoderViT3D(nn.Module):
                     target_norm if self.loss_dict.norm_pix_loss else target,
                     imgs=imgs,
                     weight_inner=self.loss_dict.bright_patch_weighted_loss.get("weight_inner", 1.0),
-                    weight_outer_bright=self.loss_dict.bright_patch_weighted_loss.get("weight_outer_bright", 1.0),
-                    weight_outer_dark=self.loss_dict.bright_patch_weighted_loss.get("weight_outer_dark", 0.1),
-                    zero_threshold=self.loss_dict.bright_patch_weighted_loss.get("zero_threshold", 0.9),
+                    weight_outer_bright=self.loss_dict.bright_patch_weighted_loss.get(
+                        "weight_outer_bright", 1.0
+                    ),
+                    weight_outer_dark=self.loss_dict.bright_patch_weighted_loss.get(
+                        "weight_outer_dark", 0.1
+                    ),
+                    zero_threshold=self.loss_dict.bright_patch_weighted_loss.get(
+                        "zero_threshold", 0.9
+                    ),
                     base_type=self.loss_dict.bright_patch_weighted_loss.get("base_type", "mse"),
                     huber_delta=self.loss_dict.bright_patch_weighted_loss.get("huber_delta", 1.0),
                     patch_size=self.patch_size,
                     tubelet_size=self.tubelet_size,
                     corner_size=self.loss_dict.bright_patch_weighted_loss.get("corner_size", 4),
-                    corner_ratio=self.loss_dict.bright_patch_weighted_loss.get("corner_ratio", 0.25),
+                    corner_ratio=self.loss_dict.bright_patch_weighted_loss.get(
+                        "corner_ratio", 0.25
+                    ),
                     mask_hidden=mask,
                     mask_off_limb=is_off_limb,
                 )

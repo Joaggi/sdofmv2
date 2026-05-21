@@ -356,13 +356,18 @@ def spatial_to_patch_mask(
     H, W = mask_2d.shape
     p = patch_size
 
-    h = H // p
-    w = W // p
+    assert H % p == 0 and W % p == 0
 
-    mask_3d = mask_2d.unsqueeze(0).unsqueeze(0).expand(num_frames, 1, -1, -1)
-    patches = rearrange(mask_3d, "(t c) (h p) (w q) -> (t h w) (p q c)", p=p, q=p)
+    mask_3d = mask_2d.unsqueeze(0).unsqueeze(0).expand(num_frames, 1, H, W)
+    patches = rearrange(
+        mask_3d,
+        "t c (h p) (w q) -> (t h w) (p q c)",
+        p=p,
+        q=p,
+    )
 
-    patch_is_zero = patches.sum(dim=(-1, -2)) == 0
+    patch_is_zero = patches.sum(dim=-1) == 0
+
     return patch_is_zero
 
 

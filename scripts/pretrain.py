@@ -55,35 +55,6 @@ class Pretrainer:
         model (MAE): The initialized MAE model.
     """
 
-    def _compute_ids_limb_mask(self, limb_mask_2d):
-        """Convert 2D limb mask to patch-level indices.
-
-        Args:
-            limb_mask_2d: 2D binary tensor (H, W) where 1=solar disk, 0=space.
-
-        Returns:
-            torch.Tensor: 1D tensor of patch indices outside the solar disk.
-        """
-
-        patch_size = self.cfg.model.mae.patch_size
-        num_frames = self.cfg.model.mae.num_frames
-        img_size = self.cfg.model.mae.img_size
-
-        mask_3d = limb_mask_2d.unsqueeze(0).unsqueeze(0)
-        mask_3d = mask_3d.expand(num_frames, 1, img_size, img_size)
-
-        patches = rearrange(
-            mask_3d.float(),
-            "(t c) (h p) (w q) -> (t h w) (p q c)",
-            p=patch_size,
-            q=patch_size,
-        )
-
-        patch_sum = patches.sum(dim=(-1, -2))
-        off_limb_indices = (patch_sum == 0).nonzero(as_tuple=True)[0]
-
-        return off_limb_indices
-
     def __init__(self, cfg, logger=None, is_backbone=False):
         self.cfg = cfg
         self.logger = logger
@@ -192,12 +163,10 @@ class Pretrainer:
         )
         self.data_module.setup()
 
-        limb_mask_2d = self.data_module.hmi_mask if cfg.model.misc.get("limb_mask", False) else None
-
         model_hyperparams = {
             **cfg.model.mae,
             "chan_types": self.chan_types,
-            "limb_mask": limb_mask_2d,
+            "limb_mask": torch.Tensor(np.load(self.cfg.data.hmi_mask)),
             "loss_dict": self.cfg.model.loss,
             "optimizer_dict": self.cfg.model.optimizer,
             "scheduler_dict": self.cfg.model.scheduler,

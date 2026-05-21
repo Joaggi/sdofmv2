@@ -9,29 +9,27 @@ import torch
 import torch.multiprocessing as mp
 
 mp.set_sharing_strategy("file_system")
-import wandb
-from einops import rearrange
-from loguru import logger as lgr_logger
-from omegaconf import DictConfig, OmegaConf
-
 # PyTorch Lightning imports
 import lightning.pytorch as pl
+import wandb
+from einops import rearrange
 from lightning.pytorch import seed_everything
-from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.callbacks import (
     LearningRateMonitor,
     ModelCheckpoint,
     RichProgressBar,
     Timer,
 )
+from lightning.pytorch.loggers.wandb import WandbLogger
+from loguru import logger as lgr_logger
+from omegaconf import DictConfig, OmegaConf
 
 from sdofmv2 import utils
-from sdofmv2.utils import flatten_dict, ALL_COMPONENTS, ALL_WAVELENGTHS
-from sdofmv2.core import MAE
-from sdofmv2.core import SDOMLDataModule
+from sdofmv2.core import MAE, SDOMLDataModule
+from sdofmv2.utils import ALL_COMPONENTS, ALL_WAVELENGTHS, flatten_dict
 
 
-class Pretrainer(object):
+class Pretrainer:
     """Coordinates the pre-training workflow for Masked Autoencoder (MAE) models.
 
     This class sets up the training infrastructure by initializing the data
@@ -194,7 +192,7 @@ class Pretrainer(object):
         )
         self.data_module.setup()
 
-        limb_mask_2d = self.data_module.hmi_mask if cfg.model.misc.limb_mask is True else None
+        limb_mask_2d = self.data_module.hmi_mask if cfg.model.misc.get("limb_mask", False) else None
 
         model_hyperparams = {
             **cfg.model.mae,
@@ -283,7 +281,7 @@ def main(cfg: DictConfig) -> None:
     seed_everything(cfg.experiment.seed)
 
     # run experiment
-    print(f"\nRunning with config:")
+    print("\nRunning with config:")
     print(OmegaConf.to_yaml(cfg, resolve=False, sort_keys=False))
     print("\n")
 
@@ -337,4 +335,4 @@ if __name__ == "__main__":
     os.environ["HYDRA_FULL_ERROR"] = "1"  # Produce a complete stack trace
 
     main()
-    print("\nTotal duration: {}".format(utils.days_hours_mins_secs_str(time.time() - time_start)))
+    print(f"\nTotal duration: {utils.days_hours_mins_secs_str(time.time() - time_start)}")

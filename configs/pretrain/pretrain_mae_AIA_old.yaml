@@ -115,6 +115,7 @@ model:
     mlp_ratio: 4.0
     norm_layer: 'LayerNorm'
     masking_ratio: 0.5
+    mask_only_inner: false
   samae:
     # uses all parameters as in mae plus these
     masking_type: "solar_aware"  # 'random' or 'solar_aware'
@@ -162,7 +163,17 @@ model:
   # for loss
   loss:
     space: patch # pixel, patch
-    type: patch_weight_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
+    type: bright_patch_weighted_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
+    bright_patch_weighted_loss:
+      weight_inner: 1.0
+      weight_outer_bright: 1.0
+      weight_outer_dark: 0.1
+      zero_threshold: 0.9
+      base_type: mse
+      huber_delta: 1.0
+      corner_size: 4
+      corner_ratio: 0.25
+
     exclude_limb: true
     norm_pix_loss: false
     only_masked_patches: false # patch space

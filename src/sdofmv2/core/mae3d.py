@@ -10,11 +10,11 @@ Adapted from: https://github.com/facebookresearch/mae/blob/main/models_mae.py
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as functional
 from timm.layers import to_2tuple
 from timm.models.vision_transformer import Block
 
-from ..utils import get_3d_sincos_pos_embed, patchify, unpatchify
+from ..utils import get_3d_sincos_pos_embed, patchify, spatial_to_patch_mask, unpatchify
 from .losses import (
     bright_patch_weighted_loss,
     mae_loss,
@@ -171,14 +171,13 @@ class MaskedAutoencoderViT3D(nn.Module):
         self.patch_size = patch_size
         self.num_frames = num_frames
         self.tubelet_size = tubelet_size
-        self.limb_mask = limb_mask
         self.loss_dict = loss_dict if loss_dict is not None else {}
 
-        # define loss     # define loss
+        # define loss
         loss_functions = {
-            "mse": F.mse_loss,
+            "mse": functional.mse_loss,
             "mae": mae_loss,
-            "huber": F.huber_loss,
+            "huber": functional.huber_loss,
             "vector_aware_loss": vector_aware_loss,
             "pixel_weight_loss": pixel_weight_loss,
             "patch_weight_loss": patch_weight_loss,
@@ -204,7 +203,29 @@ class MaskedAutoencoderViT3D(nn.Module):
         if ids_limb_mask is not None:
             ids_limb_mask = torch.as_tensor(ids_limb_mask, dtype=torch.long)
             ids_limb_mask, _ = torch.sort(ids_limb_mask)
-        self.register_buffer("ids_limb_mask", ids_limb_mask)  # indices of pixel inside solar disk
+        self.register_buffer("ids_limb_mask", ids_limb_mask)
+
+        if limb_mask is not None:
+            self.register_buffer("limb_mask", torch.as_tensor(limb_mask, dtype=torch.float32))
+        else:
+            self.limb_mask = None
+
+        # Pre-calculate patch-level off-limb mask
+        num_patches = (
+            (num_frames // tubelet_size)
+            * (img_size // patch_size)
+            * (img_size // patch_size)
+        )
+        patch_off_limb_mask = torch.zeros(num_patches, dtype=torch.bool)
+        if self.ids_limb_mask is not None:
+            patch_off_limb_mask[self.ids_limb_mask] = True
+        elif self.limb_mask is not None:
+            patch_off_limb_mask = spatial_to_patch_mask(self.limb_mask, patch_size, num_frames)
+        else:
+            patch_off_limb_mask = None
+        self.register_buffer("patch_off_limb_mask", patch_off_limb_mask)
+
+
 
         # MAE encoder specifics
         self.patch_embed = PatchEmbed(
@@ -456,15 +477,11 @@ class MaskedAutoencoderViT3D(nn.Module):
             else:
                 target_norm = target
 
-            device = target.device
             batch_size, num_patches, dims = pred.shape
 
-            # Identify off-limb regions from config
-            if self.ids_limb_mask is not None and len(self.ids_limb_mask) > 0:
-                is_off_limb = torch.zeros(
-                    (batch_size, num_patches), device=device, dtype=torch.bool
-                )
-                is_off_limb[:, self.ids_limb_mask] = True
+            # Retrieve off-limb regions from registered buffer
+            if self.patch_off_limb_mask is not None:
+                is_off_limb = self.patch_off_limb_mask.unsqueeze(0).expand(batch_size, -1)
             else:
                 is_off_limb = None
 
@@ -518,8 +535,9 @@ class MaskedAutoencoderViT3D(nn.Module):
                     pred,
                     target_norm if self.loss_dict.norm_pix_loss else target,
                     imgs=imgs,
-                    weight_bright=self.loss_dict.bright_patch_weighted_loss.get("weight_bright", 1.0),
-                    weight_dark=self.loss_dict.bright_patch_weighted_loss.get("weight_dark", 0.1),
+                    weight_inner=self.loss_dict.bright_patch_weighted_loss.get("weight_inner", 1.0),
+                    weight_outer_bright=self.loss_dict.bright_patch_weighted_loss.get("weight_outer_bright", 1.0),
+                    weight_outer_dark=self.loss_dict.bright_patch_weighted_loss.get("weight_outer_dark", 0.1),
                     zero_threshold=self.loss_dict.bright_patch_weighted_loss.get("zero_threshold", 0.9),
                     base_type=self.loss_dict.bright_patch_weighted_loss.get("base_type", "mse"),
                     huber_delta=self.loss_dict.bright_patch_weighted_loss.get("huber_delta", 1.0),
@@ -528,6 +546,7 @@ class MaskedAutoencoderViT3D(nn.Module):
                     corner_size=self.loss_dict.bright_patch_weighted_loss.get("corner_size", 4),
                     corner_ratio=self.loss_dict.bright_patch_weighted_loss.get("corner_ratio", 0.25),
                     mask_hidden=mask,
+                    mask_off_limb=is_off_limb,
                 )
             else:
                 loss = self.loss_fn(

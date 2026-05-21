@@ -1,17 +1,16 @@
 import os
-import h5py
-import torch
-import numpy as np
-import pandas as pd
+
 import lightning.pytorch as pl
+import pandas as pd
+import torch
 import torch.nn.functional as F
-from skimage.measure import block_reduce
+
+from sdofmv2.utils import patchify, spatial_to_patch_mask, unpatchify
+from sdofmv2.utils.constants import ALL_WAVELENGTHS
 
 from . import reconstruction as bench_recon
-from .mae3d import MaskedAutoencoderViT3D
 from .basemodule import BaseModule
-from ..utils import unpatchify, patchify
-from sdofmv2.utils.constants import ALL_WAVELENGTHS
+from .mae3d import MaskedAutoencoderViT3D
 
 
 class MAE(BaseModule):
@@ -85,6 +84,7 @@ class MAE(BaseModule):
         mlp_ratio=4.0,
         norm_layer="LayerNorm",
         masking_ratio=0.75,
+        mask_only_inner=False,
         limb_mask=None,
         loss_dict={},
         optimizer_dict={},
@@ -99,28 +99,26 @@ class MAE(BaseModule):
             *args,
             **kwargs,
         )
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["limb_mask"])
         self.img_size = img_size
         self.patch_size = patch_size
         self.tubelet_size = tubelet_size
         self.validation_metrics = []
         self.masking_ratio = masking_ratio
+        self.mask_only_inner = mask_only_inner
         self.chan_types = chan_types
         self.limb_mask = limb_mask
         self.loss_dict = loss_dict
         self.test_results = []
 
-        # block reduce limb_mask
+        # compute limb_mask_ids
         limb_mask_ids = None
-        if limb_mask is not None:
-            new_matrix = block_reduce(
-                limb_mask.numpy(),
-                block_size=(self.patch_size, self.patch_size),
-                func=np.max,
+        if self.mask_only_inner and limb_mask is not None:
+            mask_bool = spatial_to_patch_mask(
+                torch.as_tensor(limb_mask), self.patch_size, num_frames
             )
-            limb_mask_ids = torch.tensor(
-                np.argwhere(new_matrix.reshape((img_size // self.patch_size) ** 2) == 0).reshape(-1)
-            )
+            limb_mask_ids = torch.where(mask_bool)[0]
+
 
         self.autoencoder = MaskedAutoencoderViT3D(
             img_size,

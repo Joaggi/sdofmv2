@@ -292,8 +292,9 @@ def bright_patch_weighted_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
     imgs: torch.Tensor,
-    weight_bright: float = 1.0,
-    weight_dark: float = 0.1,
+    weight_inner: float = 1.0,
+    weight_outer_bright: float = 1.0,
+    weight_outer_dark: float = 0.1,
     zero_threshold: float = 0.9,
     base_type: Literal["mse", "mae", "huber"] = "mse",
     huber_delta: float = 1.0,
@@ -302,11 +303,12 @@ def bright_patch_weighted_loss(
     corner_size: int = 4,
     corner_ratio: float = 0.25,
     mask_hidden: torch.Tensor | None = None,
+    mask_off_limb: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Calculates weighted loss prioritizing bright patches per channel/frame."""
+    """Calculates weighted loss prioritizing 3 regions: inner disk, outer bright, outer dark."""
     element_loss = _get_base_loss(pred, target, base_type, huber_delta)
 
-    # Get pixel-level zero mask in flattened shape [b, l, d]
+    # Get pixel-level zero mask [b, l, d]
     is_zero_pixel = _get_zero_pixel_mask_from_target(
         imgs,
         patch_size=patch_size,
@@ -315,41 +317,53 @@ def bright_patch_weighted_loss(
         corner_ratio=corner_ratio,
     )
 
-    # D = tub * p * q * C. The channels C are the innermost dimension.
     b, seq_len, d = target.shape
     c = imgs.shape[1]
     d_spatial_temporal = d // c
 
-    # Reshape to separate channel dimension: [b, seq_len, d_spatial_temporal, c]
-    # utils.patchify re-arranges to put c as the innermost dim
+    # [b, seq_len, d_spatial_temporal, c]
     is_zero_pixel_reshaped = is_zero_pixel.reshape(b, seq_len, d_spatial_temporal, c)
-
-    # Calculate zero ratio per (patch, channel)
-    # Average across the spatial-temporal pixel dimension
     dark_ratio_per_chan = is_zero_pixel_reshaped.float().mean(dim=2)  # [b, seq_len, c]
-
-    # Per-channel, per-patch decision
     is_dark_chan = dark_ratio_per_chan > zero_threshold  # [b, seq_len, c]
 
-    # Expand decision back to [b, seq_len, d_spatial_temporal, c] then back to [b, seq_len, d]
-    is_dark_pixel_mask = is_dark_chan.unsqueeze(2).expand(-1, -1, d_spatial_temporal, -1)
-    is_dark_pixel_mask = is_dark_pixel_mask.reshape(b, seq_len, d)
-    is_bright_pixel_mask = ~is_dark_pixel_mask
+    # Region identification
+    if mask_off_limb is not None:
+        # mask_off_limb [b, seq_len]
+        mask_off_limb_expanded = mask_off_limb.unsqueeze(-1).expand(-1, -1, c) # [b, seq_len, c]
+        is_inner_chan = ~mask_off_limb_expanded
+        is_outer_bright_chan = mask_off_limb_expanded & ~is_dark_chan
+        is_outer_dark_chan = mask_off_limb_expanded & is_dark_chan
+    else:
+        # Default to inner only if no limb mask provided
+        is_inner_chan = torch.ones([b, seq_len, c], device=pred.device, dtype=torch.bool)
+        is_outer_bright_chan = torch.zeros([b, seq_len, c], device=pred.device, dtype=torch.bool)
+        is_outer_dark_chan = torch.zeros([b, seq_len, c], device=pred.device, dtype=torch.bool)
 
-    # Restrict loss calculation to hidden/masked patches if applicable
+    # Expand masks to [b, seq_len, d]
+    def expand_to_d(mask_chan):
+        # [b, seq_len, 1, c] -> [b, seq_len, d_spatial_temporal, c] -> [b, seq_len, d]
+        return mask_chan.unsqueeze(2).expand(-1, -1, d_spatial_temporal, -1).reshape(b, seq_len, d)
+
+    is_inner_pixel_mask = expand_to_d(is_inner_chan)
+    is_outer_bright_pixel_mask = expand_to_d(is_outer_bright_chan)
+    is_outer_dark_pixel_mask = expand_to_d(is_outer_dark_chan)
+
+    # Apply hidden patch mask
     if mask_hidden is not None:
-        # mask_hidden is [b, l], broadcast it over d
         is_masked = mask_hidden.bool().unsqueeze(-1)
-        is_dark_pixel_mask = is_dark_pixel_mask & is_masked
-        is_bright_pixel_mask = is_bright_pixel_mask & is_masked
+        is_inner_pixel_mask &= is_masked
+        is_outer_bright_pixel_mask &= is_masked
+        is_outer_dark_pixel_mask &= is_masked
 
-    # Compute group means and weighted sum
-    loss_dark = _get_group_mean(element_loss, is_dark_pixel_mask)
-    loss_bright = _get_group_mean(element_loss, is_bright_pixel_mask)
+    # Compute group means
+    loss_inner = _get_group_mean(element_loss, is_inner_pixel_mask)
+    loss_outer_bright = _get_group_mean(element_loss, is_outer_bright_pixel_mask)
+    loss_outer_dark = _get_group_mean(element_loss, is_outer_dark_pixel_mask)
 
     # Normalize weights
-    w_sum = weight_bright + weight_dark
-    w_b = weight_bright / w_sum
-    w_d = weight_dark / w_sum
+    w_sum = weight_inner + weight_outer_bright + weight_outer_dark
+    w_i = weight_inner / w_sum
+    w_ob = weight_outer_bright / w_sum
+    w_od = weight_outer_dark / w_sum
 
-    return (w_b * loss_bright) + (w_d * loss_dark)
+    return (w_i * loss_inner) + (w_ob * loss_outer_bright) + (w_od * loss_outer_dark)

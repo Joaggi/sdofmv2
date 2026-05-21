@@ -1,24 +1,25 @@
 import os
+
+import hydra
 import torch
 import wandb
-import hydra
-from omegaconf.listconfig import ListConfig
-from omegaconf.base import ContainerMetadata
-from loguru import logger as loguru_logger
 
 # pytorch lightining
 from lightning.pytorch import Trainer
-from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.callbacks import (
+    LearningRateMonitor,
     ModelCheckpoint,
     RichProgressBar,
-    LearningRateMonitor,
 )
+from lightning.pytorch.loggers.wandb import WandbLogger
+from loguru import logger as loguru_logger
+from omegaconf.base import ContainerMetadata
+from omegaconf.listconfig import ListConfig
 
 # from SDOFMv2
 from sdofmv2.core import MAE
-from sdofmv2.utils import flatten_dict, ALL_COMPONENTS, ALL_IONS, ALL_WAVELENGTHS
 from sdofmv2.tasks.solar_wind import SWClassifier, SWDataModule
+from sdofmv2.utils import ALL_COMPONENTS, ALL_WAVELENGTHS, flatten_dict
 
 
 @hydra.main(
@@ -168,9 +169,7 @@ def main(cfg):
         backbone = MAE(
             **cfg.model.mae,
             chan_types=channels,
-            limb_mask=(
-                data_module.hmi_mask if cfg.model.misc.limb_mask is True else None
-            ),
+            limb_mask=data_module.hmi_mask if cfg.model.misc.get("limb_mask", False) else None,
         )
 
     # Downstream model
@@ -268,5 +267,5 @@ def main(cfg):
     )
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

@@ -165,12 +165,14 @@ class MaskedAutoencoderViT3D(nn.Module):
         limb_mask=None,
         ids_limb_mask=None,
         loss_dict=None,
+        chan_types=None,
     ):
         super().__init__()
         self.img_size = img_size
         self.patch_size = patch_size
         self.num_frames = num_frames
         self.tubelet_size = tubelet_size
+        self.chan_types = chan_types
         self.loss_dict = loss_dict if loss_dict is not None else {}
 
         # define loss
@@ -546,13 +548,13 @@ class MaskedAutoencoderViT3D(nn.Module):
                     patch_size=self.patch_size,
                     tubelet_size=self.tubelet_size,
                     corner_size=self.loss_dict.bright_patch_weighted_loss.get("corner_size", 4),
-                    corner_ratio=self.loss_dict.bright_patch_weighted_loss.get(
-                        "corner_ratio", 0.25
-                    ),
+                    corner_ratio=self.loss_dict.bright_patch_weighted_loss.get("corner_ratio", 0.25),
                     mask_hidden=mask,
                     mask_off_limb=is_off_limb,
+                    chan_types=self.chan_types,
                 )
             else:
+
                 loss = self.loss_fn(
                     pred,
                     target_norm if self.loss_dict.norm_pix_loss else target,

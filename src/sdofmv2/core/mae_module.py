@@ -137,6 +137,7 @@ class MAE(BaseModule):
             limb_mask,
             limb_mask_ids,
             loss_dict,
+            chan_types=self.chan_types,
         )
 
     def training_step(self, batch, batch_idx):

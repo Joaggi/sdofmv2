@@ -304,6 +304,7 @@ def bright_patch_weighted_loss(
     corner_ratio: float = 0.25,
     mask_hidden: torch.Tensor | None = None,
     mask_off_limb: torch.Tensor | None = None,
+    chan_types: list[str] | None = None,
 ) -> torch.Tensor:
     """Calculates weighted loss prioritizing 3 regions: inner disk, outer bright, outer dark."""
     element_loss = _get_base_loss(pred, target, base_type, huber_delta)
@@ -326,13 +327,23 @@ def bright_patch_weighted_loss(
     dark_ratio_per_chan = is_zero_pixel_reshaped.float().mean(dim=2)  # [b, seq_len, c]
     is_dark_chan = dark_ratio_per_chan > zero_threshold  # [b, seq_len, c]
 
+    # AIA channel detection
+    if chan_types is not None:
+        is_aia = torch.tensor(
+            [("a" in str(ch).lower()) for ch in chan_types], device=pred.device
+        ).view(1, 1, -1)  # [1, 1, c]
+    else:
+        is_aia = torch.ones([1, 1, c], device=pred.device, dtype=torch.bool)
+
     # Region identification
     if mask_off_limb is not None:
         # mask_off_limb [b, seq_len]
         mask_off_limb_expanded = mask_off_limb.unsqueeze(-1).expand(-1, -1, c) # [b, seq_len, c]
         is_inner_chan = ~mask_off_limb_expanded
-        is_outer_bright_chan = mask_off_limb_expanded & ~is_dark_chan
-        is_outer_dark_chan = mask_off_limb_expanded & is_dark_chan
+        # Outer bright: Off-limb AND bright AND AIA channel
+        is_outer_bright_chan = mask_off_limb_expanded & ~is_dark_chan & is_aia
+        # Outer dark: Off-limb AND (dark OR HMI channel)
+        is_outer_dark_chan = mask_off_limb_expanded & (is_dark_chan | ~is_aia)
     else:
         # Default to inner only if no limb mask provided
         is_inner_chan = torch.ones([b, seq_len, c], device=pred.device, dtype=torch.bool)

@@ -302,7 +302,6 @@ def bright_patch_weighted_loss(
     tubelet_size: int = 1,
     corner_size: int = 4,
     corner_ratio: float = 0.25,
-    mask_hidden: torch.Tensor | None = None,
     mask_off_limb: torch.Tensor | None = None,
     chan_types: list[str] | None = None,
 ) -> torch.Tensor:
@@ -358,13 +357,6 @@ def bright_patch_weighted_loss(
     is_inner_pixel_mask = expand_to_d(is_inner_chan)
     is_outer_bright_pixel_mask = expand_to_d(is_outer_bright_chan)
     is_outer_dark_pixel_mask = expand_to_d(is_outer_dark_chan)
-
-    # Apply hidden patch mask
-    if mask_hidden is not None:
-        is_masked = mask_hidden.bool().unsqueeze(-1)
-        is_inner_pixel_mask &= is_masked
-        is_outer_bright_pixel_mask &= is_masked
-        is_outer_dark_pixel_mask &= is_masked
 
     # Compute group means
     loss_inner = _get_group_mean(element_loss, is_inner_pixel_mask)

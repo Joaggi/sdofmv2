@@ -548,8 +548,9 @@ class MaskedAutoencoderViT3D(nn.Module):
                     patch_size=self.patch_size,
                     tubelet_size=self.tubelet_size,
                     corner_size=self.loss_dict.bright_patch_weighted_loss.get("corner_size", 4),
-                    corner_ratio=self.loss_dict.bright_patch_weighted_loss.get("corner_ratio", 0.25),
-                    mask_hidden=mask,
+                    corner_ratio=self.loss_dict.bright_patch_weighted_loss.get(
+                        "corner_ratio", 0.25
+                    ),
                     mask_off_limb=is_off_limb,
                     chan_types=self.chan_types,
                 )

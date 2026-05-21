@@ -31,7 +31,7 @@ experiment:
   accelerator: gpu  # options are "auto", "gpu", "tpu", "ipu", or "cpu"
   distributed:
     enabled: true
-    devices: [0] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
+    devices: [0, 1] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
 
 # dataset configuration
 data:
@@ -58,10 +58,10 @@ data:
   normalization_stat_path: ./assets/cache/ALL/
 
   # for dataloader
-  num_workers: 1    # set appropriately for your machine
-  pin_memory: false
-  prefetch_factor: 1
-  persistent_workers: false
+  num_workers: 12    # set appropriately for your machine
+  pin_memory: true
+  prefetch_factor: 2
+  persistent_workers: true
   multiprocessing_context: spawn
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
   drop_frame_dim: false
@@ -104,7 +104,7 @@ model:
     decoder_num_heads: 16
     mlp_ratio: 4.0
     norm_layer: LayerNorm
-    masking_ratio: 0.0
+    masking_ratio: 0.5
     mask_only_inner: false
 
   # for loss

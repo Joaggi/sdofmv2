@@ -75,10 +75,9 @@ huggingface-cli download joseph-gallego/sdofmv2
 │   ├── analysis/               # Attention maps, PCA, and masking analysis
 │   └── downstream_apps/        # Downstream application demos (F10.7, missing data)
 ├── scripts/                    # Executable training and evaluation scripts
-│   ├── pretrain.py             # Main pretraining script
-│   ├── finetuning_*.py         # Downstream finetuning scripts
-│   ├── test.py                 # Checkpoint evaluation script
-│   └── download_data.py        # Resumable dataset downloader
+│   ├── data/                   # Data acquisition, conversion, and indexing
+│   ├── training/               # Training and finetuning scripts
+│   └── evaluation/             # Testing, inference, and visualization
 ├── src/
 │   └── sdofmv2/
 │       ├── core/               # Base model architectures and modules
@@ -111,13 +110,13 @@ The download script is **resumable** — it checks for existing local files and 
 
 ```bash
 # Download AIA only
-python scripts/download_data.py --target /path/to/your/storage --component aia
+python scripts/data/download_data.py --target /path/to/your/storage --component aia
 
 # Download HMI only
-python scripts/download_data.py --target /path/to/your/storage --component hmi
+python scripts/data/download_data.py --target /path/to/your/storage --component hmi
 
 # Download the full dataset
-python scripts/download_data.py --target /path/to/your/storage --component both
+python scripts/data/download_data.py --target /path/to/your/storage --component both
 ```
 
 ### Zarr Directory Layout
@@ -149,20 +148,20 @@ Unlike monolithic file formats (e.g., `.fits`), the chunked Zarr layout enables 
 ### Pretraining
 
 ```bash
-python scripts/pretrain.py --config-name pretrain_mae_AIA.yaml
+python scripts/training/pretrain.py --config-name pretrain_mae_AIA.yaml
 ```
 
 ### Evaluation
 
 ```bash
-python scripts/test.py --config-name pretrain_mae_AIA.yaml
+python scripts/evaluation/test.py --config-name pretrain_mae_AIA.yaml
 ```
 
 ### Downstream Finetuning
 
 ```bash
 # Example: solar wind forecasting
-python scripts/finetuning_solarwind.py --config-name finetune_solarwind_config.yaml
+python scripts/training/finetuning_solarwind.py --config-name finetune_solarwind_config.yaml
 ```
 
 Configuration files for all tasks are in `configs/downstream/`. Notebook-based walkthroughs are available in `notebooks/downstream_apps/`.

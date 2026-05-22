@@ -16,16 +16,41 @@ from einops import rearrange
 def visualize(cfg: DictConfig):
     # Setup Data
     data_module = SDOMLDataModule(
-        hmi_path=os.path.join(cfg.data.sdoml.base_directory, cfg.data.sdoml.sub_directory.hmi)
-        if cfg.data.sdoml.sub_directory.hmi
-        else None,
-        aia_path=os.path.join(cfg.data.sdoml.base_directory, cfg.data.sdoml.sub_directory.aia)
-        if cfg.data.sdoml.sub_directory.aia
-        else None,
-        batch_size=1,  # Just one sample
-        num_frames=cfg.model.mae.num_frames,
-        apply_mask=cfg.data.sdoml.apply_mask,
+        hmi_path=(
+            os.path.join(
+                cfg.data.sdoml.base_directory,
+                cfg.data.sdoml.sub_directory.hmi,
+            )
+            if cfg.data.sdoml.sub_directory.hmi
+            else None
+        ),
+        aia_path=(
+            os.path.join(
+                cfg.data.sdoml.base_directory,
+                cfg.data.sdoml.sub_directory.aia,
+            )
+            if cfg.data.sdoml.sub_directory.aia
+            else None
+        ),
+        eve_path=None,
+        components=cfg.data.sdoml.components,
+        wavelengths=cfg.data.sdoml.wavelengths,
+        ions=cfg.data.sdoml.ions,
+        batch_size=cfg.model.misc.batch_size,
+        num_workers=cfg.data.num_workers,
+        pin_memory=cfg.data.pin_memory,
+        persistent_workers=cfg.data.persistent_workers,
+        multiprocessing_context=cfg.data.multiprocessing_context,
+        train_index=cfg.data.train_index,
+        val_index=cfg.data.val_index,
+        test_index=cfg.data.test_index,
         hmi_mask=cfg.data.hmi_mask,
+        num_frames=cfg.model.mae.num_frames,
+        drop_frame_dim=cfg.data.drop_frame_dim,
+        apply_mask=cfg.data.sdoml.apply_mask,
+        precision=cfg.experiment.precision,
+        normalization=cfg.data.sdoml.normalization,
+        normalization_stat_path=cfg.data.normalization_stat_path,
     )
     data_module.setup()
     dataloader = data_module.train_dataloader()
@@ -60,7 +85,7 @@ def visualize(cfg: DictConfig):
     tubelet_size = cfg.model.mae.tubelet_size
 
     # Limb mask is a buffer
-    mask_off_limb = model.patch_off_limb_mask.unsqueeze(0).expand(imgs.shape[0], -1)
+    mask_off_limb = model.autoencoder.patch_off_limb_mask.unsqueeze(0).expand(imgs.shape[0], -1)
 
     # Get pixel-level zero mask [b, l, d]
     is_zero_pixel = _get_zero_pixel_mask_from_target(

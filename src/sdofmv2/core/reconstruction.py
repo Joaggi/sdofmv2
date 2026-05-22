@@ -6,16 +6,19 @@ import torch
 
 RADIUS_FRACTION_OF_IMAGE = 0.40625
 
-def compute_metrics_pytorch(real: torch.Tensor, generated: torch.Tensor, mask: torch.Tensor, channels: list[str]) -> dict:
+
+def compute_metrics_pytorch(
+    real: torch.Tensor, generated: torch.Tensor, mask: torch.Tensor, channels: list[str]
+) -> dict:
     """Computes all reconstruction metrics on the GPU using vectorized operations."""
 
     # real, gen: [B, C, T, H, W]
     # mask: [B, T, H, W] (True for patches/pixels to evaluate)
 
-    # 1. Expand mask to all channels [B, C, T, H, W]
+    # Expand mask to all channels [B, C, T, H, W]
     mask_c = mask.unsqueeze(1).expand(-1, real.shape[1], -1, -1, -1)
 
-    # 2. Select masked pixels
+    # Select masked pixels
     # Using masked_select results in [N_masked_total] which doesn't keep channel info.
     # We need to keep channels, so let's use view + boolean indexing
     # Mask [B, C, T, H, W] -> [B*C*T*H*W]
@@ -39,8 +42,12 @@ def compute_metrics_pytorch(real: torch.Tensor, generated: torch.Tensor, mask: t
     flux_error = (gen_sum - real_sum) / (real_sum + 1e-6)
 
     # PPE: [C]
-    ppe10 = ((torch.abs(diff / (real + 1e-6)) < 0.1).float() * mask_c).sum(dim=[0, 2, 3, 4]) / (mask_c.sum(dim=[0, 2, 3, 4]) + 1e-6)
-    ppe50 = ((torch.abs(diff / (real + 1e-6)) < 0.5).float() * mask_c).sum(dim=[0, 2, 3, 4]) / (mask_c.sum(dim=[0, 2, 3, 4]) + 1e-6)
+    ppe10 = ((torch.abs(diff / (real + 1e-6)) < 0.1).float() * mask_c).sum(dim=[0, 2, 3, 4]) / (
+        mask_c.sum(dim=[0, 2, 3, 4]) + 1e-6
+    )
+    ppe50 = ((torch.abs(diff / (real + 1e-6)) < 0.5).float() * mask_c).sum(dim=[0, 2, 3, 4]) / (
+        mask_c.sum(dim=[0, 2, 3, 4]) + 1e-6
+    )
 
     # R2 and Correlation: [C]
     # Calculate masked means
@@ -51,7 +58,7 @@ def compute_metrics_pytorch(real: torch.Tensor, generated: torch.Tensor, mask: t
     real_mean_expanded = real_mean.view(1, -1, 1, 1, 1)
 
     # SS_tot: [C]
-    ss_tot = (((real - real_mean_expanded)**2) * mask_c).sum(dim=[0, 2, 3, 4])
+    ss_tot = (((real - real_mean_expanded) ** 2) * mask_c).sum(dim=[0, 2, 3, 4])
 
     # SS_res: [C]
     ss_res = mse.sum(dim=[0, 2, 3, 4])
@@ -63,8 +70,10 @@ def compute_metrics_pytorch(real: torch.Tensor, generated: torch.Tensor, mask: t
     gen_mean = gen_sum / (mask_c.sum(dim=[0, 2, 3, 4]) + 1e-6)
     gen_mean_expanded = gen_mean.view(1, -1, 1, 1, 1)
 
-    cov = (((real - real_mean_expanded) * (generated - gen_mean_expanded)) * mask_c).sum(dim=[0, 2, 3, 4])
-    ss_gen = (((generated - gen_mean_expanded)**2) * mask_c).sum(dim=[0, 2, 3, 4])
+    cov = (((real - real_mean_expanded) * (generated - gen_mean_expanded)) * mask_c).sum(
+        dim=[0, 2, 3, 4]
+    )
+    ss_gen = (((generated - gen_mean_expanded) ** 2) * mask_c).sum(dim=[0, 2, 3, 4])
 
     correlation = cov / (torch.sqrt(ss_tot + 1e-6) * torch.sqrt(ss_gen + 1e-6) + 1e-6)
 
@@ -79,3 +88,4 @@ def compute_metrics_pytorch(real: torch.Tensor, generated: torch.Tensor, mask: t
             "pixel_correlation": correlation[c].item(),
         }
 
+    return metrics

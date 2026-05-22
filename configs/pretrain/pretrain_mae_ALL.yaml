@@ -3,17 +3,17 @@ experiment:
   model: mae
   backbone:
     model: mae
-    is_backbone: false
+    is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: null
-    weights_only: true
+    weight_name: id_qu7tsc5c_mae_epoch=1-val_loss=1.32.ckpt
+    weights_only: false
   seed: 0
   disable_cuda: false
   
   wandb:
     enable: true
     name: mae-pretrain-all-bright_path_weighted_loss-huber-base
-    run_id: null
+    run_id: qu7tsc5c
     entity: allshaman
     project: sdofmv2
     group: ""
@@ -58,7 +58,7 @@ data:
   normalization_stat_path: ./assets/cache/ALL/
 
   # for dataloader
-  num_workers: 12    # set appropriately for your machine
+  num_workers: 8    # set appropriately for your machine
   pin_memory: true
   prefetch_factor: 2
   persistent_workers: true

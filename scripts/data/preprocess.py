@@ -24,7 +24,7 @@ from sdofmv2.utils import ALL_COMPONENTS, ALL_IONS, ALL_WAVELENGTHS
 
 
 @hydra.main(
-    version_base=None, config_path="../configs/pretrain", config_name="pretrain_mae_AIA.yaml"
+    version_base=None, config_path="../../configs/pretrain", config_name="pretrain_mae_AIA.yaml"
 )
 def main(cfg: DictConfig):
     """Main preprocessing function."""

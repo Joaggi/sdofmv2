@@ -211,10 +211,9 @@ def _get_zero_pixel_mask_from_target(
     )
 
     threshold = corner_ratio * corners.mean(dim=-1).unsqueeze(-1).unsqueeze(-1)
-    print(f"Calculated threshold (corner_ratio={corner_ratio}): {threshold.mean().item():.4f}")
-    print(f"Mean of is_zero_pixel before reshape: {is_zero_pixel.float().mean().item():.4f}")
+    # print(f"Calculated threshold (corner_ratio={corner_ratio}): {threshold.mean().item():.4f}")
     is_zero_pixel = imgs < threshold
-
+    # print(f"Mean of is_zero_pixel before reshape: {is_zero_pixel.float().mean().item():.4f}")
     # Rearrange to match patchify: [b, l, d] where d = tub * p * q * c
     is_zero_pixel = rearrange(
         is_zero_pixel,
@@ -332,14 +331,16 @@ def bright_patch_weighted_loss(
     if chan_types is not None:
         is_aia = torch.tensor(
             [("a" in str(ch).lower()) for ch in chan_types], device=pred.device
-        ).view(1, 1, -1)  # [1, 1, c]
+        ).view(
+            1, 1, -1
+        )  # [1, 1, c]
     else:
         is_aia = torch.ones([1, 1, c], device=pred.device, dtype=torch.bool)
 
     # Region identification
     if mask_off_limb is not None:
         # mask_off_limb [b, seq_len]
-        mask_off_limb_expanded = mask_off_limb.unsqueeze(-1).expand(-1, -1, c) # [b, seq_len, c]
+        mask_off_limb_expanded = mask_off_limb.unsqueeze(-1).expand(-1, -1, c)  # [b, seq_len, c]
         is_inner_chan = ~mask_off_limb_expanded
         # Outer bright: Off-limb AND bright AND AIA channel
         is_outer_bright_chan = mask_off_limb_expanded & ~is_dark_chan & is_aia

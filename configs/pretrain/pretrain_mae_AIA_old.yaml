@@ -69,7 +69,7 @@ data:
   # output_directory: "wandb_output"
   sdoml:
     save_directory: ./assets/
-    base_directory: /mnt/jade
+    base_directory: /mnt/baobab
     sub_directory:
       hmi: null
       aia: AIA.zarr

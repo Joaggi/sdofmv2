@@ -142,6 +142,25 @@ class MAE(BaseModule):
             chan_types=self.chan_types,
         )
 
+    def forward(self, x, mask_ratio=None):
+        """Perform a forward pass through the MAE.
+
+        Args:
+            x (torch.Tensor): Input images of shape (B, C, H, W).
+            mask_ratio (float, optional): Fraction of patches to mask. If None,
+                uses the default masking_ratio. Defaults to None.
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: A tuple containing:
+                - x_hat: Reconstructed images.
+                - mask: The applied mask tensor.
+        """
+        if mask_ratio is None:
+            mask_ratio = self.masking_ratio
+        loss, x_hat, mask = self.autoencoder(x, mask_ratio=mask_ratio)
+        x_hat = unpatchify(x_hat, self.img_size, self.patch_size, self.tubelet_size)
+        return x_hat, mask
+
     def training_step(self, batch, batch_idx):
         """Perform a single training step.
 
@@ -175,9 +194,12 @@ class MAE(BaseModule):
         mask_full = mask.view(batch_size, num_frames_p, grid_size, grid_size)
 
         # [batch_size, num_frames_in, height, width]
-        mask_full = mask_full.repeat_interleave(self.tubelet_size, dim=1)\
-                             .repeat_interleave(self.patch_size, dim=2)\
-                             .repeat_interleave(self.patch_size, dim=3).bool()
+        mask_full = (
+            mask_full.repeat_interleave(self.tubelet_size, dim=1)
+            .repeat_interleave(self.patch_size, dim=2)
+            .repeat_interleave(self.patch_size, dim=3)
+            .bool()
+        )
 
         # Intersect with limb_mask if present
         # disk_mask is [height, width]
@@ -196,8 +218,17 @@ class MAE(BaseModule):
         averaged_metrics = {}
         for chan in self.chan_types:
             averaged_metrics[chan] = {}
-            for met in ["rmse_intensity", "flux_difference", "ppe10s", "ppe50s", "r2_score", "pixel_correlation"]:
-                averaged_metrics[chan][met] = np.mean([m[chan][met] for m in self.validation_metrics])
+            for met in [
+                "rmse_intensity",
+                "flux_difference",
+                "ppe10s",
+                "ppe50s",
+                "r2_score",
+                "pixel_correlation",
+            ]:
+                averaged_metrics[chan][met] = np.mean(
+                    [m[chan][met] for m in self.validation_metrics]
+                )
 
         # Logging
         if isinstance(self.logger, pl.loggers.wandb.WandbLogger):
@@ -209,7 +240,6 @@ class MAE(BaseModule):
                 self.log_dict(metrics, sync_dist=True)
 
         self.validation_metrics.clear()
-
 
     def test_step(self, batch, batch_idx):
         """Perform a single test step."""
@@ -227,9 +257,12 @@ class MAE(BaseModule):
         mask_full = mask.view(batch_size, num_frames_p, grid_size, grid_size)
 
         # [batch_size, num_frames_in, height, width]
-        mask_full = mask_full.repeat_interleave(self.tubelet_size, dim=1)\
-                             .repeat_interleave(self.patch_size, dim=2)\
-                             .repeat_interleave(self.patch_size, dim=3).bool()
+        mask_full = (
+            mask_full.repeat_interleave(self.tubelet_size, dim=1)
+            .repeat_interleave(self.patch_size, dim=2)
+            .repeat_interleave(self.patch_size, dim=3)
+            .bool()
+        )
 
         # Intersect with limb_mask if present
         if self.limb_mask is not None:
@@ -247,7 +280,14 @@ class MAE(BaseModule):
         averaged_metrics = {}
         for chan in self.chan_types:
             averaged_metrics[chan] = {}
-            for met in ["rmse_intensity", "flux_difference", "ppe10s", "ppe50s", "r2_score", "pixel_correlation"]:
+            for met in [
+                "rmse_intensity",
+                "flux_difference",
+                "ppe10s",
+                "ppe50s",
+                "r2_score",
+                "pixel_correlation",
+            ]:
                 averaged_metrics[chan][met] = np.mean([m[chan][met] for m in self.test_results])
 
         # Logging to WandB if enabled, otherwise just log to trainer
@@ -260,4 +300,3 @@ class MAE(BaseModule):
                 self.log_dict(metrics, sync_dist=True)
 
         self.test_results.clear()
-

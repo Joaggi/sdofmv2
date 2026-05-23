@@ -533,24 +533,16 @@ class MaskedAutoencoderViT3D(nn.Module):
                     pred,
                     target_norm if self.loss_dict.norm_pix_loss else target,
                     imgs=imgs,
-                    weight_inner=self.loss_dict.bright_patch_weighted_loss.get("weight_inner", 1.0),
-                    weight_outer_bright=self.loss_dict.bright_patch_weighted_loss.get(
-                        "weight_outer_bright", 1.0
-                    ),
-                    weight_outer_dark=self.loss_dict.bright_patch_weighted_loss.get(
-                        "weight_outer_dark", 0.1
-                    ),
-                    zero_threshold=self.loss_dict.bright_patch_weighted_loss.get(
-                        "zero_threshold", 0.9
-                    ),
-                    base_type=self.loss_dict.bright_patch_weighted_loss.get("base_type", "mse"),
-                    huber_delta=self.loss_dict.bright_patch_weighted_loss.get("huber_delta", 1.0),
+                    weight_inner=self.loss_dict.bright_patch_weighted_loss.weight_inner,
+                    weight_outer_bright=self.loss_dict.bright_patch_weighted_loss.weight_outer_bright,
+                    weight_outer_dark=self.loss_dict.bright_patch_weighted_loss.weight_outer_dark,
+                    zero_threshold=self.loss_dict.bright_patch_weighted_loss.zero_threshold,
+                    base_type=self.loss_dict.bright_patch_weighted_loss.base_type,
+                    huber_delta=self.loss_dict.bright_patch_weighted_loss.huber_delta,
                     patch_size=self.patch_size,
                     tubelet_size=self.tubelet_size,
-                    corner_size=self.loss_dict.bright_patch_weighted_loss.get("corner_size", 4),
-                    corner_ratio=self.loss_dict.bright_patch_weighted_loss.get(
-                        "corner_ratio", 0.25
-                    ),
+                    corner_size=self.loss_dict.bright_patch_weighted_loss.corner_size,
+                    corner_ratio=self.loss_dict.bright_patch_weighted_loss.corner_ratio,
                     mask_off_limb=is_off_limb,
                     chan_types=self.chan_types,
                 )

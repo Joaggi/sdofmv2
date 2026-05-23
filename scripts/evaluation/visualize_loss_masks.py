@@ -11,7 +11,7 @@ from einops import rearrange
 
 
 @hydra.main(
-    config_path="../configs/pretrain/", config_name="pretrain_mae_ALL.yaml", version_base=None
+    config_path="../../configs/pretrain/", config_name="pretrain_mae_ALL.yaml", version_base=None
 )
 def visualize(cfg: DictConfig):
     # Setup Data
@@ -83,6 +83,8 @@ def visualize(cfg: DictConfig):
     # Masking Logic
     patch_size = cfg.model.mae.patch_size
     tubelet_size = cfg.model.mae.tubelet_size
+    corner_size = cfg.model.loss.bright_patch_weighted_loss.corner_size
+    corner_ratio = cfg.model.loss.bright_patch_weighted_loss.corner_ratio
 
     # Limb mask is a buffer
     mask_off_limb = model.autoencoder.patch_off_limb_mask.unsqueeze(0).expand(imgs.shape[0], -1)
@@ -92,6 +94,8 @@ def visualize(cfg: DictConfig):
         imgs,
         patch_size=patch_size,
         tubelet_size=tubelet_size,
+        corner_size=corner_size,
+        corner_ratio=corner_ratio,
     )
 
     b, seq_len, d = is_zero_pixel.shape
@@ -135,7 +139,7 @@ def visualize(cfg: DictConfig):
         is_outer_bright_pixel_mask.float(), h_dim, patch_size, tubelet_size
     )
     outer_dark_mask_pixel = unpatchify(
-        is_outer_dark_mask_pixel.float(), h_dim, patch_size, tubelet_size
+        is_outer_dark_pixel_mask.float(), h_dim, patch_size, tubelet_size
     )
     # Add raw zero pixel mask calculation
     raw_zero_mask_pixel = unpatchify(is_zero_pixel.float(), h_dim, patch_size, tubelet_size)

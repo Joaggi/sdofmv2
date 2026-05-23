@@ -98,6 +98,8 @@ class Pretrainer:
                 log_every_n_steps=self.cfg.experiment.log_every_n_steps,
                 callbacks=self.callbacks,
                 limit_train_batches=self.cfg.model.misc.limit_train_batches,
+                gradient_clip_algorithm=self.cfg.model.misc.gradient_clip_algorithm,
+                gradient_clip_val=self.cfg.model.misc.gradient_clip_val,
             )
         else:
             self.trainer = pl.Trainer(

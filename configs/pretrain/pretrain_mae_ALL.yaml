@@ -119,7 +119,7 @@ model:
       base_type: huber
       huber_delta: 1.0
       corner_size: 4
-      corner_ratio: 0.975
+      corner_ratio: 0.75
 
     # exclude_limb: true
     norm_pix_loss: false
@@ -187,6 +187,8 @@ model:
     batch_size: 16
     accumulate_grad_batches: 16 # accumulate grad for 32 steps
     limit_train_batches: null
+    gradient_clip_algorithm: norm
+    gradient_clip_val: 1.0
 
 defaults:
   - override hydra/job_logging: disabled

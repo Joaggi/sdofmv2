@@ -53,7 +53,7 @@ def visualize(cfg: DictConfig):
         normalization_stat_path=cfg.data.normalization_stat_path,
     )
     data_module.setup()
-    dataloader = data_module.train_dataloader()
+    dataloader = data_module.test_dataloader()
     batch = next(iter(dataloader))
     imgs = batch[0]  # Assuming batch is [imgs, labels, ...]
 
@@ -102,6 +102,12 @@ def visualize(cfg: DictConfig):
     is_zero_pixel_reshaped = is_zero_pixel.reshape(b, seq_len, d_spatial_temporal, c)
     dark_ratio_per_chan = is_zero_pixel_reshaped.float().mean(dim=2)
     is_dark_chan = dark_ratio_per_chan > zero_threshold
+    print(f"Mean dark_ratio_per_chan: {dark_ratio_per_chan.mean().item():.4f}")
+    print(f"Max dark_ratio_per_chan: {dark_ratio_per_chan.max().item():.4f}")
+    print(f"Min dark_ratio_per_chan: {dark_ratio_per_chan.min().item():.4f}")
+    print(
+        f"Number of dark channels (zero_threshold={zero_threshold}): {is_dark_chan.sum().item()} / {is_dark_chan.numel()}"
+    )
 
     # AIA detection (AIA contains 'a' or 'aia' in channel name)
     is_aia = torch.tensor(
@@ -121,7 +127,7 @@ def visualize(cfg: DictConfig):
     is_outer_bright_pixel_mask = expand_to_d(is_outer_bright_chan)
     is_outer_dark_pixel_mask = expand_to_d(is_outer_dark_chan)
 
-    # Visualization (4xc)
+    # Visualization (5xc)
     # Convert to pixel space
     h_dim = imgs.shape[3]
     inner_mask_pixel = unpatchify(is_inner_pixel_mask.float(), h_dim, patch_size, tubelet_size)
@@ -129,10 +135,12 @@ def visualize(cfg: DictConfig):
         is_outer_bright_pixel_mask.float(), h_dim, patch_size, tubelet_size
     )
     outer_dark_mask_pixel = unpatchify(
-        is_outer_dark_pixel_mask.float(), h_dim, patch_size, tubelet_size
+        is_outer_dark_mask_pixel.float(), h_dim, patch_size, tubelet_size
     )
+    # Add raw zero pixel mask calculation
+    raw_zero_mask_pixel = unpatchify(is_zero_pixel.float(), h_dim, patch_size, tubelet_size)
 
-    fig, axes = plt.subplots(4, c, figsize=(2 * c, 8))
+    fig, axes = plt.subplots(5, c, figsize=(2 * c, 10))
 
     for chan in range(c):
         # Row 1: Original
@@ -157,6 +165,11 @@ def visualize(cfg: DictConfig):
         axes[3, chan].imshow(outer_dark_mask_pixel[0, chan, 0].numpy(), cmap="jet", vmin=0, vmax=1)
         if chan == 0:
             axes[3, chan].set_ylabel("Dark Outer")
+
+        # Row 5: Raw Zero Pixel Mask
+        axes[4, chan].imshow(raw_zero_mask_pixel[0, chan, 0].numpy(), cmap="jet", vmin=0, vmax=1)
+        if chan == 0:
+            axes[4, chan].set_ylabel("Raw Zero Pixels")
 
     plt.tight_layout()
     plt.savefig("loss_mask_verification.png")

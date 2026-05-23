@@ -211,6 +211,8 @@ def _get_zero_pixel_mask_from_target(
     )
 
     threshold = corner_ratio * corners.mean(dim=-1).unsqueeze(-1).unsqueeze(-1)
+    print(f"Calculated threshold (corner_ratio={corner_ratio}): {threshold.mean().item():.4f}")
+    print(f"Mean of is_zero_pixel before reshape: {is_zero_pixel.float().mean().item():.4f}")
     is_zero_pixel = imgs < threshold
 
     # Rearrange to match patchify: [b, l, d] where d = tub * p * q * c

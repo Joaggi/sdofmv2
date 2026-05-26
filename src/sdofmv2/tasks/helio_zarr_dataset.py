@@ -50,7 +50,7 @@ class HelioZarrDataset(Dataset):
             self.index_df = self.index_df[self.index_df['present'] == 1].reset_index(drop=True)
             if len(self.index_df) < initial_count:
                 logger.info(f"Filtered out {initial_count - len(self.index_df)} non-present timestamps from index.")
-        if selfa.index_df.empty:
+        if self.index_df.empty:
             logger.error(f"Index DataFrame is empty after filtering for 'present=1'. Check index_path: {index_path}")
             raise ValueError("Empty index DataFrame after filtering.")
 

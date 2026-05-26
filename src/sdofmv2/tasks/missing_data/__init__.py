@@ -1,5 +1,5 @@
 from .wrap_encoder import WrapEncoder
 from .necks import ConvTransformerTokensToEmbeddingNeck
 from .missing_data_module import MissingDataModel
-from .surya_reconstruction import SuryaReconstructionDataModule, SuryaReconstructionModel
-from .surya_reconstruction_zarr_datamodule import SuryaReconstructionZarrDataModule
+from .surya import SuryaReconstructionDataModule, SuryaReconstructionModel
+from .surya_zarr_datamodule import SuryaReconstructionZarrDataModule

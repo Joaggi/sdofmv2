@@ -10,6 +10,7 @@ hydra:
 
 data:
   _target_: sdofmv2.tasks.missing_data.surya_reconstruction_zarr_datamodule.SuryaReconstructionZarrDataModule
+  sdo_data_root_path: ./assets/cache/surya/surya_index.csv
   zarr_root_path: /mnt/cedar/surya-bench.zarr
   train_data_path: ./assets/cache/surya/surya_index.csv
   valid_data_path: ./assets/cache/surya/surya_index.csv
@@ -19,9 +20,9 @@ data:
   time_delta_target_minutes: 0
   n_input_timestamps: 2
   batch_size: 1
-  num_data_workers: 6
-  pin_memory: true
-  prefetch_factor: 2
+  num_data_workers: 1
+  pin_memory: false
+  prefetch_factor: 1
   persistent_workers: true
   pooling: 1
   random_vert_flip: false
@@ -63,11 +64,11 @@ etc:
   accumulate_grad_batches: 64
   gradient_clip_val: 1.0
   ckpt_dir: ./assets/checkpoints/surya
-  ckpt_name: null
+  ckpt_name: reconstruction-best-epoch=00-val_loss=0.5251.ckpt
 
 wandb:
   enable: true
-  name: surya_missing_channel
+  name: surya_missing_channel_worker1
   run_id: izmravhm
   entity: allshaman
   project: sdofm

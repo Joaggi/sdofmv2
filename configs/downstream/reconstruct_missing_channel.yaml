@@ -9,7 +9,8 @@ hydra:
     dir: .
 
 data:
-  sdo_data_root_path: /home/jinsu/surya-bench/
+  _target_: sdofmv2.tasks.missing_data.surya_reconstruction_zarr_datamodule.SuryaReconstructionZarrDataModule
+  zarr_root_path: <YOUR_ZARR_ROOT_PATH>
   train_data_path: ./assets/cache/surya/surya_index.csv
   valid_data_path: ./assets/cache/surya/surya_index.csv
   test_data_path: ./assets/cache/surya/surya_index.csv
@@ -47,8 +48,6 @@ backbone:
     time_dim: 2
   init_weights: false
   checkpoint_layers: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-  nglo: 0
-  freeze_backbone: True
   path_weights: ./assets/checkpoints/surya/surya.366m.v1.pt
 
 optimizer:
@@ -59,7 +58,7 @@ optimizer:
 etc:
   precision: bf16-mixed
   accelerator: gpu
-  devices: [1]
+  devices: 1
   max_epochs: 30
   accumulate_grad_batches: 64
   gradient_clip_val: 1.0

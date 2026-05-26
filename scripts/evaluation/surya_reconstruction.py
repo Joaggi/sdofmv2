@@ -6,8 +6,8 @@ from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import DictConfig, OmegaConf
 
-from sdofmv2.tasks.missing_data import (
-    SuryaReconstructionDataModule,
+from sdofmv2.tasks.missing_data.surya_reconstruction_zarr_datamodule import (
+    SuryaReconstructionZarrDataModule,
     SuryaReconstructionModel,
 )
 from sdofmv2.utils import flatten_dict
@@ -26,7 +26,7 @@ def main(config: DictConfig):
 
     pl.seed_everything(config.data.get("seed", 42))
 
-    datamodule = SuryaReconstructionDataModule(config)
+    datamodule = SuryaReconstructionZarrDataModule(config)
     model = SuryaReconstructionModel(config)
 
     # Initialize Loggers

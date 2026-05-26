@@ -12,6 +12,7 @@ import pandas as pd
 import xarray as xr
 import zarr
 from tqdm import tqdm
+from loguru import logger as lgr_logger
 
 # Optimized Blosc configuration
 compressor = numcodecs.Blosc(cname="lz4", clevel=5, shuffle=numcodecs.Blosc.BITSHUFFLE)
@@ -154,23 +155,23 @@ def main():
     for (year, month), files in sorted(file_map.items()):
         print(f"Processing {year}/{month:02d}...")
 
-                # Start Date and End Date for the month, used for initial Zarr array shape
-                # We will dynamically populate the time dimension based on actual file timestamps later
-                month_start_date = pd.Timestamp(year, month, 1)
-                month_end_date = month_start_date + pd.offsets.MonthEnd(0)
+        # Start Date and End Date for the month, used for initial Zarr array shape
+        # We will dynamically populate the time dimension based on actual file timestamps later
+        month_start_date = pd.Timestamp(year, month, 1)
+        month_end_date = month_start_date + pd.offsets.MonthEnd(0)
 
-                # Collect all unique timestamps from the NetCDF files for this month
-                current_month_timestamps = sorted([ts for ts, _ in files])
+        # Collect all unique timestamps from the NetCDF files for this month
+        current_month_timestamps = sorted([ts for ts, _ in files])
 
-                if not current_month_timestamps:
-                    lgr_logger.warning(f"No timestamps found for {year}/{month:02d}. Skipping month.")
-                    continue
+        if not current_month_timestamps:
+            lgr_logger.warning(f"No timestamps found for {year}/{month:02d}. Skipping month.")
+            continue
 
-                # Use collected timestamps to define the time dimension
-                time_index = pd.DatetimeIndex(current_month_timestamps)
+        # Use collected timestamps to define the time dimension
+        time_index = pd.DatetimeIndex(current_month_timestamps)
 
-                # Shape based on actual timestamps and channels
-                shape = (len(time_index), len(REQUESTED_CHANNELS), 4096, 4096)
+        # Shape based on actual timestamps and channels
+        shape = (len(time_index), len(REQUESTED_CHANNELS), 4096, 4096)
 
         # Pre-initialize Zarr group with NaNs (Lazy)
         ds_template = xr.Dataset(

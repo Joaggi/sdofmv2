@@ -3,14 +3,14 @@ import lightning.pytorch as pl
 from lightning.pytorch.loggers import WandbLogger, CSVLogger
 from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 from omegaconf import DictConfig, OmegaConf
-from sdofmv2.tasks.f107.surya_f107_datamodule import HelioF107DataModule
+from sdofmv2.tasks.f107.helio_f107_zarr_datamodule import HelioF107ZarrDataModule
 from sdofmv2.tasks.f107.surya_f107_module import SuryaF107Model
 
 @hydra.main(config_path="../configs/downstream", config_name="f107_surya", version_base=None)
 def main(config: DictConfig):
     pl.seed_everything(42)
     
-    datamodule = HelioF107DataModule(config)
+    datamodule = HelioF107ZarrDataModule(config)
     model = SuryaF107Model(config)
     
     loggers = []

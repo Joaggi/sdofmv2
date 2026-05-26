@@ -5,7 +5,7 @@ from datetime import timedelta
 from loguru import logger
 import torch.nn.functional as F
 
-from sdofmv2.datasets.zarr_datasets.helio_zarr_dataset import HelioZarrDataset
+from sdofmv2.tasks.helio_zarr_dataset import HelioZarrDataset
 
 
 class HelioF107ZarrDataset(HelioZarrDataset):
@@ -70,7 +70,7 @@ class HelioF107ZarrDataset(HelioZarrDataset):
             nearest_f107_idx = self.f107_df.index.get_indexer([ref_ts], method="nearest")[0]
         except IndexError:
             logger.warning(f"Could not find nearest F10.7 data index for reference timestamp {ref_ts}. Returning NaN target.")
-            target_val = np.nan
+            target_val = np.nan # Or some other default value
         else:
             if nearest_f107_idx == -1:
                 logger.warning(f"No nearest F10.7 data found for reference timestamp {ref_ts}. Returning NaN target.")

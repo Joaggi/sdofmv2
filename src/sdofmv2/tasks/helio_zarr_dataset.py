@@ -1,4 +1,3 @@
-
 import math
 import os
 import random
@@ -9,7 +8,7 @@ import torch
 import xarray as xr
 from loguru import logger
 from torch.utils.data import Dataset
-import torch.nn.functional as F # Import F for pooling
+import torch.nn.functional as F
 
 
 class HelioZarrDataset(Dataset):
@@ -31,7 +30,8 @@ class HelioZarrDataset(Dataset):
         phase: str = "train",
     ):
         super().__init__()
-        self.index_df = pd.read_csv(index_path, parse_dates=["timestamp"])
+        self.index_df = pd.read_csv(index_path, parse_dates=["timestep"])
+        self.index_df.sort_values(by="timestep", inplace=True)  # Added explicit sorting
         self.zarr_root_path = zarr_root_path
         self.channels = channels
         self.scalers = scalers
@@ -44,21 +44,7 @@ class HelioZarrDataset(Dataset):
         self.random_vert_flip = random_vert_flip
         self.phase = phase
 
-        # Open the consolidated Zarr store
-        try:
-            self.zarr_data = xr.open_zarr(
-                self.zarr_root_path, consolidated=True, chunks="auto"
-            )
-            logger.info(f"Successfully opened Zarr store at {zarr_root_path}")
-            # Ensure required channels are present
-            missing_channels = set(channels) - set(self.zarr_data.channel.values)
-            if missing_channels:
-                raise ValueError(
-                    f"Channels {missing_channels} not found in Zarr store."
-                )
-        except Exception as e:
-            logger.error(f"Error opening Zarr store at {zarr_root_path}: {e}")
-            raise
+        # Removed xr.open_zarr from here, will open month-specific groups dynamically
 
     def __len__(self) -> int:
         return len(self.index_df)
@@ -79,14 +65,35 @@ class HelioZarrDataset(Dataset):
         return data
 
     def _get_data_for_timestamp(self, timestamp: pd.Timestamp) -> np.ndarray:
-        """Retrieves and processes data for a single timestamp."""
-        # Select data for the given timestamp and requested channels
-        # .compute() is used to load data from Dask array to NumPy array
+        """Retrieves and processes data for a single timestamp from its month group."""
+        year_month_path = os.path.join(
+            self.zarr_root_path, str(timestamp.year), f"{timestamp.month:02d}"
+        )
+
         try:
-            data_xr = self.zarr_data.sel(time=timestamp, channel=self.channels).compute()
+            # Open the specific month/year Zarr group
+            month_zarr_data = xr.open_zarr(year_month_path, consolidated=True, chunks="auto")
+        except Exception as e:
+            logger.warning(
+                f"Error opening Zarr group {year_month_path}: {e}. Returning NaN array for {timestamp}."
+            )
+            return np.full((len(self.channels), 4096, 4096), np.nan, dtype=np.float32)
+
+        # Ensure required channels are present in this specific month group
+        missing_channels = set(self.channels) - set(month_zarr_data.coords["channel"].values)
+        if missing_channels:
+            logger.warning(
+                f"Channels {missing_channels} not found in Zarr group {year_month_path}. Returning NaN array for {timestamp}."
+            )
+            return np.full((len(self.channels), 4096, 4096), np.nan, dtype=np.float32)
+
+        try:
+            # Select data for the given timestamp and requested channels from the month group
+            data_xr = month_zarr_data.sel(time=timestamp, channel=self.channels).compute()
         except KeyError:
-            logger.warning(f"Timestamp {timestamp} not found in Zarr store.")
-            # Return NaN array if timestamp is not found
+            logger.warning(
+                f"Timestamp {timestamp} not found in Zarr group {year_month_path}. Returning NaN array."
+            )
             return np.full((len(self.channels), 4096, 4096), np.nan, dtype=np.float32)
 
         # Convert to numpy array and reorder dimensions to (channel, y, x)
@@ -104,24 +111,15 @@ class HelioZarrDataset(Dataset):
 
         # Determine input timestamps
         input_timestamps = [
-            current_time + pd.Timedelta(minutes=td)
-            for td in self.time_delta_input_minutes
+            current_time + pd.Timedelta(minutes=td) for td in self.time_delta_input_minutes
         ]
 
         # Determine target timestamp
-        target_timestamp = current_time + pd.Timedelta(
-            minutes=self.time_delta_target_minutes
-        )
+        target_timestamp = current_time + pd.Timedelta(minutes=self.time_delta_target_minutes)
 
         input_data_list = []
         for ts in input_timestamps:
             data = self._get_data_for_timestamp(ts)
-            # Check if data is all NaNs (meaning timestamp was not found)
-            if np.isnan(data).all():
-                logger.warning(f"Input timestamp {ts} not found, sample {idx} will be skipped or handled as NaN.")
-                # Decide how to handle: skip sample, or use NaN tensor
-                # For now, we'll append the NaN tensor, which will propagate through training
-                # If skipping is preferred, one would return None here and adjust DataLoader
             input_data_list.append(data)
 
         # Stack input data along a new time dimension
@@ -129,8 +127,6 @@ class HelioZarrDataset(Dataset):
         input_tensor = torch.from_numpy(np.stack(input_data_list, axis=0)).float()
 
         target_data_np = self._get_data_for_timestamp(target_timestamp)
-        if np.isnan(target_data_np).all():
-            logger.warning(f"Target timestamp {target_timestamp} not found, sample {idx} will have NaN target.")
         target_tensor = torch.from_numpy(target_data_np).float()
 
         # Apply pooling if specified
@@ -138,17 +134,17 @@ class HelioZarrDataset(Dataset):
             pool_factor = self.pooling
             # Input tensor shape: (T, C, H, W)
             input_tensor = F.avg_pool3d(
-                input_tensor.unsqueeze(0), # Add batch dim for pooling: (1, T, C, H, W)
+                input_tensor.unsqueeze(0),  # Add batch dim for pooling: (1, T, C, H, W)
                 kernel_size=(1, pool_factor, pool_factor),
-                stride=(1, pool_factor, pool_factor)
-            ).squeeze(0) # Remove batch dim: (T, C, H // pool_factor, W // pool_factor)
+                stride=(1, pool_factor, pool_factor),
+            ).squeeze(0)  # Remove batch dim: (T, C, H // pool_factor, W // pool_factor)
 
             # Target tensor shape: (C, H, W)
             target_tensor = F.avg_pool2d(
-                target_tensor.unsqueeze(0), # Add batch dim for pooling: (1, C, H, W)
+                target_tensor.unsqueeze(0),  # Add batch dim for pooling: (1, C, H, W)
                 kernel_size=pool_factor,
-                stride=pool_factor
-            ).squeeze(0) # Remove batch dim: (C, H // pool_factor, W // pool_factor)
+                stride=pool_factor,
+            ).squeeze(0)  # Remove batch dim: (C, H // pool_factor, W // pool_factor)
 
         # Apply random vertical flip if in training phase
         if self.random_vert_flip and self.phase == "train" and random.random() > 0.5:

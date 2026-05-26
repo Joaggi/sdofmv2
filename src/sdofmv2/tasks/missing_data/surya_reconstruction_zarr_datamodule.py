@@ -8,6 +8,7 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
 from sdofmv2.tasks.helio_zarr_dataset import HelioZarrDataset
+from sdofmv2.utils.data_utils import safe_collate
 
 
 class SuryaReconstructionZarrDataModule(pl.LightningDataModule):

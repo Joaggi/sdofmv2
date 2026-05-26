@@ -10,7 +10,7 @@ from sdofmv2.tasks.missing_data.surya_reconstruction_zarr_datamodule import (
     SuryaReconstructionZarrDataModule,
     SuryaReconstructionModel,
 )
-from sdofmv2.utils import flatten_dict
+from sdofmv2.utils.data_utils import safe_collate
 
 torch.set_float32_matmul_precision("medium")
 

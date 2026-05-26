@@ -107,7 +107,7 @@ class HelioZarrDataset(Dataset):
 
     def __getitem__(self, idx: int) -> tuple[dict[str, torch.Tensor], dict]:
         row = self.index_df.iloc[idx]
-        current_time = row["timestamp"]
+        current_time = row["timestep"]
 
         # Determine input timestamps
         input_timestamps = [
@@ -137,14 +137,18 @@ class HelioZarrDataset(Dataset):
                 input_tensor.unsqueeze(0),  # Add batch dim for pooling: (1, T, C, H, W)
                 kernel_size=(1, pool_factor, pool_factor),
                 stride=(1, pool_factor, pool_factor),
-            ).squeeze(0)  # Remove batch dim: (T, C, H // pool_factor, W // pool_factor)
+            ).squeeze(
+                0
+            )  # Remove batch dim: (T, C, H // pool_factor, W // pool_factor)
 
             # Target tensor shape: (C, H, W)
             target_tensor = F.avg_pool2d(
                 target_tensor.unsqueeze(0),  # Add batch dim for pooling: (1, C, H, W)
                 kernel_size=pool_factor,
                 stride=pool_factor,
-            ).squeeze(0)  # Remove batch dim: (C, H // pool_factor, W // pool_factor)
+            ).squeeze(
+                0
+            )  # Remove batch dim: (C, H // pool_factor, W // pool_factor)
 
         # Apply random vertical flip if in training phase
         if self.random_vert_flip and self.phase == "train" and random.random() > 0.5:

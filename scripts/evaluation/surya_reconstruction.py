@@ -6,17 +6,17 @@ from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import DictConfig, OmegaConf
 
-from sdofmv2.tasks.missing_data.surya_reconstruction_zarr_datamodule import (
+from sdofmv2.tasks.missing_data import (
     SuryaReconstructionZarrDataModule,
     SuryaReconstructionModel,
 )
-from sdofmv2.utils.data_utils import safe_collate
+from sdofmv2.utils import safe_collate, flatten_dict
 
 torch.set_float32_matmul_precision("medium")
 
 
 @hydra.main(
-    config_path="../configs/downstream",
+    config_path="../../configs/downstream",
     config_name="reconstruct_missing_channel",
     version_base=None,
 )

@@ -8,15 +8,16 @@ from omegaconf import DictConfig, OmegaConf
 
 from sdofmv2.tasks.missing_data import (
     SuryaReconstructionDataModule,
+    SuryaReconstructionZarrDataModule,
     SuryaReconstructionModel,
 )
-from sdofmv2.utils import flatten_dict
+from sdofmv2.utils import safe_collate, flatten_dict
 
 torch.set_float32_matmul_precision("medium")
 
 
 @hydra.main(
-    config_path="../configs/downstream",
+    config_path="../../configs/downstream",
     config_name="reconstruct_missing_channel",
     version_base=None,
 )

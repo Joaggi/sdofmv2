@@ -9,7 +9,8 @@ hydra:
     dir: .
 
 data:
-  sdo_data_root_path: /home/jinsu/surya-bench/
+  _target_: sdofmv2.tasks.f107.helio_f107_zarr_datamodule.HelioF107ZarrDataModule
+  zarr_root_path: <YOUR_ZARR_ROOT_PATH>
   train_data_path: ./assets/cache/surya/surya_index.csv
   valid_data_path: ./assets/cache/surya/surya_index.csv
   test_data_path: ./assets/cache/surya/surya_index.csv

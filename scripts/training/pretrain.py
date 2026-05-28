@@ -240,7 +240,7 @@ class Pretrainer:
 
 
 @hydra.main(
-    config_path="../configs/pretrain/",
+    config_path="../../configs/pretrain/",
     config_name="pretrain_mae_ALL.yaml",
     version_base=None,
 )

@@ -1,21 +1,21 @@
 # general
 experiment:
   model: mae
-  backbone:
+  backbone: 
     model: mae
-    is_backbone: true
+    is_backbone: false
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_uj0jxwrn_mae_epoch=39-val_loss=0.03.ckpt
+    weight_name: null
     weights_only: false
   seed: 0
   disable_cuda: false
   
   wandb:
     enable: true
-    name: mae-pretrain-all-split_pixel_loss-huber_small
-    run_id: azfch25h
+    name: mae-pretrain-all-bright_patch_weighted_loss-huber_small
+    run_id: null
     entity: allshaman
-    project: sdofm
+    project: sdofmv2
     group: ""
     job_type: pretrain
     tags: []
@@ -59,9 +59,9 @@ data:
 
   # for dataloader
   num_workers: 8    # set appropriately for your machine
-  pin_memory: false
-  prefetch_factor: 1
-  persistent_workers: false
+  pin_memory: true
+  prefetch_factor: 2
+  persistent_workers: true
   multiprocessing_context: spawn
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
   drop_frame_dim: false
@@ -114,12 +114,12 @@ model:
     bright_patch_weighted_loss:
       weight_inner: 1.0
       weight_outer_bright: 1.0
-      weight_outer_dark: 0.1
+      weight_outer_dark: 0.01
       zero_threshold: 0.9
-      base_type: mse
+      base_type: huber
       huber_delta: 1.0
       corner_size: 4
-      corner_ratio: 0.25
+      corner_ratio: 0.75
 
     # exclude_limb: true
     norm_pix_loss: false
@@ -184,9 +184,11 @@ model:
   misc:
     limb_mask: false
     epochs: 300
-    batch_size: 8
-    accumulate_grad_batches: 32 # accumulate grad for 32 steps
+    batch_size: 16
+    accumulate_grad_batches: 16 # accumulate grad for 32 steps
     limit_train_batches: null
+    gradient_clip_algorithm: norm
+    gradient_clip_val: 1.0
 
 defaults:
   - override hydra/job_logging: disabled

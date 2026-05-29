@@ -3,19 +3,19 @@ experiment:
   model: mae
   backbone:
     model: mae
-    is_backbone: true
+    is_backbone: false
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_uj0jxwrn_mae_epoch=39-val_loss=0.03.ckpt
+    weight_name: null
     weights_only: false
   seed: 0
   disable_cuda: false
   
   wandb:
     enable: true
-    name: mae-pretrain-all-split_pixel_loss-huber-large
+    name: mae-pretrain-all-bright_patch_weighted_loss-huber-large
     run_id: null
     entity: allshaman
-    project: sdofm
+    project: sdofmv2
     group: ""
     job_type: pretrain
     tags: []
@@ -31,7 +31,7 @@ experiment:
   accelerator: gpu  # options are "auto", "gpu", "tpu", "ipu", or "cpu"
   distributed:
     enabled: true
-    devices: [0] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
+    devices: [1] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
 
 # dataset configuration
 data:
@@ -67,7 +67,7 @@ data:
   drop_frame_dim: false
   # output_directory: "wandb_output"
   sdoml:
-    base_directory: /mnt/jade
+    base_directory: /mnt/baobab
     sub_directory:
       hmi: HMI.zarr
       aia: AIA.zarr
@@ -114,12 +114,12 @@ model:
     bright_patch_weighted_loss:
       weight_inner: 1.0
       weight_outer_bright: 1.0
-      weight_outer_dark: 0.1
+      weight_outer_dark: 0.01
       zero_threshold: 0.9
-      base_type: mse
+      base_type: huber
       huber_delta: 1.0
       corner_size: 4
-      corner_ratio: 0.25
+      corner_ratio: 0.75
 
     # exclude_limb: true
     norm_pix_loss: false
@@ -184,9 +184,11 @@ model:
   misc:
     limb_mask: false
     epochs: 300
-    batch_size: 8
-    accumulate_grad_batches: 32 # accumulate grad for 32 steps
+    batch_size: 16
+    accumulate_grad_batches: 16 # accumulate grad for 32 steps
     limit_train_batches: null
+    gradient_clip_algorithm: norm
+    gradient_clip_val: 1.0
 
 defaults:
   - override hydra/job_logging: disabled

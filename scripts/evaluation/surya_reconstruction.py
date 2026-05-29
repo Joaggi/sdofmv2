@@ -27,7 +27,7 @@ def main(config: DictConfig):
 
     pl.seed_everything(config.data.get("seed", 42))
 
-    datamodule = SuryaReconstructionDataModule(config)
+    datamodule = SuryaReconstructionZarrDataModule(config)
     model = SuryaReconstructionModel(config)
 
     # Initialize Loggers

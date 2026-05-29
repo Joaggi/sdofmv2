@@ -198,25 +198,30 @@ def main():
             try:
                 with xr.open_dataset(path, engine="h5netcdf", chunks=None, cache=False) as ds:
                     # Select and reorder channels using CHANNEL_MAP
-                    # This creates a new Dataset with only the desired channels, in the correct order
                     mapped_data_vars = {
                         chan_zarr: ds[nc_var_name]
                         for chan_zarr, nc_var_name in CHANNEL_MAP.items()
                         if nc_var_name in ds
-                    }  # Use nc_var_name to access ds
+                    }
 
                     # Convert to DataArray with 'channel' dimension
-                    # Use the requested Zarr channel names for the dimension
                     month_data = xr.Dataset(mapped_data_vars).to_array(dim="channel")
 
                     # Ensure the channel dimension is ordered according to REQUESTED_CHANNELS
                     month_data = month_data.sel(channel=REQUESTED_CHANNELS)
 
+                    # Add a time dimension and assign the timestamp from the current file
+                    month_data = month_data.expand_dims("time").assign_coords(time=[ts])
+
                     # Find the index for this timestamp in the month's time_index
                     t_idx = time_index.get_loc(ts)
 
+                    # FIX: Convert to dataset and drop the 'channel' coordinate
+                    # before writing to the time region
+                    ds_to_write = month_data.to_dataset(name="data").drop_vars(["channel"])
+
                     # Write to the specific time slice in the Zarr group
-                    month_data.to_zarr(
+                    ds_to_write.to_zarr(
                         args.output_zarr,
                         group=group_path,
                         mode="a",

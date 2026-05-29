@@ -7,7 +7,7 @@ from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import DictConfig, OmegaConf
 
 from sdofmv2.tasks.missing_data import (
-    SuryaReconstructionDataModule,
+    # SuryaReconstructionDataModule,
     SuryaReconstructionZarrDataModule,
     SuryaReconstructionModel,
 )

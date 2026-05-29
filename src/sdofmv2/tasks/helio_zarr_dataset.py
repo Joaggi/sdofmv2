@@ -40,29 +40,20 @@ class HelioZarrDataset(Dataset):
         self.zarr_root_path = zarr_root_path
         self.channels = channels
         self.scalers = scalers
-        self.time_delta_input_minutes = time_delta_input_minutes
-        self.time_delta_target_minutes = time_delta_target_minutes
+        # Convert time delta to numpy timedelta64
+        self.time_delta_input_minutes = sorted(
+            np.timedelta64(t, "m") for t in time_delta_input_minutes
+        )
+        self.time_delta_target_minutes = [
+            np.timedelta64(iroll * time_delta_target_minutes, "m")
+            for iroll in range(1, rollout_steps + 2)
+        ]
         self.n_input_timestamps = n_input_timestamps
         self.rollout_steps = rollout_steps
         self.num_mask_aia_channels = num_mask_aia_channels
         self.pooling = pooling
         self.random_vert_flip = random_vert_flip
         self.phase = phase
-
-        # Filter index_df based on 'present' column
-        if "present" in self.index_df.columns:
-            initial_count = len(self.index_df)
-            self.index_df = self.index_df[self.index_df["present"] == 1].reset_index(drop=True)
-            if len(self.index_df) < initial_count:
-                logger.info(
-                    f"Filtered out {initial_count - len(self.index_df)} non-present timestamps from index."
-                )
-        if self.index_df.empty:
-            logger.error(
-                f"Index DataFrame is empty after filtering for 'present=1'. Check index_path: {index_path}"
-            )
-            raise ValueError("Empty index DataFrame after filtering.")
-
         self.valid_indices = self.filter_valid_indices()
 
     def filter_valid_indices(self):
@@ -112,7 +103,7 @@ class HelioZarrDataset(Dataset):
 
         try:
             # Open the specific month/year Zarr group (removed consolidated=True)
-            month_zarr_data = xr.open_zarr(year_month_path, chunks="auto")
+            month_zarr_data = xr.open_zarr(year_month_path, chunks="auto", consolidated=False)
         except Exception as e:
             logger.warning(
                 f"Error opening Zarr group {year_month_path}: {e}. Returning NaN array for {timestamp}."
@@ -155,19 +146,17 @@ class HelioZarrDataset(Dataset):
 
     def __getitem__(self, idx: int) -> tuple[dict[str, torch.Tensor], dict] | None:
         start_time = time.time()
-        row = self.valid_indices[idx]
-        current_time = row["timestep"]
+        time_deltas = np.array(
+            sorted(random.sample(self.time_delta_input_minutes[:-1], self.n_input_timestamps - 1))
+            + [self.time_delta_input_minutes[-1]]
+            + self.time_delta_target_minutes
+        )
+        reference_timestep = self.valid_indices[idx]
+        required_timesteps = reference_timestep + time_deltas
 
-        # Determine input timestamps
-        input_timestamps = [
-            current_time + pd.Timedelta(minutes=td) for td in self.time_delta_input_minutes
-        ]
-
-        # Determine target timestamp
-        target_timestamp = current_time + pd.Timedelta(minutes=self.time_delta_target_minutes)
-
-        input_data_list = []
-        for ts in input_timestamps:
+        sequence_data = []
+        for ts in required_timesteps:
+            ts = pd.Timestamp(ts)
             data = self._get_data_for_timestamp(ts)
             # Check if the retrieved input data is all NaNs
             if np.isnan(data).all():
@@ -175,7 +164,16 @@ class HelioZarrDataset(Dataset):
                     f"Input timestamp {ts} for sample {idx} is all NaNs. Skipping sample."
                 )
                 return None  # Return None if any input is NaN
-            input_data_list.append(data)
+            sequence_data.append(data)
+
+        # Split sequence_data into inputs and target
+        inputs = sequence_data[: -self.rollout_steps - 1]
+        targets = sequence_data[-self.rollout_steps - 1 :]
+        stacked_inputs = np.stack(inputs, axis=1)
+        stacked_targets = np.stack(targets, axis=1)
+
+        timestamps_input = required_timesteps[: -self.rollout_steps - 1]
+        timestamps_targets = required_timesteps[-self.rollout_steps - 1 :]
 
         # Stack input data along a new time dimension
         # Shape: (T, C, H, W) where T is n_input_timestamps
@@ -183,26 +181,33 @@ class HelioZarrDataset(Dataset):
         input_data_load_time = time.time() - start_time
         logger.debug(f"Sample {idx}: Input data loading took {input_data_load_time:.4f} seconds.")
 
-        # Stack input data along a new time dimension
-        # Shape: (T, C, H, W) where T is n_input_timestamps
-        input_tensor = torch.from_numpy(np.stack(input_data_list, axis=0)).float()
+        time_delta_input_float = (
+            time_deltas[-self.rollout_steps - 2] - time_deltas[: -self.rollout_steps - 1]
+        ) / np.timedelta64(1, "h")
+        time_delta_input_float = time_delta_input_float.astype(np.float32)
 
-        target_data_np = self._get_data_for_timestamp(target_timestamp)
-        # Check if the retrieved target data is all NaNs
-        if np.isnan(target_data_np).all():
+        lead_time_delta_float = (
+            time_deltas[-self.rollout_steps - 2] - time_deltas[-self.rollout_steps - 1 :]
+        ) / np.timedelta64(1, "h")
+        lead_time_delta_float = lead_time_delta_float.astype(np.float32)
+
+        metadata = {
+            "timestamps_input": timestamps_input,
+            "timestamps_targets": timestamps_targets,
+        }
+
+        if np.isnan(stacked_targets).all():
             logger.warning(
-                f"Target timestamp {target_timestamp} for sample {idx} is all NaNs. Skipping sample."
+                f"Target timestamp {stacked_targets} for sample {idx} is all NaNs. Skipping sample."
             )
             return None  # Return None if target is NaN
-
-        target_tensor = torch.from_numpy(target_data_np).float()
 
         # Apply pooling if specified
         if self.pooling and self.pooling > 1:
             pool_factor = self.pooling
             # Input tensor shape: (T, C, H, W)
-            input_tensor = F.avg_pool3d(
-                input_tensor.unsqueeze(0),  # Add batch dim for pooling: (1, T, C, H, W)
+            stacked_inputs = F.avg_pool3d(
+                stacked_inputs.unsqueeze(0),  # Add batch dim for pooling: (1, T, C, H, W)
                 kernel_size=(1, pool_factor, pool_factor),
                 stride=(1, pool_factor, pool_factor),
             ).squeeze(
@@ -210,8 +215,8 @@ class HelioZarrDataset(Dataset):
             )  # Remove batch dim: (T, C, H // pool_factor, W // pool_factor)
 
             # Target tensor shape: (C, H, W)
-            target_tensor = F.avg_pool2d(
-                target_tensor.unsqueeze(0),  # Add batch dim for pooling: (1, C, H, W)
+            stacked_targets = F.avg_pool2d(
+                stacked_targets.unsqueeze(0),  # Add batch dim for pooling: (1, C, H, W)
                 kernel_size=pool_factor,
                 stride=pool_factor,
             ).squeeze(
@@ -220,14 +225,14 @@ class HelioZarrDataset(Dataset):
 
         # Apply random vertical flip if in training phase
         if self.random_vert_flip and self.phase == "train" and random.random() > 0.5:
-            input_tensor = torch.flip(input_tensor, dims=[2])  # Flip height dimension (H)
-            target_tensor = torch.flip(target_tensor, dims=[1])  # Flip height dimension (H)
+            stacked_inputs = torch.flip(stacked_inputs, dims=[2])  # Flip height dimension (H)
+            stacked_targets = torch.flip(stacked_targets, dims=[1])  # Flip height dimension (H)
 
-        # Output data and metadata
-        data = {"ts": input_tensor, "target": target_tensor}
-        metadata = {
-            "timestamps_input": input_timestamps,
-            "timestamps_targets": [target_timestamp],
-        }
+        return {
+            "ts": stacked_inputs,
+            "time_delta_input": time_delta_input_float,
+            "forecast": stacked_targets,
+            "lead_time_delta": lead_time_delta_float,
+        }, metadata
 
         return data, metadata

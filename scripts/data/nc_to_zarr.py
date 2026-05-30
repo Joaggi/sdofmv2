@@ -212,7 +212,7 @@ def main():
         encoding = {"data": {"compressor": compressor, "chunks": (1, 1, 4096, 4096)}}
         group_path = f"{year}/{month:02d}"
 
-        # Initialize store using mode "w" if it does not exist
+        # Initialize store using mode "a" to append/create if not exists
         if not os.path.exists(os.path.join(args.output_zarr, group_path)):
             ds_template.to_zarr(
                 args.output_zarr, group=group_path, mode="w", encoding=encoding, consolidated=True

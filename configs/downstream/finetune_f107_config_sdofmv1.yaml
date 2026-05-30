@@ -19,10 +19,11 @@ experiment:
   model: "mae"
   resuming: false
   backbone:
-    model: "mae"
+    model: mae_old
     is_backbone: false
     checkpoint: ../../assets/check_point/backbone/
     weight_name: null
+    freeze: true
   seed: 0
   disable_cuda: false
   wandb:

@@ -67,7 +67,7 @@ class MultiLayerPerceptron(BaseModule):
                 param.requires_grad = False
 
         self.mask_ratio = mask_ratio
-        self.norm = nn.LayerNorm(input_dim * 2)
+        self.norm = nn.LayerNorm(int(input_dim * (1 - mask_ratio) * 2))
 
         # Define the dimensions of the MLP layers
         dims = [input_dim * 2] + hidden_layer_dims
@@ -76,9 +76,7 @@ class MultiLayerPerceptron(BaseModule):
         self.dropout = nn.Dropout(p=dropout)
 
         # Define the fully connected layers
-        self.fcs = nn.ModuleList(
-            [nn.Linear(dims[i], dims[i + 1]) for i in range(len(dims) - 1)]
-        )
+        self.fcs = nn.ModuleList([nn.Linear(dims[i], dims[i + 1]) for i in range(len(dims) - 1)])
 
         # Define the activation function
         self.acts = nn.ModuleList([nn.LeakyReLU(0.01) for _ in range(len(dims) - 1)])
@@ -88,8 +86,6 @@ class MultiLayerPerceptron(BaseModule):
 
         # Define the loss function
         self.criterion = nn.MSELoss()
-
-
 
     def forward(self, x):
         """Processes input through the backbone and MLP head.
@@ -113,8 +109,8 @@ class MultiLayerPerceptron(BaseModule):
 
         patch_tokens = latent[:, 1:, :]
 
-        x_avg = patch_tokens.mean(dim=1)
-        x_max = patch_tokens.max(dim=1).values
+        x_avg = patch_tokens.mean(dim=2)
+        x_max = patch_tokens.max(dim=2).values
         x_cls = torch.cat([x_avg, x_max], dim=-1)
 
         x_cls = self.norm(x_cls)
@@ -174,16 +170,13 @@ class MultiLayerPerceptron(BaseModule):
             logger.info(f"Saved test results to {output_path}")
             self.test_preds.clear()
 
-
     def on_before_optimizer_step(self, optimizer):
         # Compute the norm of the gradients
         grad_norm = torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
 
         # Check if gradients are exploding or NaN
         if torch.isnan(grad_norm) or torch.isinf(grad_norm):
-            print(
-                "SKIPPING STEP: Gradients are NaN/Inf! Weights saved from corruption."
-            )
+            print("SKIPPING STEP: Gradients are NaN/Inf! Weights saved from corruption.")
 
             # Only unscale if a scaler actually exists (i.e., if using fp16)
             scaler = getattr(self.trainer, "scaler", None)

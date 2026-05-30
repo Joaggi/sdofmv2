@@ -1,15 +1,19 @@
 import os
+import inspect
 from pathlib import Path
 
 import hydra
 import lightning as l
 import torch
+import wandb
 from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.loggers.wandb import WandbLogger
 from loguru import logger
 from omegaconf import DictConfig
 
 from sdofmv2.core import MAE, MAE_old
 from sdofmv2.tasks.f107 import EmbSolarProxyDataModule, MultiLayerPerceptron
+from sdofmv2.utils import flatten_dict
 
 
 @hydra.main(
@@ -18,12 +22,40 @@ from sdofmv2.tasks.f107 import EmbSolarProxyDataModule, MultiLayerPerceptron
 def main(cfg: DictConfig):
     logger.info("Starting F10.7 experiment...")
 
+    # Setup Wandb logger
+    # set up wandb logging
+    if cfg.experiment.wandb.enable:
+        wandb.login()
+        output_dir = Path(cfg.experiment.wandb.output_directory)
+        output_dir.mkdir(exist_ok=True, parents=True)
+        print(f"Created directory for storing results: {cfg.experiment.wandb.output_directory}")
+        cache_dir = Path(f"{cfg.experiment.wandb.output_directory}/.cache")
+        cache_dir.mkdir(exist_ok=True, parents=True)
+
+        os.environ["WANDB_CACHE_DIR"] = f"{cfg.experiment.wandb.output_directory}/.cache"
+
+        logger = WandbLogger(
+            # WandbLogger params
+            name=cfg.experiment.wandb.name,
+            project=cfg.experiment.wandb.project,
+            dir=cfg.experiment.wandb.output_directory,
+            log_model=cfg.experiment.wandb.log_model,
+            # kwargs for wandb.init
+            tags=cfg.experiment.wandb.tags,
+            notes=cfg.experiment.wandb.notes,
+            group=cfg.experiment.wandb.group,
+            save_code=True,
+            job_type=cfg.experiment.wandb.job_type,
+            config=flatten_dict(cfg),
+            id=cfg.experiment.wandb.run_id,
+            resume="allow",
+            mode="offline" if cfg.experiment.wandb.offline else "online",
+        )
+
+    else:
+        logger = None
+
     # Setup DataModule
-
-    train_index = Path(cfg.data.train_index).name
-    val_index = Path(cfg.data.val_index).name
-    test_index = Path(cfg.data.test_index).name
-
     datamodule = EmbSolarProxyDataModule(
         hmi_path=(
             os.path.join(cfg.data.sdoml.base_directory, cfg.data.sdoml.sub_directory.hmi)
@@ -56,7 +88,7 @@ def main(cfg: DictConfig):
 
     # Load Backbone
     ckpt_path = os.path.join(cfg.experiment.backbone.ckpt_dir, cfg.experiment.backbone.weight_name)
-    if cfg.model.backbone_type == "MAE_old":
+    if cfg.experiment.backbone.model == "mae_old":
         backbone = MAE_old.load_from_checkpoint(
             checkpoint_path=ckpt_path,
             map_location="cpu",
@@ -65,18 +97,24 @@ def main(cfg: DictConfig):
             scheduler_dict=cfg.model.scheduler,
         )
     else:
-        backbone = MAE.load_from_checkpoint(
-            checkpoint_path=ckpt_path,
-            map_location="cpu",
-            weights_only=False,
-        )
+        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        hyper_parameters = ckpt["hyper_parameters"]
+
+        # Get MAE.__init__ argument names (excluding self)
+        valid_args = set(inspect.signature(MAE.__init__).parameters.keys()) - {"self"}
+
+        # Keep only parameters accepted by MAE
+        model_hparams = {k: v for k, v in hyper_parameters.items() if k in valid_args}
+
+        backbone = MAE(**model_hparams)
+        backbone.load_state_dict(ckpt["state_dict"], strict=False)
 
     # Create MLP
     model = MultiLayerPerceptron(
         backbone=backbone,
-        freeze=cfg.model.freeze_backbone,
-        input_dim=cfg.model.input_dim,
-        mask_ratio=cfg.model.mask_ratio,
+        freeze=cfg.experiment.backbone.freeze,
+        input_dim=cfg.model.head.input_dim,
+        mask_ratio=cfg.model.head.mask_ratio,
         optimizer_dict=cfg.model.optimizer,
         scheduler_dict=cfg.model.scheduler,
         test_results_path=cfg.experiment.output_dir,

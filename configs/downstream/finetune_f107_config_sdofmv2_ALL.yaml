@@ -5,7 +5,7 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_qu7tsc5c_mae_epoch=1-val_loss=1.32.ckpt
+    weight_name: id_uj0jxwrn_mae_epoch=56-val_loss=0.03.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
@@ -24,8 +24,14 @@ experiment:
     log_model: false # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
     offline: false
   fold: null
-  output_dir: ./assets/checkpoints/downstream/ALL/
+
+  # save checkpoints/results
+  ds_ckpt_dir: ./assets/checkpoints/f107
+  output_dir: ./assets/ds_results/f107/
+  checkpoint_filename: f107_best_validation_sdofmv2_all
   test_results_filename: test_results_ALL.csv
+
+  # Dataloader
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
   # lightining pretrainer
   precision: 32 #-true'       # (32, 64) for cuda, ('32-true', '16-true', 'bf16-true') for tpu
@@ -33,7 +39,7 @@ experiment:
   accelerator: gpu  # options are "auto", "gpu", "tpu", "ipu", or "cpu"
   distributed:
     enabled: true
-    devices: [0, 1] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
+    devices: 1 # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
 
 # dataset configuration
 data:
@@ -58,6 +64,9 @@ data:
   test_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv
   hmi_mask: ./assets/cache/ALL/hmi_mask_512x512.npy
   normalization_stat_path: ./assets/cache/ALL/
+
+  # f10.7 data
+  ds_data_path: ./assets/cache/f10.7.csv
 
   # for dataloader
   num_workers: 8    # set appropriately for your machine

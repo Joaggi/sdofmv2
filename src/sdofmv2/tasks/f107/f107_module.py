@@ -3,6 +3,7 @@ import os
 import pandas as pd
 import torch
 import torch.nn as nn
+import torchmetrics.functional as functional
 from loguru import logger
 
 from sdofmv2.core import BaseModule
@@ -60,6 +61,7 @@ class MultiLayerPerceptron(BaseModule):
         self.test_results_path = test_results_path
         self.test_results_filename = test_results_filename
         self.test_preds: list[dict] = []
+        self.val_preds: list[dict] = []
 
         if self.freeze_backbone:
             self.backbone.eval()
@@ -141,7 +143,38 @@ class MultiLayerPerceptron(BaseModule):
         logits = self(imgs).squeeze(-1)
         loss = self.criterion(logits, y)
         self.log("val_loss", loss, prog_bar=True, sync_dist=True)
+
+        preds_real = logits.detach().cpu().numpy()
+        labels_real = y.cpu().numpy()
+
+        for label, pred in zip(labels_real, preds_real, strict=True):
+            self.val_preds.append(
+                {"label": label.item(), "prediction": pred.item()}
+            )
         return loss
+
+    def on_validation_epoch_end(self):
+        if self.val_preds:
+            df = pd.DataFrame(self.val_preds)
+            labels = torch.tensor(df["label"].values)
+            preds = torch.tensor(df["prediction"].values)
+
+            r2 = functional.r2_score(preds, labels)
+            rmse = functional.mean_squared_error(preds, labels, squared=False)
+            mae = functional.mean_absolute_error(preds, labels)
+            mse = functional.mean_squared_error(preds, labels)
+
+            self.log_dict(
+                {
+                    "val_r2": r2,
+                    "val_rmse": rmse,
+                    "val_mae": mae,
+                    "val_mse": mse,
+                },
+                prog_bar=True,
+                sync_dist=True,
+            )
+            self.val_preds.clear()
 
     def test_step(self, batch, batch_idx):
         # Test step
@@ -163,9 +196,28 @@ class MultiLayerPerceptron(BaseModule):
     def on_test_epoch_end(self):
         # Save results
         if self.test_preds:
+            df = pd.DataFrame(self.test_preds)
+            labels = torch.tensor(df["label"].values)
+            preds = torch.tensor(df["prediction"].values)
+
+            r2 = functional.r2_score(preds, labels)
+            rmse = functional.mean_squared_error(preds, labels, squared=False)
+            mae = functional.mean_absolute_error(preds, labels)
+            mse = functional.mean_squared_error(preds, labels)
+
+            self.log_dict(
+                {
+                    "test_r2": r2,
+                    "test_rmse": rmse,
+                    "test_mae": mae,
+                    "test_mse": mse,
+                },
+                prog_bar=True,
+                sync_dist=True,
+            )
+
             os.makedirs(self.test_results_path, exist_ok=True)
             output_path = os.path.join(self.test_results_path, self.test_results_filename)
-            df = pd.DataFrame(self.test_preds)
             df.to_csv(output_path, index=False)
             logger.info(f"Saved test results to {output_path}")
             self.test_preds.clear()

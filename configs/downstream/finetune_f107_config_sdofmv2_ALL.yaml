@@ -13,14 +13,14 @@ experiment:
   
   wandb:
     enable: true
-    name: mae-pretrain-all-bright_path_weighted_loss-huber-base
-    run_id: qu7tsc5c
+    name: f10.7-ALL-base
+    run_id: null
     entity: allshaman
-    project: sdofmv2
-    group: ""
-    job_type: pretrain
+    project: sdofmv2-downstrem-f10.7
+    group: sdofmv2
+    job_type: finetune
     tags: []
-    notes: ALL-pretrain
+    notes: ALL-base
     output_directory: ./assets/wandb
     log_model: false # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
     offline: false
@@ -40,7 +40,7 @@ experiment:
   accelerator: gpu  # options are "auto", "gpu", "tpu", "ipu", or "cpu"
   distributed:
     enabled: true
-    devices: 1 # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
+    devices: [0] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
 
 # dataset configuration
 data:
@@ -120,7 +120,7 @@ model:
     mask_only_inner: false
 
   head:
-    input_dim: 1024
+    input_dim: 1536
     mask_ratio: 0.0
     output_dim: 1
     hidden_layer_dims: [512, 512, 512]

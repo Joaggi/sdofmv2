@@ -8,7 +8,7 @@ import torch
 import wandb
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers.wandb import WandbLogger
-from loguru import logger
+from loguru import logger as lgr_logger
 from omegaconf import DictConfig
 
 from sdofmv2.core import MAE, MAE_old
@@ -20,7 +20,7 @@ from sdofmv2.utils import flatten_dict
     config_path="../../configs/downstream", config_name="finetune_f107_config_sdofmv2_ALL.yaml"
 )
 def main(cfg: DictConfig):
-    logger.info("Starting F10.7 experiment...")
+    lgr_logger.info("Starting F10.7 experiment...")
 
     # Setup Wandb logger
     # set up wandb logging
@@ -135,6 +135,7 @@ def main(cfg: DictConfig):
         devices=cfg.experiment.distributed.devices,
         precision=cfg.experiment.precision,
         callbacks=[checkpoint_callback],
+        logger=logger,
     )
 
     # Train
@@ -143,10 +144,10 @@ def main(cfg: DictConfig):
     ):
         trainer.fit(model=model, datamodule=datamodule)
     else:
-        logger.info("Checkpoint exists, skipping training.")
+        lgr_logger.info("Checkpoint exists, skipping training.")
 
     # Predict/Evaluate
-    trainer.test(model=model, datamodule=datamodule, ckpt_path="best")
+    trainer.test(model=model, datamodule=datamodule, ckpt_path="best", weights_only=False)
 
 
 if __name__ == "__main__":

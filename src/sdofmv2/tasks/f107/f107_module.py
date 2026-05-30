@@ -69,10 +69,10 @@ class MultiLayerPerceptron(BaseModule):
                 param.requires_grad = False
 
         self.mask_ratio = mask_ratio
-        self.norm = nn.LayerNorm(int(input_dim * (1 - mask_ratio) * 2))
+        self.norm = nn.LayerNorm(input_dim)
 
         # Define the dimensions of the MLP layers
-        dims = [input_dim * 2] + hidden_layer_dims
+        dims = [input_dim] + hidden_layer_dims
 
         # Define the dropout layer
         self.dropout = nn.Dropout(p=dropout)
@@ -111,8 +111,8 @@ class MultiLayerPerceptron(BaseModule):
 
         patch_tokens = latent[:, 1:, :]
 
-        x_avg = patch_tokens.mean(dim=2)
-        x_max = patch_tokens.max(dim=2).values
+        x_avg = patch_tokens.mean(dim=1)
+        x_max = patch_tokens.max(dim=1).values
         x_cls = torch.cat([x_avg, x_max], dim=-1)
 
         x_cls = self.norm(x_cls)
@@ -148,9 +148,7 @@ class MultiLayerPerceptron(BaseModule):
         labels_real = y.cpu().numpy()
 
         for label, pred in zip(labels_real, preds_real, strict=True):
-            self.val_preds.append(
-                {"label": label.item(), "prediction": pred.item()}
-            )
+            self.val_preds.append({"label": label.item(), "prediction": pred.item()})
         return loss
 
     def on_validation_epoch_end(self):

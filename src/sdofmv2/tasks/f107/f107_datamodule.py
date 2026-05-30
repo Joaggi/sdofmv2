@@ -174,7 +174,9 @@ class EmbSolarProxyDataModule(SDOMLDataModule):
         super().setup(stage=stage)
 
         # Prepare HMI mask (base class loads HMI mask as a Tensor)
-        mask_tensor = self.hmi_mask if self.apply_mask and isinstance(self.hmi_mask, torch.Tensor) else None
+        mask_tensor = (
+            self.hmi_mask if self.apply_mask and isinstance(self.hmi_mask, torch.Tensor) else None
+        )
 
         if stage == "fit" or stage is None:
             self.train_ds = EmbSolarProxyDataset(

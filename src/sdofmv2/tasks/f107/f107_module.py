@@ -1,5 +1,10 @@
+import os
+
+import pandas as pd
 import torch
 import torch.nn as nn
+from loguru import logger
+
 from sdofmv2.core import BaseModule
 
 
@@ -39,16 +44,22 @@ class MultiLayerPerceptron(BaseModule):
         freeze,
         input_dim,
         output_dim=1,
-        hidden_layer_dims=[512, 512, 512],
+        hidden_layer_dims=None,
         dropout=0.0,
         mask_ratio=0.0,
         optimizer_dict=None,
         scheduler_dict=None,
+        test_results_path: str = "./",
+        test_results_filename: str = "test_results.csv",
     ):
         super().__init__(optimizer_dict=optimizer_dict, scheduler_dict=scheduler_dict)
+        if hidden_layer_dims is None:
+            hidden_layer_dims = [512, 512, 512]
         self.backbone = backbone
         self.freeze_backbone = freeze
-        self.nans = []
+        self.test_results_path = test_results_path
+        self.test_results_filename = test_results_filename
+        self.test_preds: list[dict] = []
 
         if self.freeze_backbone:
             self.backbone.eval()
@@ -78,8 +89,7 @@ class MultiLayerPerceptron(BaseModule):
         # Define the loss function
         self.criterion = nn.MSELoss()
 
-        # Initialize a dictionary to store test predictions
-        self.test_preds = {}
+
 
     def forward(self, x):
         """Processes input through the backbone and MLP head.
@@ -108,7 +118,7 @@ class MultiLayerPerceptron(BaseModule):
         x_cls = torch.cat([x_avg, x_max], dim=-1)
 
         x_cls = self.norm(x_cls)
-        for fc, act in zip(self.fcs, self.acts):
+        for fc, act in zip(self.fcs, self.acts, strict=True):
             x_cls = self.dropout(x_cls)
             x_cls = fc(x_cls)
             x_cls = act(x_cls)
@@ -148,9 +158,22 @@ class MultiLayerPerceptron(BaseModule):
         labels_real = y.cpu().numpy()
 
         # Save results per timestamp
-        for t, label, pred in zip(timestamps, labels_real, preds_real):
-            self.test_preds[t.item()] = [label.item(), pred.item()]
+        for t, label, pred in zip(timestamps, labels_real, preds_real, strict=True):
+            self.test_preds.append(
+                {"timestamp": t.item(), "label": label.item(), "prediction": pred.item()}
+            )
         return loss
+
+    def on_test_epoch_end(self):
+        # Save results
+        if self.test_preds:
+            os.makedirs(self.test_results_path, exist_ok=True)
+            output_path = os.path.join(self.test_results_path, self.test_results_filename)
+            df = pd.DataFrame(self.test_preds)
+            df.to_csv(output_path, index=False)
+            logger.info(f"Saved test results to {output_path}")
+            self.test_preds.clear()
+
 
     def on_before_optimizer_step(self, optimizer):
         # Compute the norm of the gradients
@@ -163,8 +186,9 @@ class MultiLayerPerceptron(BaseModule):
             )
 
             # Only unscale if a scaler actually exists (i.e., if using fp16)
-            if getattr(self.trainer, "scaler", None) is not None:
-                self.trainer.scaler.unscale_(optimizer)
+            scaler = getattr(self.trainer, "scaler", None)
+            if scaler is not None:
+                scaler.unscale_(optimizer)
 
             optimizer.zero_grad()  # Clear the bad gradients (Don't update weights!)
             return

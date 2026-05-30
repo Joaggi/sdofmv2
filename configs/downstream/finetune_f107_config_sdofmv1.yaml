@@ -38,6 +38,8 @@ experiment:
     enabled: False
     bucket: "sdofm-checkpoints"
   fold: null
+  output_dir: ./assets/checkpoints/downstream/V1/
+  test_results_filename: test_results_V1.csv
   evaluate: false     # skip training and only evaluate (requires checkpoint to be set)
   checkpoint: null    # this is the wandb run_id of the checkpoint to load
   devices: [0]        # this is set automatically using the disable_cuda flag and torch.cuda.is_available()
@@ -120,40 +122,6 @@ model:
     active_region_scale: 1.0
     active_region_abs_lon_max_degs: 60
     active_region_abs_lat_max_degs: 60
-  nvae:
-    use_se: true
-    res_dist: true
-    num_x_bits: 8
-    num_latent_scales: 3  # 5
-    num_groups_per_scale: 1  # 16
-    num_latent_per_group: 1  # 10
-    ada_groups: true
-    min_groups_per_scale: 1
-    num_channels_enc: 30
-    num_channels_dec: 30
-    num_preprocess_blocks: 2   # 1
-    num_preprocess_cells: 2
-    num_cell_per_cond_enc: 2
-    num_postprocess_blocks: 2  # 1
-    num_postprocess_cells: 2
-    num_cell_per_cond_dec: 2
-    num_mixture_dec: 1
-    num_nf: 2
-    kl_anneal_portion: 0.3
-    kl_const_portion: 0.0001
-    kl_const_coeff: 0.0001
-    # learning_rate: 1e-2
-    # weight_decay: 3e-4
-    weight_decay_norm_anneal: true
-    weight_decay_norm_init: 1.
-    weight_decay_norm: 1e-2        
-    
-  # FINE-TUNERS
-  degragation:
-    num_neck_filters: 32
-    output_dim: 1 # not sure why this is implemented for autocorrelation, should be a scalar
-    loss: "mse" # options: "mse", "heteroscedastic"
-    freeze_encoder: true
     
   # for optimizer
   optimizer: 

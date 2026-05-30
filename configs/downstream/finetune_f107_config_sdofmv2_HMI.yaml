@@ -28,6 +28,8 @@ experiment:
     enabled: true
     bucket: "sdofm-checkpoints"
   fold: null
+  output_dir: ./assets/checkpoints/downstream/HMI/
+  test_results_filename: test_results_HMI.csv
   evaluate: false               # skip training and only evaluate (requires checkpoint to be set)
   device: null                  # this is set automatically using the disable_cuda flag and torch.cuda.is_available()
   precision: '32'        # (32, 64) for cuda, ('32-true', '16-true', 'bf16-true') for tpu

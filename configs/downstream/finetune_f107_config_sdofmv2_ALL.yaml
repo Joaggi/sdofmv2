@@ -24,6 +24,8 @@ experiment:
     log_model: false # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
     offline: false
   fold: null
+  output_dir: ./assets/checkpoints/downstream/ALL/
+  test_results_filename: test_results_ALL.csv
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
   # lightining pretrainer
   precision: 32 #-true'       # (32, 64) for cuda, ('32-true', '16-true', 'bf16-true') for tpu

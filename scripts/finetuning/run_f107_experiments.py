@@ -73,7 +73,10 @@ def main(cfg: DictConfig):
         mask_ratio=cfg.model.mask_ratio,
         optimizer_dict=cfg.model.optimizer,
         scheduler_dict=cfg.model.scheduler,
+        test_results_path=cfg.experiment.output_dir,
+        test_results_filename=cfg.experiment.test_results_filename,
     )
+
 
     # Trainer
     checkpoint_callback = ModelCheckpoint(

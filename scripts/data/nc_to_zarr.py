@@ -2,7 +2,6 @@ import argparse
 import os
 import re
 import sys
-from pathlib import Path
 
 import dask.array as da
 import dask.distributed
@@ -122,12 +121,16 @@ def main():
     client = dask.distributed.Client(n_workers=args.n_workers, threads_per_worker=1)
     lgr_logger.info(f"Dask dashboard: {client.dashboard_link}")
 
-    input_root = Path(args.input_dir)
+    # Ensure root zarr store initialized
+    os.makedirs(args.output_zarr, exist_ok=True)
+    lgr_logger.info(f"Ensuring root Zarr store '{args.output_zarr}' is initialized as a group...")
+    zarr.open(args.output_zarr, mode='a') # This creates .zgroup if it doesn't exist
+    lgr_logger.info("Root Zarr store initialized.")
+
     file_map = {}  # (year, month) -> list of (timestamp, filepath)
 
     lgr_logger.info(f"Current working directory: {os.getcwd()}")
     lgr_logger.info(f"Absolute input_dir: {args.input_dir}")
-    lgr_logger.info(f"Absolute input_root: {input_root.resolve()}")
     lgr_logger.info(f"Walking directory: {args.input_dir}")
 
     total_files = 0

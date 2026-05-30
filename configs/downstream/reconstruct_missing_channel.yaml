@@ -12,15 +12,15 @@ data:
   _target_: sdofmv2.tasks.missing_data.surya_reconstruction_zarr_datamodule.SuryaReconstructionZarrDataModule
   # sdo_data_root_path: ./assets/cache/surya/surya_index.csv
   zarr_root_path: /mnt/cedar/surya-bench.zarr
-  train_data_path: ./assets/cache/surya/test.csv
-  valid_data_path: ./assets/cache/surya/test.csv
-  test_data_path: ./assets/cache/surya/test.csv
+  train_data_path: ./assets/cache/surya/test_Jan.csv
+  valid_data_path: ./assets/cache/surya/test_Jan.csv
+  test_data_path: ./assets/cache/surya/test_Jan.csv
   channels: ['aia94', 'aia131', 'aia171', 'aia193', 'aia211', 'aia304', 'aia335', 'aia1600', 'hmi_m', 'hmi_bx', 'hmi_by', 'hmi_bz', 'hmi_v']
   time_delta_input_minutes: [-60, 0]
   time_delta_target_minutes: 0
   n_input_timestamps: 2
   batch_size: 1
-  num_data_workers: 4
+  num_data_workers: 8
   pin_memory: true
   prefetch_factor: 2
   persistent_workers: true

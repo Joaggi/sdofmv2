@@ -234,14 +234,18 @@ class HelioZarrDataset(Dataset):
                 stacked_inputs.unsqueeze(0),  # Add batch dim for pooling: (1, T, C, H, W)
                 kernel_size=(1, pool_factor, pool_factor),
                 stride=(1, pool_factor, pool_factor),
-            ).squeeze(0)  # Remove batch dim: (T, C, H // pool_factor, W // pool_factor)
+            ).squeeze(
+                0
+            )  # Remove batch dim: (T, C, H // pool_factor, W // pool_factor)
 
             # Target tensor shape: (C, H, W)
             stacked_targets = F.avg_pool2d(
                 stacked_targets.unsqueeze(0),  # Add batch dim for pooling: (1, C, H, W)
                 kernel_size=pool_factor,
                 stride=pool_factor,
-            ).squeeze(0)  # Remove batch dim: (C, H // pool_factor, W // pool_factor)
+            ).squeeze(
+                0
+            )  # Remove batch dim: (C, H // pool_factor, W // pool_factor)
 
         # Apply random vertical flip if in training phase
         if self.random_vert_flip and self.phase == "train" and random.random() > 0.5:

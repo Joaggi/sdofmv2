@@ -1,3 +1,4 @@
+from typing import cast
 
 import pandas as pd
 import torch
@@ -158,17 +159,18 @@ class EmbSolarProxyDataModule(SDOMLDataModule):
         self.df = self.df[~self.df[" f107"].isna()]
         self.max_norm = self.df[" f107"].max()
         self.df["f107_norm"] = self.df[" f107"] / self.max_norm
-        self.aligndata = pd.merge_asof(
-            self.aligndata,
+
+    def _merge_f107(self, aligndata: pd.DataFrame) -> pd.DataFrame:
+        aligndata = pd.merge_asof(
+            aligndata,
             self.df,
             left_index=True,
             right_index=True,
-            tolerance=pd.Timedelta(12, "min"),
+            tolerance=cast(pd.Timedelta, pd.Timedelta(minutes=12)),
         )
+        return aligndata.dropna(subset=[" f107", "f107_norm"])
 
-        self.aligndata = self.aligndata.dropna(subset=[" f107", "f107_norm"])
-
-    def setup(self, stage: str | None = None) -> None:
+    def setup(self, stage: str = "fit") -> None:
         super().setup(stage=stage)
 
         # Prepare HMI mask (base class loads HMI mask as a Tensor)
@@ -176,7 +178,7 @@ class EmbSolarProxyDataModule(SDOMLDataModule):
 
         if stage == "fit" or stage is None:
             self.train_ds = EmbSolarProxyDataset(
-                self._load_aligndata(self.train_index),
+                self._merge_f107(self._load_aligndata(self.train_index)),
                 hmi_path=self.hmi_path,
                 aia_path=self.aia_path,
                 eve_path=self.eve_path,
@@ -194,7 +196,7 @@ class EmbSolarProxyDataModule(SDOMLDataModule):
             logger.info(f"Dataset size: {len(self.train_ds)}")
 
             self.valid_ds = EmbSolarProxyDataset(
-                self._load_aligndata(self.val_index),
+                self._merge_f107(self._load_aligndata(self.val_index)),
                 hmi_path=self.hmi_path,
                 aia_path=self.aia_path,
                 eve_path=self.eve_path,
@@ -213,7 +215,7 @@ class EmbSolarProxyDataModule(SDOMLDataModule):
 
         if stage == "test" or stage is None:
             self.test_ds = EmbSolarProxyDataset(
-                self._load_aligndata(self.test_index),
+                self._merge_f107(self._load_aligndata(self.test_index)),
                 hmi_path=self.hmi_path,
                 aia_path=self.aia_path,
                 eve_path=self.eve_path,

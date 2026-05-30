@@ -11,8 +11,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import zarr
-from tqdm import tqdm
 from loguru import logger as lgr_logger
+from tqdm import tqdm
 
 # Optimized Blosc configuration
 compressor = numcodecs.Blosc(cname="lz4", clevel=5, shuffle=numcodecs.Blosc.BITSHUFFLE)
@@ -82,6 +82,21 @@ def check_channels(filepath, channel_map):
     return True
 
 
+def get_existing_timestamps(zarr_path, group_path):
+    """Retrieves existing timestamps from a Zarr group."""
+    try:
+        # Check if the Zarr group exists
+        if not os.path.exists(os.path.join(zarr_path, group_path)):
+            return set()
+
+        # Open just the metadata to read coordinates
+        ds = xr.open_zarr(zarr_path, group=group_path)
+        return set(pd.to_datetime(ds.time.values))
+    except Exception as e:
+        lgr_logger.warning(f"Could not read existing timestamps for {group_path}: {e}")
+        return set()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Convert NC files to Zarr (Robust Version)")
     parser.add_argument("--input_dir", type=str, required=True)
@@ -93,44 +108,44 @@ def main():
 
     # Dask setup
     client = dask.distributed.Client(n_workers=args.n_workers, threads_per_worker=1)
-    print(f"Dask dashboard: {client.dashboard_link}")
+    lgr_logger.info(f"Dask dashboard: {client.dashboard_link}")
 
     input_root = Path(args.input_dir)
     file_map = {}  # (year, month) -> list of (timestamp, filepath)
 
-    print(f"Current working directory: {os.getcwd()}")
-    print(f"Absolute input_dir: {args.input_dir}")
-    print(f"Absolute input_root: {input_root.resolve()}")
-    print(f"Walking directory: {args.input_dir}")
+    lgr_logger.info(f"Current working directory: {os.getcwd()}")
+    lgr_logger.info(f"Absolute input_dir: {args.input_dir}")
+    lgr_logger.info(f"Absolute input_root: {input_root.resolve()}")
+    lgr_logger.info(f"Walking directory: {args.input_dir}")
 
     total_files = 0
     discovered_files = []
     # Use os.walk to handle symlinks correctly
 
-    for root, dirs, files in os.walk(args.input_dir, followlinks=True):
-        print(f"Scanning directory: {root}")
+    for root, _dirs, files in os.walk(args.input_dir, followlinks=True):
+        lgr_logger.info(f"Scanning directory: {root}")
         for f in files:
             if f.endswith(".nc"):
                 total_files += 1
                 ts = parse_filename(f)
                 if ts:
-                    print(f"  Parsed: {f} -> Timestamp: {ts}")
+                    lgr_logger.info(f"  Parsed: {f} -> Timestamp: {ts}")
                     if args.start_year <= ts.year <= args.end_year:
                         key = (ts.year, ts.month)
                         filepath = os.path.join(root, f)
                         discovered_files.append((ts, filepath))
                         file_map.setdefault(key, []).append((ts, filepath))
                     else:
-                        print(
+                        lgr_logger.info(
                             f"  Year {ts.year} out of range ({args.start_year}-{args.end_year}), skipping."
                         )
                 else:
-                    print(f"  Could not parse filename: {f}")
-    print(f"Total .nc files found: {total_files}")
-    print(f"Files matching year criteria: {len(discovered_files)}")
+                    lgr_logger.info(f"  Could not parse filename: {f}")
+    lgr_logger.info(f"Total .nc files found: {total_files}")
+    lgr_logger.info(f"Files matching year criteria: {len(discovered_files)}")
 
     if not file_map:
-        print(
+        lgr_logger.error(
             "ERROR: No files found matching criteria. Check path, year range, and filename regex."
         )
         sys.exit(1)
@@ -139,26 +154,24 @@ def main():
     if discovered_files:
         first_file_ts, first_file_path = discovered_files[0]
         if not check_channels(first_file_path, CHANNEL_MAP):
-            print(
+            lgr_logger.error(
                 "ERROR: Channel check failed. Please verify REQUESTED_CHANNELS and CHANNEL_MAP match NetCDF variable names."
             )
             sys.exit(1)
         else:
-            print("Channel check passed.")
+            lgr_logger.info("Channel check passed.")
     else:
-        print("ERROR: No files were successfully parsed for the given year range.")
+        lgr_logger.error("ERROR: No files were successfully parsed for the given year range.")
         sys.exit(1)
 
     created_groups = []
 
     # Processing
     for (year, month), files in sorted(file_map.items()):
-        print(f"Processing {year}/{month:02d}...")
+        lgr_logger.info(f"Processing {year}/{month:02d}...")
 
         # Start Date and End Date for the month, used for initial Zarr array shape
         # We will dynamically populate the time dimension based on actual file timestamps later
-        month_start_date = pd.Timestamp(year, month, 1)
-        month_end_date = month_start_date + pd.offsets.MonthEnd(0)
 
         # Collect all unique timestamps from the NetCDF files for this month
         current_month_timestamps = sorted([ts for ts, _ in files])
@@ -194,7 +207,13 @@ def main():
         created_groups.append(os.path.join(args.output_zarr, group_path))
 
         # Write files for the current month
+        # Resume logic: Get existing timestamps
+        existing_timestamps = get_existing_timestamps(args.output_zarr, group_path)
+
         for ts, path in tqdm(files, desc=f"Writing {year}/{month:02d}"):
+            if ts in existing_timestamps:
+                continue
+
             try:
                 with xr.open_dataset(path, engine="h5netcdf", chunks=None, cache=False) as ds:
                     # Select and reorder channels using CHANNEL_MAP
@@ -228,15 +247,15 @@ def main():
                         region={"time": slice(t_idx, t_idx + 1)},
                     )
             except Exception as e:
-                print(f"Error processing {path}: {e}")
+                lgr_logger.error(f"Error processing {path}: {e}")
 
     # Root consolidation
     if created_groups:
-        print("Consolidating metadata...")
+        lgr_logger.info("Consolidating metadata...")
         zarr.consolidate_metadata(args.output_zarr)
-        print("Finished.")
+        lgr_logger.info("Finished.")
     else:
-        print("No data was written. Exiting.")
+        lgr_logger.info("No data was written. Exiting.")
 
 
 if __name__ == "__main__":

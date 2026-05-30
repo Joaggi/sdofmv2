@@ -29,7 +29,6 @@ experiment:
     bucket: "sdofm-checkpoints"
   fold: null
   output_dir: ./assets/checkpoints/downstream/AIA/
-  checkpoint_filename: mae_f107_AIA_best
   test_results_filename: test_results_AIA.csv
   evaluate: false               # skip training and only evaluate (requires checkpoint to be set)
   device: null                  # this is set automatically using the disable_cuda flag and torch.cuda.is_available()

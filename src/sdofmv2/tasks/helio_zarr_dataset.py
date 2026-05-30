@@ -145,15 +145,19 @@ class HelioZarrDataset(Dataset):
         return data_np
 
     def __getitem__(self, idx: int) -> tuple[dict[str, torch.Tensor], dict] | None:
-        start_time = time.time()
+        t0 = time.time()
         time_deltas = np.array(
             sorted(random.sample(self.time_delta_input_minutes[:-1], self.n_input_timestamps - 1))
             + [self.time_delta_input_minutes[-1]]
             + self.time_delta_target_minutes
         )
+        time_delta_load_time = time.time() - t0
+        logger.debug(f"Time delata array load time: {time_delta_load_time:.4f} seconds.")
+
         reference_timestep = self.valid_indices[idx]
         required_timesteps = reference_timestep + time_deltas
 
+        t1 = time.time()
         sequence_data = []
         for ts in required_timesteps:
             ts = pd.Timestamp(ts)
@@ -166,6 +170,12 @@ class HelioZarrDataset(Dataset):
                 return None  # Return None if any input is NaN
             sequence_data.append(data)
 
+        # Stack input data along a new time dimension
+        # Shape: (T, C, H, W) where T is n_input_timestamps
+        # Measure time taken for input data loading
+        input_data_load_time = time.time() - t1
+        logger.debug(f"Sample {idx}: Input data loading took {input_data_load_time:.4f} seconds.")
+
         # Split sequence_data into inputs and target
         inputs = sequence_data[: -self.rollout_steps - 1]
         targets = sequence_data[-self.rollout_steps - 1 :]
@@ -174,12 +184,6 @@ class HelioZarrDataset(Dataset):
 
         timestamps_input = required_timesteps[: -self.rollout_steps - 1]
         timestamps_targets = required_timesteps[-self.rollout_steps - 1 :]
-
-        # Stack input data along a new time dimension
-        # Shape: (T, C, H, W) where T is n_input_timestamps
-        # Measure time taken for input data loading
-        input_data_load_time = time.time() - start_time
-        logger.debug(f"Sample {idx}: Input data loading took {input_data_load_time:.4f} seconds.")
 
         time_delta_input_float = (
             time_deltas[-self.rollout_steps - 2] - time_deltas[: -self.rollout_steps - 1]
@@ -234,5 +238,3 @@ class HelioZarrDataset(Dataset):
             "forecast": stacked_targets,
             "lead_time_delta": lead_time_delta_float,
         }, metadata
-
-        return data, metadata

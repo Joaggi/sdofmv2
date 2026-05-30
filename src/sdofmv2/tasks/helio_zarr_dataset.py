@@ -146,53 +146,73 @@ class HelioZarrDataset(Dataset):
 
     def __getitem__(self, idx: int) -> tuple[dict[str, torch.Tensor], dict] | None:
         t0 = time.time()
-        time_deltas = np.array(
-            sorted(random.sample(self.time_delta_input_minutes[:-1], self.n_input_timestamps - 1))
-            + [self.time_delta_input_minutes[-1]]
-            + self.time_delta_target_minutes
+
+        # Determine all unique time deltas required
+        # input_deltas for random sampling and fixed last input
+        input_deltas_sampled = sorted(
+            random.sample(self.time_delta_input_minutes[:-1], self.n_input_timestamps - 1)
         )
-        time_delta_load_time = time.time() - t0
-        logger.debug(f"Time delata array load time: {time_delta_load_time:.4f} seconds.")
+        input_deltas_fixed = [self.time_delta_input_minutes[-1]]
+        all_input_deltas = np.array(input_deltas_sampled + input_deltas_fixed)
+
+        # target_deltas (will only contain 0m if rollout_steps=0)
+        all_target_deltas = np.array(self.time_delta_target_minutes)
+
+        # Combine and get unique time deltas to fetch
+        unique_time_deltas_to_fetch_np = np.unique(
+            np.concatenate((all_input_deltas, all_target_deltas))
+        )
+
+        time_delta_generation_time = time.time() - t0
+        logger.debug(f"Time delta generation time: {time_delta_generation_time:.4f} seconds.")
 
         reference_timestep = self.valid_indices[idx]
-        required_timesteps = reference_timestep + time_deltas
+
+        # Map each unique time delta to its absolute timestamp
+        unique_absolute_timesteps = reference_timestep + unique_time_deltas_to_fetch_np
 
         t1 = time.time()
-        sequence_data = []
-        for ts in required_timesteps:
-            ts = pd.Timestamp(ts)
-            data = self._get_data_for_timestamp(ts)
-            # Check if the retrieved input data is all NaNs
+        # Dictionary to store fetched data, keyed by the unique absolute timestamp
+        fetched_data_map = {}
+        for ts_abs in unique_absolute_timesteps:
+            ts_abs_pd = pd.Timestamp(ts_abs)
+            data = self._get_data_for_timestamp(ts_abs_pd)
+            # Check if the retrieved data is all NaNs
             if np.isnan(data).all():
                 logger.warning(
-                    f"Input timestamp {ts} for sample {idx} is all NaNs. Skipping sample."
+                    f"Timestamp {ts_abs_pd} for sample {idx} is all NaNs. Skipping sample."
                 )
-                return None  # Return None if any input is NaN
-            sequence_data.append(data)
+                return None  # Return None if any required data is NaN
+            fetched_data_map[ts_abs_pd] = data
+
+        data_fetching_time = time.time() - t1
+        logger.debug(f"Sample {idx}: Unique data fetching took {data_fetching_time:.4f} seconds.")
+
+        # Reconstruct inputs and targets using the fetched data
+        inputs = []
+        for delta in all_input_deltas:
+            abs_ts = pd.Timestamp(reference_timestep + delta)
+            inputs.append(fetched_data_map[abs_ts])
+
+        targets = []
+        for delta in all_target_deltas:
+            abs_ts = pd.Timestamp(reference_timestep + delta)
+            targets.append(fetched_data_map[abs_ts])
 
         # Stack input data along a new time dimension
         # Shape: (T, C, H, W) where T is n_input_timestamps
-        # Measure time taken for input data loading
-        input_data_load_time = time.time() - t1
-        logger.debug(f"Sample {idx}: Input data loading took {input_data_load_time:.4f} seconds.")
-
-        # Split sequence_data into inputs and target
-        inputs = sequence_data[: -self.rollout_steps - 1]
-        targets = sequence_data[-self.rollout_steps - 1 :]
         stacked_inputs = np.stack(inputs, axis=1)
         stacked_targets = np.stack(targets, axis=1)
 
-        timestamps_input = required_timesteps[: -self.rollout_steps - 1]
-        timestamps_targets = required_timesteps[-self.rollout_steps - 1 :]
+        timestamps_input = reference_timestep + all_input_deltas
+        timestamps_targets = reference_timestep + all_target_deltas
 
-        time_delta_input_float = (
-            time_deltas[-self.rollout_steps - 2] - time_deltas[: -self.rollout_steps - 1]
-        ) / np.timedelta64(1, "h")
+        # Update time_delta_input_float and lead_time_delta_float calculations
+        # Using all_input_deltas[-1] as the reference point
+        time_delta_input_float = (all_input_deltas - all_input_deltas[-1]) / np.timedelta64(1, "h")
         time_delta_input_float = time_delta_input_float.astype(np.float32)
 
-        lead_time_delta_float = (
-            time_deltas[-self.rollout_steps - 2] - time_deltas[-self.rollout_steps - 1 :]
-        ) / np.timedelta64(1, "h")
+        lead_time_delta_float = (all_target_deltas - all_input_deltas[-1]) / np.timedelta64(1, "h")
         lead_time_delta_float = lead_time_delta_float.astype(np.float32)
 
         metadata = {
@@ -214,18 +234,14 @@ class HelioZarrDataset(Dataset):
                 stacked_inputs.unsqueeze(0),  # Add batch dim for pooling: (1, T, C, H, W)
                 kernel_size=(1, pool_factor, pool_factor),
                 stride=(1, pool_factor, pool_factor),
-            ).squeeze(
-                0
-            )  # Remove batch dim: (T, C, H // pool_factor, W // pool_factor)
+            ).squeeze(0)  # Remove batch dim: (T, C, H // pool_factor, W // pool_factor)
 
             # Target tensor shape: (C, H, W)
             stacked_targets = F.avg_pool2d(
                 stacked_targets.unsqueeze(0),  # Add batch dim for pooling: (1, C, H, W)
                 kernel_size=pool_factor,
                 stride=pool_factor,
-            ).squeeze(
-                0
-            )  # Remove batch dim: (C, H // pool_factor, W // pool_factor)
+            ).squeeze(0)  # Remove batch dim: (C, H // pool_factor, W // pool_factor)
 
         # Apply random vertical flip if in training phase
         if self.random_vert_flip and self.phase == "train" and random.random() > 0.5:

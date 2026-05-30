@@ -83,17 +83,29 @@ def check_channels(filepath, channel_map):
 
 
 def get_existing_timestamps(zarr_path, group_path):
-    """Retrieves existing timestamps from a Zarr group."""
+    """Retrieves existing timestamps from a Zarr group, verifying data completeness."""
     try:
         # Check if the Zarr group exists
         if not os.path.exists(os.path.join(zarr_path, group_path)):
             return set()
 
-        # Open just the metadata to read coordinates
+        # Open the Zarr group
         ds = xr.open_zarr(zarr_path, group=group_path)
-        return set(pd.to_datetime(ds.time.values))
+
+        # Get all timestamps in the group
+        all_timestamps = pd.to_datetime(ds.time.values)
+        valid_timestamps = set()
+
+        for ts in all_timestamps:
+            # Check if the data slice for this timestamp is NOT all NaN.
+            # If the write was interrupted, the slice will contain NaNs
+            # (due to the pre-initialization).
+            if not ds["data"].sel(time=ts).isnull().all():
+                valid_timestamps.add(ts)
+
+        return valid_timestamps
     except Exception as e:
-        lgr_logger.warning(f"Could not read existing timestamps for {group_path}: {e}")
+        lgr_logger.warning(f"Could not read/validate existing timestamps for {group_path}: {e}")
         return set()
 
 
@@ -200,10 +212,11 @@ def main():
         encoding = {"data": {"compressor": compressor, "chunks": (1, 1, 4096, 4096)}}
         group_path = f"{year}/{month:02d}"
 
-        # Initialize store using mode "a" to append/create if not exists
-        ds_template.to_zarr(
-            args.output_zarr, group=group_path, mode="a", encoding=encoding, consolidated=True
-        )
+        # Initialize store using mode "w" if it does not exist
+        if not os.path.exists(os.path.join(args.output_zarr, group_path)):
+            ds_template.to_zarr(
+                args.output_zarr, group=group_path, mode="w", encoding=encoding, consolidated=True
+            )
         created_groups.append(os.path.join(args.output_zarr, group_path))
 
         # Write files for the current month

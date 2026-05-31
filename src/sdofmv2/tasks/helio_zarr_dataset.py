@@ -102,8 +102,10 @@ class HelioZarrDataset(Dataset):
         )
 
         try:
-            # Open the specific month/year Zarr group (removed consolidated=True)
-            month_zarr_data = xr.open_zarr(year_month_path, chunks="auto", consolidated=False)
+            group_name = f"{timestamp.year}/{timestamp.month:02d}"
+            month_zarr_data = xr.open_zarr(
+                self.zarr_root_path, group=group_name, consolidated=True, chunks="auto"
+            )
         except Exception as e:
             logger.warning(
                 f"Error opening Zarr group {year_month_path}: {e}. Returning NaN array for {timestamp}."

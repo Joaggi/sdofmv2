@@ -16,9 +16,7 @@ from sdofmv2.tasks.f107 import EmbSolarProxyDataModule, MultiLayerPerceptron
 from sdofmv2.utils import flatten_dict
 
 
-@hydra.main(
-    config_path="../../configs/downstream", config_name="finetune_f107_config_sdofmv2_ALL.yaml"
-)
+@hydra.main(config_path="../../configs/downstream", config_name="finetune_f107_config_sdofmv1.yaml")
 def main(cfg: DictConfig):
     lgr_logger.info("Starting F10.7 experiment...")
 

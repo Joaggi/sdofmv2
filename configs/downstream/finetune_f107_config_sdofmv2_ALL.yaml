@@ -16,7 +16,7 @@ experiment:
     name: f10.7-ALL-base
     run_id: null
     entity: allshaman
-    project: sdofmv2-downstrem-f10.7
+    project: sdofmv2-downstream-f10.7
     group: sdofmv2
     job_type: finetune
     tags: []

@@ -117,6 +117,7 @@ def main(cfg: DictConfig):
         scheduler_dict=cfg.model.scheduler,
         test_results_path=cfg.experiment.output_dir,
         test_results_filename=cfg.experiment.test_results_filename,
+        max_norm=float(datamodule.max_norm),
     )
 
     # Trainer

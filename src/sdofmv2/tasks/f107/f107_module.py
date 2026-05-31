@@ -34,6 +34,9 @@ class MultiLayerPerceptron(BaseModule):
             Defaults to None.
         scheduler_dict (dict, optional): Configuration for the learning rate scheduler.
             Defaults to None.
+        test_results_path (str, optional): Path to save test results. Defaults to "./".
+        test_results_filename (str, optional): Filename for test results. Defaults to "test_results.csv".
+        max_norm (float, optional): Maximum value for normalization. Defaults to 1.0.
 
     Returns:
         torch.Tensor: The output logits or predictions from the final linear layer.
@@ -52,6 +55,7 @@ class MultiLayerPerceptron(BaseModule):
         scheduler_dict=None,
         test_results_path: str = "./",
         test_results_filename: str = "test_results.csv",
+        max_norm: float = 1.0,
     ):
         super().__init__(optimizer_dict=optimizer_dict, scheduler_dict=scheduler_dict)
         if hidden_layer_dims is None:
@@ -60,6 +64,7 @@ class MultiLayerPerceptron(BaseModule):
         self.freeze_backbone = freeze
         self.test_results_path = test_results_path
         self.test_results_filename = test_results_filename
+        self.max_norm = max_norm
         self.test_preds: list[dict] = []
         self.val_preds: list[dict] = []
 
@@ -162,12 +167,25 @@ class MultiLayerPerceptron(BaseModule):
             mae = functional.mean_absolute_error(preds, labels)
             mse = functional.mean_squared_error(preds, labels)
 
+            # Inverse normalize for reporting
+            preds_denorm = preds * self.max_norm
+            labels_denorm = labels * self.max_norm
+
+            r2_denorm = functional.r2_score(preds_denorm, labels_denorm)
+            rmse_denorm = functional.mean_squared_error(preds_denorm, labels_denorm, squared=False)
+            mae_denorm = functional.mean_absolute_error(preds_denorm, labels_denorm)
+            mse_denorm = functional.mean_squared_error(preds_denorm, labels_denorm)
+
             self.log_dict(
                 {
                     "val_r2": r2,
                     "val_rmse": rmse,
                     "val_mae": mae,
                     "val_mse": mse,
+                    "val_r2_denorm": r2_denorm,
+                    "val_rmse_denorm": rmse_denorm,
+                    "val_mae_denorm": mae_denorm,
+                    "val_mse_denorm": mse_denorm,
                 },
                 prog_bar=True,
                 sync_dist=True,
@@ -203,12 +221,25 @@ class MultiLayerPerceptron(BaseModule):
             mae = functional.mean_absolute_error(preds, labels)
             mse = functional.mean_squared_error(preds, labels)
 
+            # Inverse normalize for reporting
+            preds_denorm = preds * self.max_norm
+            labels_denorm = labels * self.max_norm
+
+            r2_denorm = functional.r2_score(preds_denorm, labels_denorm)
+            rmse_denorm = functional.mean_squared_error(preds_denorm, labels_denorm, squared=False)
+            mae_denorm = functional.mean_absolute_error(preds_denorm, labels_denorm)
+            mse_denorm = functional.mean_squared_error(preds_denorm, labels_denorm)
+
             self.log_dict(
                 {
                     "test_r2": r2,
                     "test_rmse": rmse,
                     "test_mae": mae,
                     "test_mse": mse,
+                    "test_r2_denorm": r2_denorm,
+                    "test_rmse_denorm": rmse_denorm,
+                    "test_mae_denorm": mae_denorm,
+                    "test_mse_denorm": mse_denorm,
                 },
                 prog_bar=True,
                 sync_dist=True,

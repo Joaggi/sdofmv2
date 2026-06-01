@@ -71,9 +71,9 @@ data:
 
   # for dataloader
   num_workers: 8    # set appropriately for your machine
-  pin_memory: true
+  pin_memory: false
   prefetch_factor: 2
-  persistent_workers: true
+  persistent_workers: false
   multiprocessing_context: spawn
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
   drop_frame_dim: false
@@ -179,8 +179,8 @@ model:
   # for optimizer
   optimizer: 
     use: adamw
-    learning_rate: 1.0e-4
-    weight_decay: 0.05
+    learning_rate: 1.0e-5
+    weight_decay: 0.01
   
   # for scheduler
   scheduler: 

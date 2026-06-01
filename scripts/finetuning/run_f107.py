@@ -5,6 +5,9 @@ from pathlib import Path
 import hydra
 import lightning as l
 import torch
+import torch.multiprocessing as mp
+
+mp.set_sharing_strategy("file_system")
 import wandb
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers.wandb import WandbLogger

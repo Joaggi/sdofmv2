@@ -108,34 +108,21 @@ def main(cfg):
         frequency=cfg.data.sdoml.frequency,
         batch_size=cfg.model.misc.batch_size,
         num_workers=cfg.data.num_workers,
-        train_months=cfg.data.month_splits.train,
-        val_months=cfg.data.month_splits.val,
-        test_months=cfg.data.month_splits.test,
-        holdout_months=cfg.data.month_splits.holdout,
-        train_years=cfg.data.year_splits.train,
-        val_years=cfg.data.year_splits.val,
-        test_years=cfg.data.year_splits.test,
-        radial_norm=cfg.data.in_situ.radial_norm,
-        cache_dir=os.path.join(
-            cfg.data.sdoml.save_directory, cfg.data.sdoml.sub_directory.cache
-        ),
+        cache_dir=os.path.join(cfg.data.sdoml.save_directory, cfg.data.sdoml.sub_directory.cache),
         apply_mask=cfg.data.sdoml.apply_mask,
-        min_date=cfg.data.min_date,
-        max_date=cfg.data.max_date,
         num_frames=cfg.data.num_frames,
         drop_frame_dim=cfg.data.drop_frame_dim,
         precision=cfg.experiment.trainer.precision,
         normalization=cfg.data.sdoml.normalization,
-        alignment_indices_path=os.path.join(
-            cfg.data.in_situ.base_data_directory,
-            cfg.data.in_situ.alignment_indices_path,
-        ),
+        cfg=cfg,
+        radial_norm=cfg.data.in_situ.radial_norm,
         radial_parameters=cfg.data.in_situ.radial_parameters,
         latlon_parameters=cfg.data.in_situ.latlon_parameters,
+        cadence=cfg.data.in_situ.cadence,
         label_type=cfg.data.label_type,
         sampling_ratio=cfg.data.under_sampling.ratio,
         random_state=cfg.data.under_sampling.random_state,
-        cfg=cfg,
+        hmi_mask_path="hmi_mask_512x512.npy",
     )
 
     # Define channels for input/model
@@ -235,10 +222,7 @@ def main(cfg):
         accumulate_grad_batches=cfg.model.misc.accumulate_grad_batches,
     )
 
-    if (
-        cfg.experiment.downstream_model.resuming
-        and cfg.experiment.downstream_model.weights_only
-    ):
+    if cfg.experiment.downstream_model.resuming and cfg.experiment.downstream_model.weights_only:
         loguru_logger.info("Load weight only from ckpt")
         loguru_logger.info("Model hyperparameters are overridden by ckpt")
         ckpt = torch.load(
@@ -267,5 +251,5 @@ def main(cfg):
     )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

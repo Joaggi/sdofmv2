@@ -132,10 +132,6 @@ class SDOMLDataset(Dataset):
             to load per sequence sample. Defaults to 1.
         drop_frame_dim (bool, optional): If True and `num_frames` is 1, drops
             the temporal dimension. Defaults to False.
-        min_date (str or datetime, optional): The earliest date boundary to
-            include in the dataset. Defaults to None.
-        max_date (str or datetime, optional): The latest date boundary to
-            include in the dataset. Defaults to None.
         get_header (bool or list, optional): Whether to retrieve and return header metadata alongside the image tensors. Defaults to False.
         precision (str, optional): The floating-point precision for the output
             tensors (e.g., "32" for float32, "16" for float16). Defaults to "32".

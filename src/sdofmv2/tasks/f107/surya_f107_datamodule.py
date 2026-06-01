@@ -77,7 +77,6 @@ class HelioF107DataModule(LightningDataModule):
         super().__init__()
         self.config = config
         self.dataset_kwargs = dict(
-            index_path=self.config.data.train_data_path,
             time_delta_input_minutes=list(self.config.data.time_delta_input_minutes),
             time_delta_target_minutes=self.config.data.time_delta_target_minutes,
             n_input_timestamps=self.config.data.n_input_timestamps,
@@ -90,10 +89,16 @@ class HelioF107DataModule(LightningDataModule):
 
     def setup(self, stage=None):
         if stage == "fit" or stage is None:
-            self.train_ds = HelioF107Dataset(phase="train", **self.dataset_kwargs)
-            self.val_ds = HelioF107Dataset(phase="val", **self.dataset_kwargs)
+            self.train_ds = HelioF107Dataset(
+                phase="train", index_path=self.config.data.train_data_path, **self.dataset_kwargs
+            )
+            self.val_ds = HelioF107Dataset(
+                phase="val", index_path=self.config.data.valid_data_path, **self.dataset_kwargs
+            )
         if stage == "test" or stage is None:
-            self.test_ds = HelioF107Dataset(phase="test", **self.dataset_kwargs)
+            self.test_ds = HelioF107Dataset(
+                phase="test", index_path=self.config.data.test_data_path, **self.dataset_kwargs
+            )
 
     def train_dataloader(self):
         return DataLoader(

@@ -40,32 +40,6 @@ def fetch_nc_files(directory, start_year, start_month, end_year, end_month):
                     if start_year <= year <= end_year:
                         matching_files.append(os.path.join(dirpath, f))
 
-    # for filepath in sorted(Path(directory).rglob("*.nc")):
-    #     filename = filepath.name
-    #     match = pattern.match(filename)
-    #     # if match:
-    #     # breakpoint()
-    #     if int(match.group(1)[4:6]) >= start_month:
-    #         # Extract the date part from the filename (YYYYMMDD)
-    #         date_str = match.group(1)
-    #         if start_month and end_month:
-    #             year = int(date_str[:4])  # Get the year from the date string
-    #             month = int(date_str[4:6])  # Get the month from the date string
-
-    #             # Check if the file is within the given year and month range
-    #             if (
-    #                 (start_year < year < end_year)
-    #                 or (year == start_year and month >= start_month and month <= end_month)
-    #                 or (year == end_year and month <= end_month)
-    #             ):
-    #                 matching_files.append(str(filepath))
-
-    #         else:
-    #             year = int(date_str[:4])  # Get the year from the date string
-    #             # Check if the year is within the given range
-    #             if start_year <= year <= end_year:
-    #                 matching_files.append(filepath)
-
     return matching_files
 
 
@@ -154,7 +128,7 @@ def main():
     parser.add_argument("--end_month", type=int, default=12, help="Ending month  of data")
 
     parser.add_argument(
-        "--csv_output", default="test_new.csv", type=str, help="Output CSV file path."
+        "--csv_output", default="surya-bench-daily.csv", type=str, help="Output CSV file path."
     )
     args = parser.parse_args()
 

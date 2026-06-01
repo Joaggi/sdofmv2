@@ -67,9 +67,17 @@ etc:
   devices: 1
   max_epochs: 30
 
-wandb:
-  enable: true
-  name: surya_f107_finetune
-  project: sdofm
-  group: f107
-  output_directory: ./results
+experiment:
+  wandb:
+    enable: true
+    name: surya_f107_finetune
+    run_id: null
+    entity: null
+    project: sdofm
+    group: f107
+    job_type: finetune
+    tags: []
+    notes: null
+    output_directory: ./results
+    log_model: false
+    offline: false

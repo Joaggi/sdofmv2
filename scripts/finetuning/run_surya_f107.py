@@ -12,7 +12,7 @@ from sdofmv2.tasks.f107.surya_f107_module import SuryaF107Model
 from sdofmv2.utils import flatten_dict
 
 
-@hydra.main(config_path="../configs/downstream", config_name="f107_surya", version_base=None)
+@hydra.main(config_path="../../configs/downstream", config_name="f107_surya", version_base=None)
 def main(cfg: DictConfig):
     l.seed_everything(42)
     lgr_logger.info("Starting Surya F10.7 experiment...")

@@ -9,12 +9,13 @@ hydra:
     dir: .
 
 data:
-  _target_: sdofmv2.tasks.f107.helio_f107_zarr_datamodule.HelioF107ZarrDataModule
-  zarr_root_path: <YOUR_ZARR_ROOT_PATH>
-  train_data_path: ./assets/cache/surya/surya_index.csv
-  valid_data_path: ./assets/cache/surya/surya_index.csv
-  test_data_path: ./assets/cache/surya/surya_index.csv
-  f107_csv_path: /home/jhong90/Downloads/f10.7.csv
+  # _target_: sdofmv2.tasks.f107.helio_f107_zarr_datamodule.HelioF107ZarrDataModule
+  # zarr_root_path: <YOUR_ZARR_ROOT_PATH>
+  sdo_data_root_path: /home/jinsu/surya-bench-daily/
+  train_data_path: ./assets/cache/surya/train_surya_f107.csv
+  valid_data_path: ./assets/cache/surya/validation_surya_f107.csv
+  test_data_path: ./assets/cache/surya/test_surya_f107.csv
+  f107_csv_path: ./assets/cache/f10.7.csv
   channels: ['aia94', 'aia131', 'aia171', 'aia193', 'aia211', 'aia304', 'aia335', 'aia1600', 'hmi_m', 'hmi_bx', 'hmi_by', 'hmi_bz', 'hmi_v']
   time_delta_input_minutes: [-60, 0]
   time_delta_target_minutes: 0
@@ -72,12 +73,12 @@ experiment:
     enable: true
     name: surya_f107_finetune
     run_id: null
-    entity: null
-    project: sdofm
-    group: f107
+    entity: allshaman
+    project: sdofmv2-downstream-f10.7
+    group: surya
     job_type: finetune
     tags: []
-    notes: null
-    output_directory: ./results
+    notes: surya
+    output_directory: ./assets/wandb
     log_model: false
-    offline: false
+    offline: true

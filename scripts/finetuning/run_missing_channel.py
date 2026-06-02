@@ -6,6 +6,7 @@ import pandas as pd
 import torch
 from torchmetrics import MeanAbsoluteError, MeanSquaredError, R2Score
 import sunpy.visualization.colormaps as sunpycm
+from sunpy.visualization.colormaps import color_tables
 from loguru import logger as lgr_logger
 
 import hydra
@@ -19,6 +20,7 @@ from sdofmv2.utils import ALL_WAVELENGTHS
 from sdofmv2.tasks.missing_data import MissingDataModel
 
 
+@hydra.main(config_path="../../configs/downstream", config_name="missing_channel_sdofmv2_ALL.yaml")
 def main(cfg: DictConfig):
     # Set seed for reproducibility
     if cfg.experiment.seed is not None:
@@ -91,12 +93,23 @@ def main(cfg: DictConfig):
     data_module.setup()
 
     # Visualization setup
-    wavelengths = ALL_WAVELENGTHS
-    wavelengths.sort()
-    wave_val_list = [int(wave[:-1]) for wave in wavelengths]
-    wave_arr = np.array(wave_val_list)
-    sort_ids = np.argsort(wave_arr)
-    cms = [sunpycm.cmlist.get(f"sdoaia{w[:-1]}") for w in wavelengths]
+    channels = data_module.wavelengths + data_module.components
+    cms_dict = {
+        "aia131": sunpycm.cmlist.get("sdoaia131"),
+        "aia1600": sunpycm.cmlist.get("sdoaia1600"),
+        "aia1700": sunpycm.cmlist.get("sdoaia1700"),
+        "aia171": sunpycm.cmlist.get("sdoaia171"),
+        "aia193": sunpycm.cmlist.get("sdoaia193"),
+        "aia211": sunpycm.cmlist.get("sdoaia211"),
+        "aia304": sunpycm.cmlist.get("sdoaia304"),
+        "aia335": sunpycm.cmlist.get("sdoaia335"),
+        "aia94": sunpycm.cmlist.get("sdoaia94"),
+        "bx": color_tables.hmi_mag_color_table(),
+        "by": color_tables.hmi_mag_color_table(),
+        "bz": color_tables.hmi_mag_color_table(),
+    }
+
+    cms = [cms_dict[ch.lower()] for ch in channels]
 
     # Load pretrained backbone and zero-shot model
     lgr_logger.info("Loading pretrained MAE backbone...")

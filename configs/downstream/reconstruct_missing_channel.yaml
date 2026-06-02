@@ -11,7 +11,7 @@ hydra:
 data:
   _target_: sdofmv2.tasks.missing_data.surya_reconstruction_zarr_datamodule.SuryaReconstructionZarrDataModule
   # sdo_data_root_path: ./assets/cache/surya/surya_index.csv
-  zarr_root_path: /mnt/cedar/surya-bench.zarr
+  zarr_root_path: /home/jinsu/surya-bench.zarr
   train_data_path: ./assets/cache/surya/train_surya_missing.csv
   valid_data_path: ./assets/cache/surya/test_surya_missing.csv
   test_data_path: ./assets/cache/surya/validation_surya_missing.csv

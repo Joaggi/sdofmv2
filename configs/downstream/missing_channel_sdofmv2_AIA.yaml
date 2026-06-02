@@ -1,27 +1,26 @@
-# general
-experiment:
-  model: mae
+# General
+experiment:          # this is the wandb run_id of the checkpoint to load
+  corrupted_channel_index: 5
   backbone:
     model: mae
     is_backbone: true
-    ckpt_dir: ./assets/checkpoints/backbone/AIA/
-    weight_name: 'id_f74mho2y_mae_epoch=19-val_loss=0.03.ckpt'
+    ckpt_dir: ../../../assets/check_point/backbone/AIA/
+    weight_name: AIA_MSEloss_epoch=171-val_loss=0.00_only_weights.ckpt # AIA_MSEloss_epoch=171-val_loss=0.00.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
-  
   wandb:
     enable: true
-    name: mae-pretrain-aia-split_pixel_loss-huber-small
-    run_id: f74mho2y
+    name: missing_channel_sdofmv2_ALL
+    run_id: null
     entity: allshaman
-    project: sdofm
+    project: sdofmv2_missing_channel
     group: ""
     job_type: pretrain
     tags: []
-    notes: AIA-pretrain
+    notes: ALL-pretrain
     output_directory: ./assets/wandb
-    log_model: False # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
+    log_model: false # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
     offline: false
   fold: null
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
@@ -32,41 +31,45 @@ experiment:
   distributed:
     enabled: true
     devices: [0] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
+  
+    # save checkpoints/results
+  ds_ckpt_dir: ./assets/checkpoints/missing_channel
+  output_dir: ./assets/ds_results/missing_channel
+  checkpoint_filename: missing_channel_best_validation_sdofmv2_aia
+  test_results_filename: missing_channel_test_results_AIA.csv
 
 # dataset configuration
 data:
-  # data split information
-  min_date: 2010-05-01 00:00:00  # NOT IMPLEMENTED # minimum is '2010-09-09 00:00:11.08'
-  max_date: 2018-12-31 23:59:59  # NOT IMPLEMENTED # maximum is '2023-05-26 06:36:08.072' '2025-07-22 23:59:59.99'
+  min_date: 2019-01-01 00:00:00.00    # minimum is '2010-09-09 00:00:11.08'
+  max_date: 2019-12-31 23:59:59.99    # maximum is '2023-05-26 06:36:08.072'
   year_splits:
-    train: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
-    val: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
-    test: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
+    train: [2019]
+    val: [2019]
+    test: [2019]
 
   month_splits: # non selected months will form training set 
-    train: [1,2,3,4,5,6,7,8,9,10] #,2,3,4,5,6,7,8,9,10]
+    train: [1,2,3,4,5,6,7,8,9,10]
     val: [11]
     test: [12]
     holdout: []
-  
-  # index path
-  index_save_path: ./assets/cache/
-  train_index: "./assets/cache/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv"
-  val_index: "./assets/cache/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv"
-  test_index: "./assets/cache/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv"
-  hmi_mask: ./assets/cache/hmi_mask_512x512.npy
-  normalization_stat_path: ./assets/cache/AIA/
 
-  # for dataloader
-  num_workers: 12    # set appropriately for your machine
+  # index path
+  index_save_path: ./assets/cache/missing_channel/
+  train_index: ./assets/cache/missing_channel/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv
+  val_index: ./assets/cache/missing_channel/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv
+  test_index: ./assets/cache/missing_channel/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv
+  hmi_mask: ./assets/cache/hmi_mask_512x512.npy
+  normalization_stat_path: ./assets/cache/missing_channel/
+
+  num_workers: 8    # set appropriately for your machine
   pin_memory: true
   prefetch_factor: 2
   persistent_workers: true
+  multiprocessing_context: spawn
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
-  drop_frame_dim: false
-  # output_directory: "wandb_output"
+  drop_frame_dim: false         # Requires num_frames=1, for backwards compatibility
   sdoml:
-    base_directory: /mnt/baobab
+    base_directory: /mnt/jade
     sub_directory:
       hmi: null
       aia: AIA.zarr
@@ -78,9 +81,6 @@ data:
     frequency: 12min # smallest is 12min
     mask_with_hmi_threshold: null # None/null for no mask, float for threshold
     apply_mask: false
-    feature_engineering:
-      enabled: false
-      dclass: Log
     normalization:
       enabled: true
       type: log #log, zscore, min-max
@@ -95,15 +95,15 @@ model:
     num_frames: 1
     tubelet_size: 1
     in_chans: 9
-    embed_dim: 384 # small, base, large [384, 768, 1024]
-    depth: 12 # small, base, large [12, 12, 24]
-    num_heads: 6 # small, base, large [6, 12, 16]
+    embed_dim: 768
+    depth: 12
+    num_heads: 12
     decoder_embed_dim: 512
     decoder_depth: 8
-    decoder_num_heads: 1d6
+    decoder_num_heads: 16
     mlp_ratio: 4.0
     norm_layer: LayerNorm
-    masking_ratio: 0.0
+    masking_ratio: 0.5
     mask_only_inner: false
 
   # for loss
@@ -113,12 +113,12 @@ model:
     bright_patch_weighted_loss:
       weight_inner: 1.0
       weight_outer_bright: 1.0
-      weight_outer_dark: 0.1
+      weight_outer_dark: 0.01
       zero_threshold: 0.9
-      base_type: mse
+      base_type: huber
       huber_delta: 1.0
       corner_size: 4
-      corner_ratio: 0.25
+      corner_ratio: 0.75
 
     # exclude_limb: true
     norm_pix_loss: false
@@ -138,7 +138,7 @@ model:
         delta: 1.0
       weight_on_patches: [0.75, 0.2, 0.05]
 
-    split_patch_loss:
+    split_pixel_loss:
       alpha: 0.8
       beta: 0.2
       base_type: huber
@@ -183,9 +183,11 @@ model:
   misc:
     limb_mask: false
     epochs: 300
-    batch_size: 32
+    batch_size: 16
     accumulate_grad_batches: 16 # accumulate grad for 32 steps
     limit_train_batches: null
+    gradient_clip_algorithm: norm
+    gradient_clip_val: 1.0
 
 defaults:
   - override hydra/job_logging: disabled

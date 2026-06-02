@@ -30,7 +30,7 @@ experiment:          # this is the wandb run_id of the checkpoint to load
   accelerator: gpu  # options are "auto", "gpu", "tpu", "ipu", or "cpu"
   distributed:
     enabled: true
-    devices: [0, 1] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
+    devices: [0] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
   
     # save checkpoints/results
   ds_ckpt_dir: ./assets/checkpoints/missing_channel
@@ -69,7 +69,7 @@ data:
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
   drop_frame_dim: false         # Requires num_frames=1, for backwards compatibility
   sdoml:
-    base_directory: /mnt/baobab
+    base_directory: /mnt/jade
     sub_directory:
       hmi: HMI.zarr
       aia: AIA.zarr

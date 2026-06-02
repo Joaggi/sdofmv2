@@ -1,5 +1,6 @@
 # General
 experiment:          # this is the wandb run_id of the checkpoint to load
+  corrupted_channel_index: 5
   backbone:
     model: mae
     is_backbone: true
@@ -30,6 +31,12 @@ experiment:          # this is the wandb run_id of the checkpoint to load
   distributed:
     enabled: true
     devices: [0, 1] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
+  
+    # save checkpoints/results
+  ds_ckpt_dir: ./assets/checkpoints/missing_channel
+  output_dir: ./assets/ds_results/missing_channel
+  checkpoint_filename: missing_channel_best_validation_sdofmv2_all
+  test_results_filename: missing_channel_test_results_ALL.csv
 
 # dataset configuration
 data:

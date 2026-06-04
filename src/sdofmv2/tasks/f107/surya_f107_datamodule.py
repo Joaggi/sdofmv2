@@ -10,20 +10,6 @@ from terratorch_surya.datasets.helio import RandomChannelMaskerTransform
 import random
 
 
-# def safe_collate(batch):
-#     # Based on the safe_collate function in surya_reconstruction.py
-#     from torch.utils.data._utils.collate import default_collate
-#
-#     for sample in batch:
-#         if isinstance(sample, tuple) and len(sample) == 2:
-#             metadata = sample[1]
-#             if "timestamps_input" in metadata:
-#                 metadata["timestamps_input"] = [str(t) for t in metadata["timestamps_input"]]
-#             if "timestamps_targets" in metadata:
-#                 metadata["timestamps_targets"] = [str(t) for t in metadata["timestamps_targets"]]
-#     return default_collate(batch)
-
-
 def safe_collate(batch):
     # Based on the safe_collate function in surya_reconstruction.py
     from torch.utils.data._utils.collate import default_collate

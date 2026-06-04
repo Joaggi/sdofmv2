@@ -47,6 +47,7 @@ def main(cfg: DictConfig):
         logger = None
 
     datamodule = HelioF107DataModule(cfg)
+    datamodule.setup(stage="fit")
     model = SuryaF107Model(cfg, datamodule.train_ds.max_f107)
 
     checkpoint_callback = ModelCheckpoint(
@@ -66,6 +67,8 @@ def main(cfg: DictConfig):
         precision=cfg.etc.precision,
         logger=logger,
         callbacks=[checkpoint_callback, lr_monitor],
+        limit_train_batches=cfg.etc.limit_train_batches,
+        limit_val_batches=cfg.etc.limit_val_batches,
     )
 
     trainer.fit(model, datamodule=datamodule)

@@ -15,6 +15,7 @@ class SuryaF107Model(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.config = config
+        self.max_norm = max_norm
 
         # Configure model
         model_config = {
@@ -58,7 +59,6 @@ class SuryaF107Model(pl.LightningModule):
         self.test_preds: list[dict] = []
         self.test_results_path = config.etc.output_dir
         self.test_results_filename = config.etc.test_results_filename
-        self.max_norm = self.max_norm
         self.criterion = nn.MSELoss()
 
     def forward(self, batch):
@@ -130,7 +130,9 @@ class SuryaF107Model(pl.LightningModule):
         labels_real = target.detach().cpu().float().numpy().flatten()
 
         for t, label, p in zip(timestamp, labels_real, preds_real, strict=True):
-            self.test_preds.append({"timestamp": t.item(), "label": label.item(), "prediction": p.item()})
+            self.test_preds.append(
+                {"timestamp": t.item(), "label": label.item(), "prediction": p.item()}
+            )
         return loss
 
     def on_test_epoch_end(self):

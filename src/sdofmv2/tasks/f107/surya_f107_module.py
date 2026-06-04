@@ -65,14 +65,14 @@ class SuryaF107Model(pl.LightningModule):
         return self.model(batch)
 
     def training_step(self, batch, batch_idx):
-        data_dict, target = batch
+        data_dict, timestamp, target = batch
         pred = self(data_dict).squeeze()
         loss = self.criterion(pred.view(-1), target.view(-1))
         self.log("train_loss", loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        data_dict, target = batch
+        data_dict, timestamp, target = batch
         pred = self(data_dict).squeeze()
         loss = self.criterion(pred.view(-1), target.view(-1))
         self.log("val_loss", loss, prog_bar=True)
@@ -121,7 +121,7 @@ class SuryaF107Model(pl.LightningModule):
             self.val_preds.clear()
 
     def test_step(self, batch, batch_idx):
-        data_dict, target = batch
+        data_dict, timestamp, target = batch
         pred = self(data_dict).squeeze()
         loss = self.criterion(pred.view(-1), target.view(-1))
         self.log("test_loss", loss, prog_bar=True, sync_dist=True)
@@ -129,8 +129,8 @@ class SuryaF107Model(pl.LightningModule):
         preds_real = pred.detach().cpu().float().numpy().flatten()
         labels_real = target.detach().cpu().float().numpy().flatten()
 
-        for label, p in zip(labels_real, preds_real, strict=True):
-            self.test_preds.append({"label": label.item(), "prediction": p.item()})
+        for t, label, p in zip(timestamp, labels_real, preds_real, strict=True):
+            self.test_preds.append({"timestamp": t.item(), "label": label.item(), "prediction": p.item()})
         return loss
 
     def on_test_epoch_end(self):

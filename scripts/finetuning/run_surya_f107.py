@@ -47,7 +47,7 @@ def main(cfg: DictConfig):
         logger = None
 
     datamodule = HelioF107DataModule(cfg)
-    model = SuryaF107Model(cfg)
+    model = SuryaF107Model(cfg, datamodule.train_ds.max_f107)
 
     checkpoint_callback = ModelCheckpoint(
         monitor="val_loss",

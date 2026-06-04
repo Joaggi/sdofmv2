@@ -11,10 +11,10 @@ hydra:
 data:
   # _target_: sdofmv2.tasks.f107.helio_f107_zarr_datamodule.HelioF107ZarrDataModule
   # zarr_root_path: <YOUR_ZARR_ROOT_PATH>
-  sdo_data_root_path: /home/jinsu/surya-bench-daily/
-  train_data_path: ./assets/cache/surya/train_surya_f107.csv
-  valid_data_path: ./assets/cache/surya/validation_surya_f107.csv
-  test_data_path: ./assets/cache/surya/test_surya_f107.csv
+  sdo_data_root_path: /nobackupnfs1/sroy14/processed_data/Helio/nc
+  train_data_path: ./assets/cache/surya/surya_f107_train.csv
+  valid_data_path: ./assets/cache/surya/surya_f107_validation.csv
+  test_data_path: ./assets/cache/surya/surya_f107_test.csv
   f107_csv_path: ./assets/cache/f10.7.csv
   channels: ['aia94', 'aia131', 'aia171', 'aia193', 'aia211', 'aia304', 'aia335', 'aia1600', 'hmi_m', 'hmi_bx', 'hmi_by', 'hmi_bz', 'hmi_v']
   time_delta_input_minutes: [-60, 0]
@@ -68,10 +68,16 @@ etc:
   devices: 1
   max_epochs: 30
 
+  # save checkpoints/results
+  ds_ckpt_dir: ./assets/checkpoints/f107
+  output_dir: ./assets/ds_results/f107/
+  checkpoint_filename: f107_best_validation_sdofmv2_all
+  test_results_filename: test_results_ALL.csv
+
 experiment:
   wandb:
     enable: true
-    name: surya_f107_finetune
+    name: f10.7-surya
     run_id: null
     entity: allshaman
     project: sdofmv2-downstream-f10.7
@@ -81,4 +87,4 @@ experiment:
     notes: surya
     output_directory: ./assets/wandb
     log_model: false
-    offline: true
+    offline: false

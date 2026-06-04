@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import torch
 import torch.nn as nn
@@ -8,12 +9,13 @@ from loguru import logger
 from terratorch_surya.downstream_examples.ar_segmentation.models import HelioSpectformer1D
 from omegaconf import DictConfig
 
+
 class SuryaF107Model(pl.LightningModule):
-    def __init__(self, config: DictConfig):
+    def __init__(self, config: DictConfig, max_norm):
         super().__init__()
         self.save_hyperparameters()
         self.config = config
-        
+
         # Configure model
         model_config = {
             "model": {
@@ -25,7 +27,7 @@ class SuryaF107Model(pl.LightningModule):
                 "penultimate_linear_layer": config.model.get("penultimate_linear_layer", True),
             }
         }
-        
+
         self.model = HelioSpectformer1D(
             img_size=config.backbone.img_size,
             patch_size=config.backbone.patch_size,
@@ -40,40 +42,43 @@ class SuryaF107Model(pl.LightningModule):
             window_size=config.backbone.window_size,
             dp_rank=config.backbone.dp_rank,
             num_outputs=1,
-            config=model_config
+            finetune=True,
+            config=model_config,
         )
-        
+
         # Load weights
         if config.backbone.path_weights:
-            checkpoint = torch.load(config.backbone.path_weights, map_location="cpu", weights_only=True)
+            checkpoint = torch.load(
+                config.backbone.path_weights, map_location="cpu", weights_only=True
+            )
             self.model.load_state_dict(checkpoint, strict=False)
-            
+
         # Metrics
         self.val_preds: list[dict] = []
         self.test_preds: list[dict] = []
-        self.test_results_path = config.experiment.get("output_dir", "./")
-        self.test_results_filename = config.experiment.get("test_results_filename", "test_results.csv")
-        self.max_norm = config.data.get("max_norm", 1.0)
+        self.test_results_path = config.etc.output_dir
+        self.test_results_filename = config.etc.test_results_filename
+        self.max_norm = self.max_norm
         self.criterion = nn.MSELoss()
-        
+
     def forward(self, batch):
         return self.model(batch)
-        
+
     def training_step(self, batch, batch_idx):
         data_dict, target = batch
         pred = self(data_dict).squeeze()
-        loss = F.mse_loss(pred, target)
+        loss = self.criterion(pred.view(-1), target.view(-1))
         self.log("train_loss", loss, prog_bar=True)
         return loss
-        
+
     def validation_step(self, batch, batch_idx):
         data_dict, target = batch
         pred = self(data_dict).squeeze()
-        loss = self.criterion(pred, target)
+        loss = self.criterion(pred.view(-1), target.view(-1))
         self.log("val_loss", loss, prog_bar=True)
 
-        preds_real = pred.detach().cpu().numpy()
-        labels_real = target.cpu().numpy()
+        preds_real = pred.detach().cpu().float().numpy().flatten()
+        labels_real = target.detach().cpu().float().numpy().flatten()
 
         for label, p in zip(labels_real, preds_real, strict=True):
             self.val_preds.append({"label": label.item(), "prediction": p.item()})
@@ -114,15 +119,15 @@ class SuryaF107Model(pl.LightningModule):
                 sync_dist=True,
             )
             self.val_preds.clear()
-        
+
     def test_step(self, batch, batch_idx):
         data_dict, target = batch
         pred = self(data_dict).squeeze()
-        loss = self.criterion(pred, target)
+        loss = self.criterion(pred.view(-1), target.view(-1))
         self.log("test_loss", loss, prog_bar=True, sync_dist=True)
 
-        preds_real = pred.detach().cpu().numpy()
-        labels_real = target.cpu().numpy()
+        preds_real = pred.detach().cpu().float().numpy().flatten()
+        labels_real = target.detach().cpu().float().numpy().flatten()
 
         for label, p in zip(labels_real, preds_real, strict=True):
             self.test_preds.append({"label": label.item(), "prediction": p.item()})

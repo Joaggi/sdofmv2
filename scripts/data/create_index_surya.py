@@ -9,7 +9,9 @@ from tqdm import tqdm  # Import tqdm for the progress bar
 
 def fetch_nc_files(directory, start_year, start_month, end_year, end_month):
     # Define the regex pattern for matching the filenames
-    pattern = re.compile(r"(\d{8})_(\d{4})\.nc")
+    # pattern = re.compile(r"(\d{8})_(\d{4})\.nc")
+    # pattern = re.compile(r"(\d{8})_((?:00|01|23)00)\.nc")
+    pattern = re.compile(r"(2019\d{4})_(\d{2}00)\.nc")
 
     # List to store matching files
     matching_files = []
@@ -19,6 +21,8 @@ def fetch_nc_files(directory, start_year, start_month, end_year, end_month):
     for dirpath, dirnames, filenames in os.walk(directory, followlinks=True):
         for f in filenames:
             match = pattern.match(f)
+            if not match:
+                continue
             if int(match.group(1)[4:6]) >= start_month:
                 # Extract the date part from the filename (YYYYMMDD)
                 date_str = match.group(1)
@@ -92,7 +96,7 @@ def generate_time_intervals(dirpath, start_year, start_month, end_year, end_mont
     end_time = np.datetime64(end_time)  # Convert it back to numpy.datetime64
 
     # Create time intervals (12-minute increments)
-    time_intervals = pd.date_range(start=start_time, end=end_time, freq="12T")
+    time_intervals = pd.date_range(start=start_time, end=end_time, freq="12min")
 
     # Initialize a list to store the file paths and corresponding datetime
     result = []
@@ -128,7 +132,10 @@ def main():
     parser.add_argument("--end_month", type=int, default=12, help="Ending month  of data")
 
     parser.add_argument(
-        "--csv_output", default="surya-bench-daily.csv", type=str, help="Output CSV file path."
+        "--csv_output",
+        default="surya-bench-2019-hourly.csv",
+        type=str,
+        help="Output CSV file path.",
     )
     args = parser.parse_args()
 

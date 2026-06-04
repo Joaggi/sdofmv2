@@ -1,11 +1,11 @@
 name: sdofmv2
 channels:
   - conda-forge
-  - defaults
 
 dependencies:
   # ── Python ────────────────────────────────────────────────────
   - python=3.11
+  - pip
 
   # ── Scientific core ───────────────────────────────────────────
   - numpy=2.3.5
@@ -56,12 +56,12 @@ dependencies:
     # IMPORTANT: The packages below are configured for CUDA 12.8. 
     # If your GPU requires a different version (e.g., CUDA 11.8), change 
     # 'cu128' to 'cu118' in the URLs and package versions below.
-    - "--extra-index-url https://download.pytorch.org/whl/cu128"
-    - torch==2.7.0+cu128
-    - torchvision==0.22.0+cu128
-    - torchaudio==2.7.0+cu128
-    - torchcodec==0.8.1
-    - torchvision-extra-decoders==0.0.2
+    - --extra-index-url=https://download.pytorch.org/whl/cu128
+    - torch==2.10.0+cu128
+    - torchvision==0.25.0+cu128
+    - torchaudio==2.10.0+cu128
+    - torchcodec==0.11.1+cu128
+    # - torchvision-extra-decoders==0.0.2
     
     # ── Lightning ecosystem ──
     - lightning==2.6.0

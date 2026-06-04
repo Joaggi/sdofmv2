@@ -1,6 +1,7 @@
 import pandas as pd
 import torch
 import numpy as np
+from omegaconf import OmegaConf
 from datetime import timedelta
 from terratorch_surya.datasets.helio import HelioNetCDFDataset
 from lightning.pytorch import LightningDataModule
@@ -16,10 +17,16 @@ def safe_collate(batch):
     for sample in batch:
         if isinstance(sample, tuple) and len(sample) == 2:
             metadata = sample[1]
-            if "timestamps_input" in metadata:
-                metadata["timestamps_input"] = [str(t) for t in metadata["timestamps_input"]]
-            if "timestamps_targets" in metadata:
-                metadata["timestamps_targets"] = [str(t) for t in metadata["timestamps_targets"]]
+
+            # ADD THIS CHECK: Only look for strings if metadata is actually a dictionary
+            if isinstance(metadata, dict):
+                if "timestamps_input" in metadata:
+                    metadata["timestamps_input"] = [str(t) for t in metadata["timestamps_input"]]
+                if "timestamps_targets" in metadata:
+                    metadata["timestamps_targets"] = [
+                        str(t) for t in metadata["timestamps_targets"]
+                    ]
+
     return default_collate(batch)
 
 
@@ -60,6 +67,14 @@ class HelioF107Dataset(HelioNetCDFDataset):
         # Call super to get the data_dict and metadata
         data_dict, metadata = super().__getitem__(idx)
 
+        for key, value in data_dict.items():
+            # If it's a numpy array of type float64, downcast it
+            if hasattr(value, "dtype") and value.dtype == "float64":
+                data_dict[key] = value.astype("float32")
+            # If it's already been converted to a PyTorch double tensor, downcast it
+            elif isinstance(value, torch.Tensor) and value.dtype == torch.float64:
+                data_dict[key] = value.float()
+
         # Get reference timestamp (latest in input)
         ref_ts = pd.to_datetime(metadata["timestamps_input"][-1])
 
@@ -69,21 +84,28 @@ class HelioF107Dataset(HelioNetCDFDataset):
 
         target = torch.tensor(target_val, dtype=torch.float32)
 
-        return data_dict, target
+        # Convert to string to avoid issues with default_collate
+        timestamp_str = str(metadata["timestamps_input"][-1])
+
+        return data_dict, timestamp_str, target
 
 
 class HelioF107DataModule(LightningDataModule):
     def __init__(self, config):
         super().__init__()
         self.config = config
+        self.scalers = OmegaConf.load(self.config.data.scalers_path)
         self.dataset_kwargs = dict(
             time_delta_input_minutes=list(self.config.data.time_delta_input_minutes),
             time_delta_target_minutes=self.config.data.time_delta_target_minutes,
             n_input_timestamps=self.config.data.n_input_timestamps,
             rollout_steps=0,  # For regression, not forecasting
+            num_mask_aia_channels=0,
             channels=list(self.config.data.channels),
             sdo_data_root_path=self.config.data.sdo_data_root_path,
             pooling=self.config.data.pooling,
+            random_vert_flip=self.config.data.random_vert_flip,
+            scalers=self.scalers,
             f107_csv_path=self.config.data.f107_csv_path,
         )
 

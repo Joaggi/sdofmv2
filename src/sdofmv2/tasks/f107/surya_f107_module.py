@@ -131,7 +131,7 @@ class SuryaF107Model(pl.LightningModule):
 
         for t, label, p in zip(timestamp, labels_real, preds_real, strict=True):
             self.test_preds.append(
-                {"timestamp": t.item(), "label": label.item(), "prediction": p.item()}
+                {"timestamp": t, "label": label.item(), "prediction": p.item()}
             )
         return loss
 

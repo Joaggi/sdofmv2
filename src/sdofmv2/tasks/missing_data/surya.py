@@ -169,7 +169,7 @@ class SuryaReconstructionModel(pl.LightningModule):
             init_weights=config.backbone.init_weights,
             checkpoint_layers=list(config.backbone.checkpoint_layers),
             rpe=config.backbone.rpe,
-            finetune=False, # Use original decoder
+            finetune=False,  # Use original decoder
         )
 
         pretrained_path = config.backbone.path_weights
@@ -215,6 +215,11 @@ class SuryaReconstructionModel(pl.LightningModule):
         Returns:
             torch.Tensor: The predicted reconstructed image.
         """
+        # Cast the input tensor to the model's dtype to ensure compatibility
+        target_dtype = next(self.model.parameters()).dtype
+        for key in batch.keys():
+            if isinstance(batch[key], torch.Tensor) and batch[key].dtype == torch.float64:
+                batch[key] = batch[key].to(target_dtype)
         return self.model(batch)
 
     def training_step(self, batch: dict, batch_idx: int) -> torch.Tensor:

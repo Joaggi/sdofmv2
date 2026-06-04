@@ -7,8 +7,8 @@ from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from omegaconf import DictConfig, OmegaConf
 
 from sdofmv2.tasks.missing_data import (
-    # SuryaReconstructionDataModule,
-    SuryaReconstructionZarrDataModule,
+    SuryaReconstructionDataModule,
+    # SuryaReconstructionZarrDataModule,
     SuryaReconstructionModel,
 )
 from sdofmv2.utils import safe_collate, flatten_dict
@@ -18,7 +18,7 @@ torch.set_float32_matmul_precision("medium")
 
 @hydra.main(
     config_path="../../configs/downstream",
-    config_name="reconstruct_missing_channel",
+    config_name="missing_channel_surya",
     version_base=None,
 )
 def main(config: DictConfig):
@@ -27,7 +27,7 @@ def main(config: DictConfig):
 
     pl.seed_everything(config.data.get("seed", 42))
 
-    datamodule = SuryaReconstructionZarrDataModule(config)
+    datamodule = SuryaReconstructionDataModule(config)
     model = SuryaReconstructionModel(config)
 
     # Initialize Loggers
@@ -72,11 +72,14 @@ def main(config: DictConfig):
         devices=config.etc.devices,
         accelerator=config.etc.accelerator,
         precision=config.etc.precision,
-        accumulate_grad_batches=config.etc.get("accumulate_grad_batches", 1),
+        accumulate_grad_batches=config.etc.get("accumulate_grad_batches", 2),
         gradient_clip_val=config.etc.get("gradient_clip_val", None),
         gradient_clip_algorithm=config.etc.get("gradient_clip_algorithm", "norm"),
         logger=loggers,
         callbacks=[checkpoint_callback, lr_monitor],
+        limit_train_batches=config.etc.limit_train_batches,
+        limit_val_batches=config.etc.limit_val_batches,
+        limit_test_batches=config.etc.limit_test_batches,
     )
 
     trainer.fit(
@@ -89,6 +92,7 @@ def main(config: DictConfig):
         ),
         weights_only=False,
     )
+    trainer.test(model, datamodule, weights_only=False, ckpt_path="best")
 
 
 if __name__ == "__main__":

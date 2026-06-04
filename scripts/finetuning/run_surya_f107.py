@@ -69,6 +69,7 @@ def main(cfg: DictConfig):
         callbacks=[checkpoint_callback, lr_monitor],
         limit_train_batches=cfg.etc.limit_train_batches,
         limit_val_batches=cfg.etc.limit_val_batches,
+        limit_test_batches=cfg.etc.limit_test_batches,
     )
 
     trainer.fit(model, datamodule=datamodule)

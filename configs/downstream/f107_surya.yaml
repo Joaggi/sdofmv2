@@ -67,8 +67,9 @@ etc:
   accelerator: gpu
   devices: 1
   max_epochs: 30
-  limit_train_batches: 1  
-  limit_val_batches: 1 
+  limit_train_batches: null
+  limit_val_batches: null
+  limit_test_batches: null
 
   # save checkpoints/results
   ds_ckpt_dir: ./assets/checkpoints/f107

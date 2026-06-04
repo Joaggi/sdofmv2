@@ -12,15 +12,18 @@ from loguru import logger as lgr_logger
 import hydra
 from omegaconf import DictConfig, OmegaConf
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
+from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 
 from sdofmv2.core import SDOMLDataModule, MAE
-from sdofmv2.utils import ALL_WAVELENGTHS
 from sdofmv2.tasks.missing_data import MissingDataModel
 
 
-@hydra.main(config_path="../../configs/downstream", config_name="missing_channel_sdofmv2_ALL.yaml")
+@hydra.main(
+    version_base=None,
+    config_path="../../configs/downstream",
+    config_name="missing_channel_sdofmv2_ALL.yaml",
+)
 def main(cfg: DictConfig):
     # Set seed for reproducibility
     if cfg.experiment.seed is not None:
@@ -78,9 +81,7 @@ def main(cfg: DictConfig):
         persistent_workers=cfg.data.persistent_workers,
         multiprocessing_context=cfg.data.multiprocessing_context,
         normalization=cfg.data.sdoml.normalization,
-        normalization_stat_path=os.path.join(
-            cfg.data.sdoml.base_directory, cfg.data.sdoml.sub_directory.cache
-        ),
+        normalization_stat_path=cfg.data.normalization_stat_path,
         train_index=cfg.data.train_index,
         val_index=cfg.data.val_index,
         test_index=cfg.data.test_index,
@@ -93,40 +94,30 @@ def main(cfg: DictConfig):
     data_module.setup()
 
     # Visualization setup
-    channels = data_module.wavelengths + data_module.components
-    cms_dict = {
-        "aia131": sunpycm.cmlist.get("sdoaia131"),
-        "aia1600": sunpycm.cmlist.get("sdoaia1600"),
-        "aia1700": sunpycm.cmlist.get("sdoaia1700"),
-        "aia171": sunpycm.cmlist.get("sdoaia171"),
-        "aia193": sunpycm.cmlist.get("sdoaia193"),
-        "aia211": sunpycm.cmlist.get("sdoaia211"),
-        "aia304": sunpycm.cmlist.get("sdoaia304"),
-        "aia335": sunpycm.cmlist.get("sdoaia335"),
-        "aia94": sunpycm.cmlist.get("sdoaia94"),
-        "bx": color_tables.hmi_mag_color_table(),
-        "by": color_tables.hmi_mag_color_table(),
-        "bz": color_tables.hmi_mag_color_table(),
+    channels = (data_module.wavelengths or []) + (data_module.components or [])
+
+    # Load hyper-parameters from config
+    config_hparams = {
+        **cfg.model.mae,
+        "chan_types": channels,
+        "limb_mask": torch.Tensor(np.load(cfg.data.hmi_mask)),
+        "loss_dict": cfg.model.loss,
+        "optimizer_dict": cfg.model.optimizer,
+        "scheduler_dict": cfg.model.scheduler,
     }
 
-    cms = [cms_dict[ch.lower()] for ch in channels]
+    # Load the checkpoint and its parameters
+    ckpt_path = os.path.join(cfg.experiment.backbone.ckpt_dir, cfg.experiment.backbone.weight_name)
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    ckpt_hparams = ckpt.get("hyper_parameters", {})
 
-    # Load pretrained backbone and zero-shot model
-    lgr_logger.info("Loading pretrained MAE backbone...")
-    backbone = MAE.load_from_checkpoint(
-        checkpoint_path=os.path.join(
-            cfg.experiment.backbone.ckpt_dir, cfg.experiment.backbone.weight_name
-        ),
-        map_location="cpu",
-        weights_only=cfg.experiment.backbone.weights_only,
-    )
-    zero_shot = MAE.load_from_checkpoint(
-        checkpoint_path=os.path.join(
-            cfg.experiment.backbone.ckpt_dir, cfg.experiment.backbone.weight_name
-        ),
-        map_location="cpu",
-        weights_only=cfg.experiment.backbone.weights_only,
-    )
+    # Merge them: Checkpoint overwrites Config for matching keys
+    merged_hparams = {**config_hparams, **ckpt_hparams}
+
+    backbone = MAE(**merged_hparams)
+    zero_shot = MAE(**merged_hparams)
+    backbone.load_state_dict(ckpt["state_dict"], strict=False)
+    zero_shot.load_state_dict(ckpt["state_dict"], strict=False)
 
     # Create MissingDataModel
     lgr_logger.info("Creating MissingDataModel...")
@@ -140,7 +131,8 @@ def main(cfg: DictConfig):
         freeze_encoder=True,
         normalization=cfg.data.sdoml.normalization,
         normalization_stat=data_module.normalization_stat,
-        wavelengths=cfg.data.sdoml.wavelengths if cfg.data.sdoml.wavelengths else ALL_WAVELENGTHS,
+        wavelengths=channels,
+        masking_ratio=0.0,
         hyperparam_ignore=["backbone"],
     )
 
@@ -189,71 +181,6 @@ def main(cfg: DictConfig):
     trainer.test(model=model, datamodule=data_module)
 
     lgr_logger.info("Evaluation complete. Metrics logged to WandB via epoch-end hooks.")
-
-    # Visualization
-    # Example image for visualization (from test set)
-    timestamps = ["2019-12-25 00:24:00"]
-    img_indices = [
-        data_module.test_ds.aligndata.index.get_loc(pd.to_datetime(i_time)) for i_time in timestamps
-    ]
-    x = data_module.test_ds[img_indices[0]][0].unsqueeze(0)
-    corrupted_img = x.clone()
-
-    # Use config for corrupted_channel_index, fallback to 5
-    corrupted_channel = cfg.experiment.get("corrupted_channel_index", 5)
-    corrupted_img[:, corrupted_channel, :, :, :] = 0
-
-    # Forward pass
-    loss, x_hat, mask = model(corrupted_img)
-    x_hat_zero_shot, mask_zero_shot = zero_shot(corrupted_img)
-
-    # Visualization
-    x_hat_np = x_hat.detach().cpu().numpy()
-    x_hat_zero_shot_np = x_hat_zero_shot.detach().cpu().numpy()
-    limb_mask_np = zero_shot.limb_mask.detach().cpu().numpy()
-    ch_info = [str(int(w[:-1])) for w in wavelengths]
-
-    fig, axes = plt.subplots(nrows=4, ncols=9, figsize=(15, 7))
-
-    for ax in axes.flat:
-        ax.set_xticks([])
-        ax.set_yticks([])
-        for spine in ax.spines.values():
-            spine.set_visible(False)
-
-    for i_ch, ch_index in enumerate(sort_ids):
-        channel_label = ch_info[ch_index]
-
-        if i_ch == corrupted_channel:
-            axes[0, i_ch].set_facecolor("black")
-            axes[0, i_ch].set_aspect("equal")
-            axes[0, i_ch].set_xlim(0, 1)
-            axes[0, i_ch].set_ylim(0, 1)
-            axes[0, i_ch].plot([0, 1], [0, 1], color="red", linewidth=2)
-            axes[0, i_ch].plot([0, 1], [1, 0], color="red", linewidth=2)
-            axes[0, i_ch].text(
-                0.5,
-                -0.1,
-                "missing",
-                color="red",
-                ha="center",
-                va="center",
-                fontsize=10,
-                fontweight="bold",
-            )
-
-        axes[0, i_ch].imshow(corrupted_img[0, ch_index, 0, :, :], cmap=cms[ch_index])
-        axes[1, i_ch].imshow(x[0, ch_index, 0, :, :], cmap=cms[ch_index])
-        axes[2, i_ch].imshow(x_hat_np[0, ch_index, 0, :, :], cmap=cms[ch_index])
-        axes[3, i_ch].imshow(
-            x_hat_zero_shot_np[0, ch_index, 0, :, :] * limb_mask_np, cmap=cms[ch_index]
-        )
-
-        axes[0, i_ch].set_title(f"{channel_label} Å", fontsize=12, pad=10)
-
-    plt.tight_layout()
-    plt.savefig("DS_missing_data_img_result.pdf", dpi=300, bbox_inches="tight")
-    lgr_logger.info("Saved visualization to DS_missing_data_img_result.pdf")
 
 
 if __name__ == "__main__":

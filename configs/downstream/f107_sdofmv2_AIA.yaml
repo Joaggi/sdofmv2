@@ -115,7 +115,7 @@ model:
     decoder_num_heads: 16
     mlp_ratio: 4.0
     norm_layer: LayerNorm
-    masking_ratio: 0.5
+    masking_ratio: 0.0
     mask_only_inner: false
 
   head:
@@ -178,8 +178,8 @@ model:
   # for optimizer
   optimizer: 
     use: adamw
-    learning_rate: 1.0e-4
-    weight_decay: 0.05
+    learning_rate: 1.0e-5
+    weight_decay: 0.01
   
   # for scheduler
   scheduler: 

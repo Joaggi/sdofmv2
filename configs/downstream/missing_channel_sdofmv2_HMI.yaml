@@ -1,38 +1,28 @@
-# general
-experiment:
-  model: mae
+# General
+experiment:          # this is the wandb run_id of the checkpoint to load
+  corrupted_channel_index: 5
   backbone:
     model: mae
     is_backbone: true
-    ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_uj0jxwrn_mae_epoch=56-val_loss=0.03.ckpt
+    ckpt_dir: ./assets/checkpoints/backbone/final/
+    weight_name: id_mycczy8p_mae_epoch=299-val_loss=0.03.ckpt # AIA_MSEloss_epoch=171-val_loss=0.00.ckpt
     weights_only: false
-    freeze: true
   seed: 0
   disable_cuda: false
-  
   wandb:
     enable: true
-    name: f10.7-ALL-base
+    name: missing_channel_sdofmv2_HMI
     run_id: null
     entity: allshaman
-    project: sdofmv2-downstream-f10.7
-    group: sdofmv2
-    job_type: finetune
+    project: sdofmv2_missing_channel
+    group: ""
+    job_type: pretrain
     tags: []
-    notes: ALL-base
+    notes: ALL-pretrain
     output_directory: ./assets/wandb
     log_model: false # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
     offline: false
   fold: null
-
-  # save checkpoints/results
-  ds_ckpt_dir: ./assets/checkpoints/f107
-  output_dir: ./assets/ds_results/f107/
-  checkpoint_filename: f107_best_validation_sdofmv2_all
-  test_results_filename: test_results_ALL.csv
-
-  # Dataloader
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
   # lightining pretrainer
   precision: 32 #-true'       # (32, 64) for cuda, ('32-true', '16-true', 'bf16-true') for tpu
@@ -41,48 +31,48 @@ experiment:
   distributed:
     enabled: true
     devices: [0] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
+  
+    # save checkpoints/results
+  ds_ckpt_dir: ./assets/checkpoints/missing_channel
+  output_dir: ./assets/ds_results/missing_channel
+  checkpoint_filename: missing_channel_best_validation_sdofmv2_hmi.ckpt
+  test_results_filename: missing_channel_test_results_hmi.csv
 
 # dataset configuration
 data:
-  # data split information
-  min_date: 2010-05-01 00:00:00  # NOT IMPLEMENTED # minimum is '2010-09-09 00:00:11.08'
-  max_date: 2018-12-31 23:59:59  # NOT IMPLEMENTED # maximum is '2023-05-26 06:36:08.072' '2025-07-22 23:59:59.99'
+  min_date: 2019-01-01 00:00:00    # minimum is '2010-09-09 00:00:11.08'
+  max_date: 2019-12-31 23:59:59    # maximum is '2023-05-26 06:36:08.072'
   year_splits:
-    train: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
-    val: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
-    test: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
+    train: [2019]
+    val: [2019]
+    test: [2019]
 
   month_splits: # non selected months will form training set 
-    train: [1,2,3,4,5,6,7,8]
-    val: [9]
-    test: [10, 11, 12]
+    train: [1,2,3,4,5,6,7,8,9,10]
+    val: [11]
+    test: [12]
     holdout: []
-  
+
   # index path
-  index_save_path: ./assets/cache/f107/
-  train_index: ./assets/cache/f107/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv
-  val_index: ./assets/cache/f107/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv
-  test_index: ./assets/cache/f107/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv
+  index_save_path: ./assets/cache/missing_channel/
+  train_index: ./assets/cache/missing_channel/HMI_all_12min_2019-01-0100:00:00-2019-12-3123:59:59_aligndata_train.csv
+  val_index: ./assets/cache/missing_channel/HMI_all_12min_2019-01-0100:00:00-2019-12-3123:59:59_aligndata_val.csv
+  test_index: ./assets/cache/missing_channel/HMI_all_12min_2019-01-0100:00:00-2019-12-3123:59:59_aligndata_test.csv
   hmi_mask: ./assets/cache/hmi_mask_512x512.npy
-  normalization_stat_path: ./assets/cache/f107/
+  normalization_stat_path: ./assets/cache/missing_channel/
 
-  # f10.7 data
-  ds_data_path: ./assets/cache/f10.7.csv
-
-  # for dataloader
-  num_workers: 8    # set appropriately for your machine
-  pin_memory: false
+  num_workers: 12    # set appropriately for your machine
+  pin_memory: true
   prefetch_factor: 2
-  persistent_workers: false
+  persistent_workers: true
   multiprocessing_context: spawn
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
-  drop_frame_dim: false
-  # output_directory: "wandb_output"
+  drop_frame_dim: false         # Requires num_frames=1, for backwards compatibility
   sdoml:
     base_directory: /mnt/jade
     sub_directory:
       hmi: HMI.zarr
-      aia: AIA.zarr
+      aia: null
       eve: null
       cache: cache
     components: null # null for select all magnetic components ["Bx", "By", "Bz"]
@@ -91,9 +81,6 @@ data:
     frequency: 12min # smallest is 12min
     mask_with_hmi_threshold: null # None/null for no mask, float for threshold
     apply_mask: false
-    feature_engineering:
-      enabled: false
-      dclass: Log
     normalization:
       enabled: true
       type: log #log, zscore, min-max
@@ -107,7 +94,7 @@ model:
     patch_size: 16
     num_frames: 1
     tubelet_size: 1
-    in_chans: 12
+    in_chans: 3
     embed_dim: 768
     depth: 12
     num_heads: 12
@@ -116,24 +103,17 @@ model:
     decoder_num_heads: 16
     mlp_ratio: 4.0
     norm_layer: LayerNorm
-    masking_ratio: 0.0
+    masking_ratio: 0.5
     mask_only_inner: false
-
-  head:
-    input_dim: 1536
-    mask_ratio: 0.0
-    output_dim: 1
-    hidden_layer_dims: [512, 512, 512]
-    dropout: 0.5
 
   # for loss
   loss:
     space: patch # pixel, patch
     type: bright_patch_weighted_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
     bright_patch_weighted_loss:
-      weight_inner: 0.6
-      weight_outer_bright: 0.3
-      weight_outer_dark: 0.1
+      weight_inner: 1.0
+      weight_outer_bright: 1.0
+      weight_outer_dark: 0.01
       zero_threshold: 0.9
       base_type: huber
       huber_delta: 1.0
@@ -202,9 +182,9 @@ model:
     
   misc:
     limb_mask: false
-    epochs: 100
-    batch_size: 16
-    accumulate_grad_batches: 16 # accumulate grad for 32 steps
+    epochs: 15
+    batch_size: 32
+    accumulate_grad_batches: 8 # accumulate grad for 32 steps
     limit_train_batches: null
     gradient_clip_algorithm: norm
     gradient_clip_val: 1.0

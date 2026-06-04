@@ -4,14 +4,14 @@ experiment:          # this is the wandb run_id of the checkpoint to load
   backbone:
     model: mae
     is_backbone: true
-    ckpt_dir: ../../../assets/check_point/backbone/AIA/
-    weight_name: AIA_MSEloss_epoch=171-val_loss=0.00_only_weights.ckpt # AIA_MSEloss_epoch=171-val_loss=0.00.ckpt
+    ckpt_dir: ../../../assets/check_point/backbone/final/
+    weight_name: id_2bs2j2u8_mae_epoch=9-val_loss=0.08.ckpt # AIA_MSEloss_epoch=171-val_loss=0.00.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
   wandb:
     enable: true
-    name: missing_channel_sdofmv2_ALL
+    name: missing_channel_sdofmv2_AIA
     run_id: null
     entity: allshaman
     project: sdofmv2_missing_channel
@@ -35,13 +35,13 @@ experiment:          # this is the wandb run_id of the checkpoint to load
     # save checkpoints/results
   ds_ckpt_dir: ./assets/checkpoints/missing_channel
   output_dir: ./assets/ds_results/missing_channel
-  checkpoint_filename: missing_channel_best_validation_sdofmv2_aia
+  checkpoint_filename: missing_channel_best_validation_sdofmv2_aia.ckpt
   test_results_filename: missing_channel_test_results_AIA.csv
 
 # dataset configuration
 data:
-  min_date: 2019-01-01 00:00:00.00    # minimum is '2010-09-09 00:00:11.08'
-  max_date: 2019-12-31 23:59:59.99    # maximum is '2023-05-26 06:36:08.072'
+  min_date: 2019-01-01 00:00:00    # minimum is '2010-09-09 00:00:11.08'
+  max_date: 2019-12-31 23:59:59    # maximum is '2023-05-26 06:36:08.072'
   year_splits:
     train: [2019]
     val: [2019]

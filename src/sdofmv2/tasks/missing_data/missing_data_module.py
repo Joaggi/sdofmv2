@@ -37,6 +37,7 @@ class MissingDataModel(BaseModule):
         normalization=None,
         normalization_stat=None,
         wavelengths=None,
+        masking_ratio=0.0,
         *args,
         **kwargs,
     ):
@@ -48,12 +49,10 @@ class MissingDataModel(BaseModule):
         )
 
         self.backbone = backbone
-        self.masking_ratio = backbone.masking_ratio
-        
         self.normalization = normalization
         self.normalization_stat = normalization_stat
         self.wavelengths = wavelengths
-
+        self.masking_ratio = masking_ratio
         self.val_reconstruction_metrics_batches = []
         self.test_reconstruction_metrics_batches = []
 
@@ -62,32 +61,30 @@ class MissingDataModel(BaseModule):
             for param in self.backbone.autoencoder.blocks.parameters():
                 param.requires_grad = False
 
-
     def _inverse_transform(self, data, channel_idx):
         # data: [B, C, T, H, W]
         channel = self.wavelengths[channel_idx]
-        stats = self.normalization_stat[channel]
-        
+
         # Apply inverse transform based on type
         if self.normalization.type == "log":
             data_ch = inverse_log_norm(
-                data[:, channel_idx, :, :, :], 
-                stats, 
-                channel, 
-                scaler_factor=self.normalization.scaler_factor
+                data[:, channel_idx, :, :, :].detach().cpu(),
+                self.normalization_stat,
+                channel,
+                scaler_factor=self.normalization.scaler_factor,
             )
         elif self.normalization.type == "zscore":
             data_ch = inverse_zscore_norm(
-                data[:, channel_idx, :, :, :],
-                None, # Instrument not used in this simplified call
+                data[:, channel_idx, :, :, :].detach().cpu(),
+                None,  # Instrument not used in this simplified call
                 channel,
-                {channel: stats} # Simplified stats
+                {channel: stats},  # Simplified stats
             )
         elif self.normalization.type == "min-max":
             data_ch = data[:, channel_idx, :, :, :] * (stats["max"] - stats["min"]) + stats["min"]
         else:
             data_ch = data[:, channel_idx, :, :, :]
-            
+
         return data_ch
 
     def _apply_inverse_transform(self, data):
@@ -110,7 +107,7 @@ class MissingDataModel(BaseModule):
                 - x_hat (torch.Tensor): The unpatchified reconstructed images.
                 - mask (torch.Tensor): The mask applied during the forward pass.
         """
-        loss, x_hat, mask = self.backbone.autoencoder(imgs, mask_ratio)
+        loss, x_hat, mask = self.backbone.autoencoder(imgs, self.masking_ratio)
         x_hat = unpatchify(
             x_hat,
             self.backbone.autoencoder.img_size,
@@ -140,7 +137,7 @@ class MissingDataModel(BaseModule):
         corrupted_imgs = imgs.clone()
         corrupted_imgs[:, target_idx, :, :] = 0
 
-        loss, x_hat, mask = self.backbone.autoencoder(corrupted_imgs, mask_ratio)
+        loss, x_hat, mask = self.backbone.autoencoder(corrupted_imgs, self.masking_ratio)
 
         return loss, x_hat, mask, target_idx
 
@@ -181,15 +178,15 @@ class MissingDataModel(BaseModule):
         )
 
         loss = F.mse_loss(x_hat[:, target_idx, ...], x[:, target_idx, ...])
-        
+
         # Apply inverse transform
         x_inv = self._apply_inverse_transform(x)
         x_hat_inv = self._apply_inverse_transform(x_hat)
 
         # Compute metrics
-        mask_ones = torch.ones(x.shape[0], x.shape[2], x.shape[3], x.shape[4], device=x.device)
+        mask_ones = torch.ones(x.shape[0], x.shape[2], x.shape[3], x.shape[4], device="cpu")
         metrics = compute_metrics_pytorch(x_inv, x_hat_inv, mask_ones, self.wavelengths)
-        
+
         self.val_reconstruction_metrics_batches.append(metrics)
 
         self.log("val_loss", loss, sync_dist=True)
@@ -210,15 +207,15 @@ class MissingDataModel(BaseModule):
         x_hat_inv = self._apply_inverse_transform(x_hat)
 
         # Compute metrics
-        mask_ones = torch.ones(x.shape[0], x.shape[2], x.shape[3], x.shape[4], device=x.device)
+        mask_ones = torch.ones(x.shape[0], x.shape[2], x.shape[3], x.shape[4], device="cpu")
         metrics = compute_metrics_pytorch(x_inv, x_hat_inv, mask_ones, self.wavelengths)
-        
+
         self.test_reconstruction_metrics_batches.append(metrics)
 
     def on_validation_epoch_end(self):
         if not self.val_reconstruction_metrics_batches:
             return
-        
+
         data = []
         for batch in self.val_reconstruction_metrics_batches:
             for wave, metrics in batch.items():
@@ -227,17 +224,17 @@ class MissingDataModel(BaseModule):
                 data.append(row)
         df = pd.DataFrame(data)
         agg = df.groupby("wavelength").mean()
-        
+
         for wave, row in agg.iterrows():
             for metric, value in row.items():
                 self.log(f"val/{wave}/{metric}", value, sync_dist=True)
-                
+
         self.val_reconstruction_metrics_batches.clear()
 
     def on_test_epoch_end(self):
         if not self.test_reconstruction_metrics_batches:
             return
-        
+
         data = []
         for batch in self.test_reconstruction_metrics_batches:
             for wave, metrics in batch.items():
@@ -246,10 +243,9 @@ class MissingDataModel(BaseModule):
                 data.append(row)
         df = pd.DataFrame(data)
         agg = df.groupby("wavelength").mean()
-        
+
         for wave, row in agg.iterrows():
             for metric, value in row.items():
                 self.log(f"test/{wave}/{metric}", value, sync_dist=True)
-                
-        self.test_reconstruction_metrics_batches.clear()
 
+        self.test_reconstruction_metrics_batches.clear()

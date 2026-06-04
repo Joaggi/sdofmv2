@@ -84,7 +84,10 @@ class HelioF107Dataset(HelioNetCDFDataset):
 
         target = torch.tensor(target_val, dtype=torch.float32)
 
-        return data_dict, metadata["timestamps_input"][-1], target
+        # Convert to string to avoid issues with default_collate
+        timestamp_str = str(metadata["timestamps_input"][-1])
+
+        return data_dict, timestamp_str, target
 
 
 class HelioF107DataModule(LightningDataModule):

@@ -181,8 +181,13 @@ def main(cfg: DictConfig):
         aligndata = aligndata[aligndata.index <= max_date]
 
     # 2. Compute HMI Mask
+    mask_path = os.path.join(output_dir, "hmi_mask_512x512.npy")
     logger.info("Computing HMI mask...")
-    hmi_mask = make_hmi_mask(hmi_data, output_dir)
+
+    if not os.path.exists(mask_path):
+        hmi_mask = make_hmi_mask(hmi_data, output_dir)
+    else:
+        hmi_mask = np.load(mask_path)
 
     # 3. Compute Normalizations (on training data only)
     if normalization.enabled:

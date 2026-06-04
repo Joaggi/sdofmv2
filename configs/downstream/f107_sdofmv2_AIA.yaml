@@ -58,11 +58,11 @@ data:
     holdout: []
   
   # index path
-  index_save_path: ./assets/cache/F107/
-  train_index: ./assets/cache/AIA/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv
-  val_index: ./assets/cache/AIA/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv
-  test_index: ./assets/cache/AIA/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv
-  hmi_mask: ./assets/cache/AIA/hmi_mask_512x512.npy
+  index_save_path: ./assets/cache/f107/
+  train_index: ./assets/cache/f107/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv
+  val_index: ./assets/cache/f107/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv
+  test_index: ./assets/cache/f107/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv
+  hmi_mask: ./assets/cache/hmi_mask_512x512.npy
   normalization_stat_path: ./assets/cache/AIA/
 
   # f10.7 data
@@ -78,7 +78,7 @@ data:
   drop_frame_dim: false
   # output_directory: "wandb_output"
   sdoml:
-    base_directory: /mnt/jade
+    base_directory: /mnt/baobab
     sub_directory:
       hmi: null
       aia: AIA.zarr

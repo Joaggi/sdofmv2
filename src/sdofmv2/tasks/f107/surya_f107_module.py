@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import torchmetrics.functional as functional
 import lightning.pytorch as pl
 from loguru import logger
-from terratorch_surya.downstream_examples.ar_segmentation.models import HelioSpectformer1D
+from terratorch_surya.models.helio_spectformer import HelioSpectFormer
 from omegaconf import DictConfig
 
 
@@ -18,18 +18,7 @@ class SuryaF107Model(pl.LightningModule):
         self.max_norm = max_norm
 
         # Configure model
-        model_config = {
-            "model": {
-                "global_average_pooling": config.model.get("global_average_pooling", False),
-                "global_max_pooling": config.model.get("global_max_pooling", False),
-                "attention_pooling": config.model.get("attention_pooling", False),
-                "transformer_pooling": config.model.get("transformer_pooling", True),
-                "dropout": config.model.get("dropout", 0.1),
-                "penultimate_linear_layer": config.model.get("penultimate_linear_layer", True),
-            }
-        }
-
-        self.model = HelioSpectformer1D(
+        self.backbone = HelioSpectFormer(
             img_size=config.backbone.img_size,
             patch_size=config.backbone.patch_size,
             in_chans=len(config.data.channels),
@@ -42,17 +31,35 @@ class SuryaF107Model(pl.LightningModule):
             drop_rate=config.backbone.drop_rate,
             window_size=config.backbone.window_size,
             dp_rank=config.backbone.dp_rank,
-            num_outputs=1,
             finetune=True,
-            config=model_config,
         )
 
         # Load weights
         if config.backbone.path_weights:
+            # Need to be careful loading weights if architecture changed.
+            # HelioSpectformer1D was a wrapper, HelioSpectFormer is the backbone.
+            # Loading strict=False should help.
             checkpoint = torch.load(
                 config.backbone.path_weights, map_location="cpu", weights_only=True
             )
-            self.model.load_state_dict(checkpoint, strict=False)
+            self.backbone.load_state_dict(checkpoint, strict=False)
+
+        # Simple MLP Head
+        hidden_dims = config.model.get("mlp_hidden_layer_dims", [512, 512, 512])
+        self.norm = nn.LayerNorm(config.backbone.embed_dim)
+        self.dropout = nn.Dropout(p=config.model.get("dropout", 0.1))
+
+        # Build MLP
+        layers = []
+        in_dim = config.backbone.embed_dim
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(in_dim, hidden_dim))
+            layers.append(nn.LeakyReLU(0.01))
+            layers.append(self.dropout)
+            in_dim = hidden_dim
+        layers.append(nn.Linear(in_dim, 1))
+        
+        self.mlp = nn.Sequential(*layers)
 
         # Metrics
         self.val_preds: list[dict] = []
@@ -62,7 +69,12 @@ class SuryaF107Model(pl.LightningModule):
         self.criterion = nn.MSELoss()
 
     def forward(self, batch):
-        return self.model(batch)
+        tokens = self.backbone(batch)  # (B, L, D)
+        # Mean pooling
+        pooled = tokens.mean(dim=1)
+        # Apply norm before MLP
+        x = self.norm(pooled)
+        return self.mlp(x)
 
     def training_step(self, batch, batch_idx):
         data_dict, timestamp, target = batch

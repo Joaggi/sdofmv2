@@ -113,7 +113,7 @@ class EmbSolarProxyDataModule(SDOMLDataModule):
         train_index: str = "",
         val_index: str = "",
         test_index: str = "",
-        hmi_mask: str = "hmi_mask_512x512.npy",
+        hmi_mask_path: str = "hmi_mask_512x512.npy",
         apply_mask: bool = True,
         num_frames: int = 1,
         drop_frame_dim: bool = False,
@@ -139,7 +139,7 @@ class EmbSolarProxyDataModule(SDOMLDataModule):
             train_index=train_index,
             val_index=val_index,
             test_index=test_index,
-            hmi_mask=hmi_mask,
+            hmi_mask_path=hmi_mask_path,
             apply_mask=apply_mask,
             num_frames=num_frames,
             drop_frame_dim=drop_frame_dim,
@@ -172,7 +172,6 @@ class EmbSolarProxyDataModule(SDOMLDataModule):
 
     def setup(self, stage: str = "fit") -> None:
         super().setup(stage=stage)
-
         # Prepare HMI mask (base class loads HMI mask as a Tensor)
         mask_tensor = (
             self.hmi_mask if self.apply_mask and isinstance(self.hmi_mask, torch.Tensor) else None

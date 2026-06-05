@@ -502,7 +502,7 @@ class SDOMLDataModule(pl.LightningDataModule):
         train_index="",
         val_index="",
         test_index="",
-        hmi_mask="hmi_mask_512x512.npy",
+        hmi_mask_path="hmi_mask_512x512.npy",
         apply_mask=True,
         num_frames=1,
         drop_frame_dim=False,
@@ -561,7 +561,8 @@ class SDOMLDataModule(pl.LightningDataModule):
             self.eve_data = None
 
         # Preprocessed data paths
-        self.hmi_mask = hmi_mask
+        self.hmi_mask_path = hmi_mask_path
+        self.hmi_mask = None
         self.normalization = normalization
         self.normalization_stat_path = normalization_stat_path
         self.timeinterval = re.compile(
@@ -601,11 +602,11 @@ class SDOMLDataModule(pl.LightningDataModule):
     def setup(self, stage=None):
 
         # Load mask
-        if self.apply_mask:
-            if os.path.exists(self.hmi_mask):
-                self.hmi_mask = torch.Tensor(np.load(self.hmi_mask))
+        if self.apply_mask and self.hmi_mask is None:
+            if os.path.exists(self.hmi_mask_path):
+                self.hmi_mask = torch.Tensor(np.load(self.hmi_mask_path))
             else:
-                logger.warning(f"HMI mask not found at {self.hmi_mask}, applying no mask.")
+                logger.warning(f"HMI mask not found at {self.hmi_mask_path}, applying no mask.")
                 self.hmi_mask = None
         else:
             self.hmi_mask = None

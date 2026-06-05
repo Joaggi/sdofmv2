@@ -53,7 +53,7 @@ data:
   train_index: ./assets/cache/HMI/HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv
   val_index: ./assets/cache/HMI/HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv
   test_index: ./assets/cache/HMI/HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv
-  hmi_mask: ./assets/cache/HMI/hmi_mask_512x512.npy
+  hmi_mask: ./assets/cache/hmi_mask_512x512.npy
   normalization_stat_path: ./assets/cache/HMI/
 
   # for dataloader
@@ -66,7 +66,7 @@ data:
   drop_frame_dim: false
   # output_directory: "wandb_output"
   sdoml:
-    base_directory: /mnt/jade
+    base_directory: /mnt/baobab
     sub_directory:
       hmi: HMI.zarr
       aia: null

@@ -50,24 +50,7 @@ def main(cfg):
     logger = WandbLogger(
         # WandbLogger params
         entity=cfg.experiment.wandb.entity,
-        name=(
-            f"{cfg.experiment.head}-"
-            f"radialpos:{'.'.join(cfg.data.in_situ.radial_parameters)}-"
-            f"latlonpos:{'.'.join(cfg.data.in_situ.latlon_parameters)}-"
-            f"prop:{cfg.experiment.propagation_type}-"
-            f"lbl:{cfg.data.label_type}-"
-            f"inst:{cfg.data.instrument}-"
-            f"backbone:{cfg.experiment.backbone.model}-"
-            f"cadence:{cfg.data.cadence}-"
-            f"epoch:{cfg.experiment.trainer.max_epochs}-"
-            f"lr:{cfg.model.optimizer.learning_rate}-"
-            f"wt_decy:{cfg.model.optimizer.weight_decay}-"
-            f"scheduler:{cfg.model.scheduler.use}-"
-            f"optimiser:{cfg.model.optimizer.use}-"
-            f"batch:{cfg.model.misc.batch_size}-"
-            f"limit_train_batches:{cfg.experiment.trainer.limit_train_batches}"
-            f"limit_val_batches:{cfg.experiment.trainer.limit_val_batches}"
-        ),
+        name=cfg.experiment.wandb.name,
         project=cfg.experiment.wandb.project,
         dir=cfg.experiment.wandb.output_directory,
         log_model=cfg.experiment.wandb.log_model,
@@ -78,9 +61,9 @@ def main(cfg):
         save_code=True,
         job_type=cfg.experiment.wandb.job_type,
         config=flatten_dict(cfg),
-        resume="never",
+        resume="allow",
         mode="offline" if cfg.experiment.wandb.offline else "online",
-        id=None,
+        id=cfg.experiment.wandb.run_id,
     )
 
     # Load datamodule
@@ -122,7 +105,11 @@ def main(cfg):
         label_type=cfg.data.label_type,
         sampling_ratio=cfg.data.under_sampling.ratio,
         random_state=cfg.data.under_sampling.random_state,
-        hmi_mask_path="hmi_mask_512x512.npy",
+        train_index=cfg.data.train_index,
+        val_index=cfg.data.val_index,
+        test_index=cfg.data.test_index,
+        merged_splits_dir=cfg.data.index_save_path,
+        hmi_mask_path=cfg.data.hmi_mask,
     )
 
     # Define channels for input/model

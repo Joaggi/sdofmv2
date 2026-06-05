@@ -208,6 +208,9 @@ class SWDataModule(SDOMLDataModule):
         drop_frame_dim=False,
         precision="32",
         normalization=None,
+        train_index="",
+        val_index="",
+        test_index="",
         # set variables for solar wind here
         cfg=None,
         radial_norm=False,
@@ -217,6 +220,7 @@ class SWDataModule(SDOMLDataModule):
         label_type="",
         sampling_ratio=None,
         random_state=None,
+        merged_splits_dir="",
         hmi_mask_path="hmi_mask_512x512.npy",
     ):
         self.hmi_mask_path = hmi_mask_path
@@ -235,6 +239,9 @@ class SWDataModule(SDOMLDataModule):
             num_frames=num_frames,
             drop_frame_dim=drop_frame_dim,
             precision=precision,
+            train_index=train_index,
+            val_index=val_index,
+            test_index=test_index,
         )
         self.cfg = cfg
         self.cadence = cadence
@@ -249,7 +256,7 @@ class SWDataModule(SDOMLDataModule):
         self.radial_norm = radial_norm
         self.frequency = frequency
         self.hmi_mask_path = hmi_mask_path
-        self.merged_splits_dir = cfg.data.in_situ.merged_splits_dir
+        self.merged_splits_dir = merged_splits_dir
         os.makedirs(self.merged_splits_dir, exist_ok=True)
 
     def setup(self, stage=None):

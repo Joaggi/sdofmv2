@@ -1,6 +1,7 @@
 from typing import cast
 
 import pandas as pd
+import numpy as np
 import torch
 from loguru import logger
 
@@ -52,9 +53,9 @@ class EmbSolarProxyDataset(SDOMLDataset):
         components: list[str] | None,
         wavelengths: list[str] | list[int] | None,
         ions: list[str] | None,
+        mask: np.ndarray | None = None,
         normalization: dict | None = None,
         normalization_stat: dict | None = None,
-        mask: torch.Tensor | None = None,
         num_frames: int = 1,
         drop_frame_dim: bool = False,
         get_header: bool = False,
@@ -68,9 +69,9 @@ class EmbSolarProxyDataset(SDOMLDataset):
             components=components,
             wavelengths=wavelengths,
             ions=ions,
+            mask=mask,
             normalization=normalization,
             normalization_stat=normalization_stat,
-            mask=mask,
             num_frames=num_frames,
             drop_frame_dim=drop_frame_dim,
             get_header=get_header,
@@ -168,15 +169,14 @@ class EmbSolarProxyDataModule(SDOMLDataModule):
             right_index=True,
             tolerance=cast(pd.Timedelta, pd.Timedelta(minutes=12)),
         )
-        return aligndata.dropna(subset=[" f107", "f107_norm"])
+        aligndata.drop_duplicates(subset=["date"], inplace=True)
+        aligndata.dropna(subset=[" f107", "f107_norm"], inplace=True)
+        return aligndata
 
     def setup(self, stage: str = "fit") -> None:
         super().setup(stage=stage)
         # Prepare HMI mask (base class loads HMI mask as a Tensor)
-        mask_tensor = (
-            self.hmi_mask if self.apply_mask and isinstance(self.hmi_mask, torch.Tensor) else None
-        )
-
+        
         if stage == "fit" or stage is None:
             self.train_ds = EmbSolarProxyDataset(
                 self._merge_f107(self._load_aligndata(self.train_index)),
@@ -186,9 +186,9 @@ class EmbSolarProxyDataModule(SDOMLDataModule):
                 components=self.components,
                 wavelengths=self.wavelengths,
                 ions=self.ions,
+                mask=self.mask_np,
                 normalization=self.normalization,
                 normalization_stat=self.normalization_stat,
-                mask=mask_tensor,
                 num_frames=self.num_frames,
                 drop_frame_dim=self.drop_frame_dim,
                 precision=self.precision,
@@ -204,9 +204,9 @@ class EmbSolarProxyDataModule(SDOMLDataModule):
                 components=self.components,
                 wavelengths=self.wavelengths,
                 ions=self.ions,
+                mask=self.mask_np,
                 normalization=self.normalization,
                 normalization_stat=self.normalization_stat,
-                mask=mask_tensor,
                 num_frames=self.num_frames,
                 drop_frame_dim=self.drop_frame_dim,
                 precision=self.precision,
@@ -223,9 +223,9 @@ class EmbSolarProxyDataModule(SDOMLDataModule):
                 components=self.components,
                 wavelengths=self.wavelengths,
                 ions=self.ions,
+                mask=self.mask_np,
                 normalization=self.normalization,
                 normalization_stat=self.normalization_stat,
-                mask=mask_tensor,
                 num_frames=self.num_frames,
                 drop_frame_dim=self.drop_frame_dim,
                 precision=self.precision,

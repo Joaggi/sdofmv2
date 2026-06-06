@@ -70,6 +70,8 @@ def main(cfg: DictConfig):
         limit_train_batches=cfg.etc.limit_train_batches,
         limit_val_batches=cfg.etc.limit_val_batches,
         limit_test_batches=cfg.etc.limit_test_batches,
+        log_every_n_steps=cfg.etc.log_every_n_steps,
+        enable_progress_bar=True,
     )
 
     trainer.fit(model, datamodule=datamodule)

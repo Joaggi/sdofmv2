@@ -5,7 +5,7 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_uj0jxwrn_mae_epoch=56-val_loss=0.03.ckpt
+    weight_name: id_qu7tsc5c_mae_epoch=67-val_loss=0.08.ckpt
     weights_only: false
     freeze: true
   seed: 0
@@ -13,7 +13,7 @@ experiment:
   
   wandb:
     enable: true
-    name: f10.7-ALL-base
+    name: f10.7-ALL-base-final
     run_id: null
     entity: allshaman
     project: sdofmv2-downstream-f10.7
@@ -30,7 +30,7 @@ experiment:
   ds_ckpt_dir: ./assets/checkpoints/f107
   output_dir: ./assets/ds_results/f107/
   checkpoint_filename: f107_best_validation_sdofmv2_all
-  test_results_filename: test_results_ALL.csv
+  test_results_filename: f107_results_ALL.csv
 
   # Dataloader
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
@@ -123,7 +123,7 @@ model:
     input_dim: 1536
     mask_ratio: 0.0
     output_dim: 1
-    hidden_layer_dims: [512, 512, 512]
+    hidden_layer_dims: [768, 512, 512]
     dropout: 0.5
 
   # for loss
@@ -179,8 +179,8 @@ model:
   # for optimizer
   optimizer: 
     use: adamw
-    learning_rate: 1.0e-5
-    weight_decay: 0.01
+    learning_rate: 1.0e-4
+    weight_decay: 0.05
   
   # for scheduler
   scheduler: 

@@ -612,7 +612,7 @@ class SDOMLDataModule(pl.LightningDataModule):
             self.hmi_mask = None
 
         # Define mask for dataset (numpy array or None)
-        mask_np = self.hmi_mask.numpy() if self.hmi_mask is not None else None
+        self.mask_np = self.hmi_mask.numpy() if self.hmi_mask is not None else None
 
         # Note: Dataset now expects a single aligndata and no months filtering (pre-split)
         # We pass the specific split aligndata and None for months to disable filtering
@@ -627,7 +627,7 @@ class SDOMLDataModule(pl.LightningDataModule):
             self.ions,
             normalization=self.normalization,
             normalization_stat=self.normalization_stat,
-            mask=mask_np,
+            mask=self.mask_np,
             num_frames=self.num_frames,
             drop_frame_dim=self.drop_frame_dim,
             precision=self.precision,
@@ -646,7 +646,7 @@ class SDOMLDataModule(pl.LightningDataModule):
             self.ions,
             normalization=self.normalization,
             normalization_stat=self.normalization_stat,
-            mask=mask_np,
+            mask=self.mask_np,
             num_frames=self.num_frames,
             drop_frame_dim=self.drop_frame_dim,
             precision=self.precision,
@@ -665,7 +665,7 @@ class SDOMLDataModule(pl.LightningDataModule):
             self.ions,
             normalization=self.normalization,
             normalization_stat=self.normalization_stat,
-            mask=mask_np,
+            mask=self.mask_np,
             num_frames=self.num_frames,
             drop_frame_dim=self.drop_frame_dim,
             precision=self.precision,
@@ -687,7 +687,7 @@ class SDOMLDataModule(pl.LightningDataModule):
                 self.ions,
                 normalization=self.normalization,
                 normalization_stat=self.normalization_stat,
-                mask=mask_np,
+                mask=self.mask_np,
                 num_frames=self.num_frames,
                 drop_frame_dim=self.drop_frame_dim,
                 precision=self.precision,

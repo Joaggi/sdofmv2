@@ -85,7 +85,7 @@ def main(cfg: DictConfig):
         train_index=cfg.data.train_index,
         val_index=cfg.data.val_index,
         test_index=cfg.data.test_index,
-        hmi_mask=cfg.data.hmi_mask,
+        hmi_mask_path=cfg.data.hmi_mask,
         apply_mask=cfg.data.sdoml.apply_mask,
         num_frames=cfg.data.num_frames,
         drop_frame_dim=cfg.data.drop_frame_dim,

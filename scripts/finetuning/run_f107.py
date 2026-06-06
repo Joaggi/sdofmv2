@@ -19,7 +19,7 @@ from sdofmv2.tasks.f107 import EmbSolarProxyDataModule, MultiLayerPerceptron
 from sdofmv2.utils import flatten_dict
 
 
-@hydra.main(config_path="../../configs/downstream", config_name="f107_sdofmv1.yaml")
+@hydra.main(config_path="../../configs/downstream", config_name="f107_sdofmv1")
 def main(cfg: DictConfig):
     lgr_logger.info("Starting F10.7 experiment...")
 
@@ -142,15 +142,14 @@ def main(cfg: DictConfig):
     )
 
     # Train
-    if not os.path.exists(
-        os.path.join(cfg.experiment.output_dir, cfg.experiment.checkpoint_filename + ".ckpt")
-    ):
+    ckpt_path = os.path.join(cfg.experiment.ds_ckpt_dir, cfg.experiment.checkpoint_filename + ".ckpt")
+    if not os.path.exists(ckpt_path):
         trainer.fit(model=model, datamodule=datamodule)
     else:
         lgr_logger.info("Checkpoint exists, skipping training.")
 
     # Predict/Evaluate
-    trainer.test(model=model, datamodule=datamodule, ckpt_path="best", weights_only=False)
+    trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path, weights_only=False)
 
 
 if __name__ == "__main__":

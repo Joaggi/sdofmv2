@@ -155,7 +155,7 @@ class Pretrainer:
             train_index=self.cfg.data.train_index,
             val_index=self.cfg.data.val_index,
             test_index=self.cfg.data.test_index,
-            hmi_mask=self.cfg.data.hmi_mask,
+            hmi_mask_path=self.cfg.data.hmi_mask,
             num_frames=self.cfg.model.mae.num_frames,
             drop_frame_dim=self.cfg.data.drop_frame_dim,
             apply_mask=self.cfg.data.sdoml.apply_mask,

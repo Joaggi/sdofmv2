@@ -5,7 +5,7 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_qu7tsc5c_mae_epoch=1-val_loss=1.32.ckpt
+    weight_name: id_qu7tsc5c_mae_epoch=67-val_loss=0.08.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
@@ -31,7 +31,7 @@ experiment:
   accelerator: gpu  # options are "auto", "gpu", "tpu", "ipu", or "cpu"
   distributed:
     enabled: true
-    devices: [0, 1] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
+    devices: [1] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
 
 # dataset configuration
 data:

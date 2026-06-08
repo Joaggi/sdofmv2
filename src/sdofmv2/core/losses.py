@@ -238,10 +238,17 @@ def split_pixel_loss(
     tubelet_size: int = 1,
     corner_size: int = 4,
     corner_ratio: float = 0.25,
+    is_last_frame_target = False
 ) -> torch.Tensor:
+
+    if is_last_frame_target:
+        target_img = imgs[:, :, -1:, :, :]
+    else:
+        target_img = imgs
+
     element_loss = _get_base_loss(pred, target, base_type, huber_delta)
     is_zero_pixel = _get_zero_pixel_mask_from_target(
-        imgs,
+        target_img,
         patch_size=patch_size,
         tubelet_size=tubelet_size,
         corner_size=corner_size,
@@ -268,10 +275,17 @@ def sparse_dense_loss(
     patch_size: int = 16,
     corner_size: int = 4,
     corner_ratio: float = 0.25,
+    is_last_frame_target = False
 ) -> torch.Tensor:
+
+    if is_last_frame_target:
+        target_img = imgs[:, :, -1:, :, :]
+    else:
+        target_img = imgs
+
     element_loss = _get_base_loss(pred, target, base_type, huber_delta)
     is_zero_pixel = _get_zero_pixel_mask_from_target(
-        imgs, patch_size=patch_size, corner_size=corner_size, corner_ratio=corner_ratio
+        target_img, patch_size=patch_size, corner_size=corner_size, corner_ratio=corner_ratio
     )
     is_nonzero_pixel = ~is_zero_pixel
 
@@ -305,13 +319,20 @@ def bright_patch_weighted_loss(
     corner_ratio: float = 0.25,
     mask_off_limb: torch.Tensor | None = None,
     chan_types: list[str] | None = None,
+    is_last_frame_target = True
 ) -> torch.Tensor:
     """Calculates weighted loss prioritizing 3 regions: inner disk, outer bright, outer dark."""
     element_loss = _get_base_loss(pred, target, base_type, huber_delta)
 
+
+    if is_last_frame_target:
+        target_img = imgs[:, :, -1:, :, :]
+    else:
+        target_img = imgs
+
     # Get pixel-level zero mask [b, l, d]
     is_zero_pixel = _get_zero_pixel_mask_from_target(
-        imgs,
+        target_img,
         patch_size=patch_size,
         tubelet_size=tubelet_size,
         corner_size=corner_size,
@@ -319,7 +340,7 @@ def bright_patch_weighted_loss(
     )
 
     b, seq_len, d = target.shape
-    c = imgs.shape[1]
+    c = target_img.shape[1]
     d_spatial_temporal = d // c
 
     # [b, seq_len, d_spatial_temporal, c]

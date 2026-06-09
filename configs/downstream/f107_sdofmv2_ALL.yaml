@@ -5,7 +5,7 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_qu7tsc5c_mae_epoch=67-val_loss=0.08.ckpt
+    weight_name: id_qu7tsc5c_mae_epoch=80-val_loss=0.07.ckpt
     weights_only: false
     freeze: true
   seed: 0

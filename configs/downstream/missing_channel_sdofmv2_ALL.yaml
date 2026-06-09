@@ -35,7 +35,7 @@ experiment:          # this is the wandb run_id of the checkpoint to load
     # save checkpoints/results
   ds_ckpt_dir: ./assets/checkpoints/missing_channel
   output_dir: ./assets/ds_results/missing_channel
-  checkpoint_filename: missing_channel_best_validation_sdofmv2_all.ckpt
+  checkpoint_filename: missing_channel_best_validation_sdofmv2_all
   test_results_filename: missing_channel_test_results_ALL.csv
 
 # dataset configuration

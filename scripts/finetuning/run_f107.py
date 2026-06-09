@@ -127,7 +127,7 @@ def main(cfg: DictConfig):
     # Trainer
     checkpoint_callback = ModelCheckpoint(
         dirpath=cfg.experiment.ds_ckpt_dir,
-        filename=cfg.experiment.checkpoint_filename,
+        filename=f"{cfg.experiment.ckpt_tag}" + "-{epoch:02d}-{val_loss:.4f}",
         monitor="val_loss",
         mode="min",
         save_top_k=1,
@@ -142,8 +142,12 @@ def main(cfg: DictConfig):
     )
 
     # Train
-    ckpt_path = os.path.join(cfg.experiment.ds_ckpt_dir, cfg.experiment.checkpoint_filename + ".ckpt")
-    if not os.path.exists(ckpt_path):
+    ckpt_path = (
+        os.path.join(cfg.experiment.ds_ckpt_dir, cfg.experiment.ckpt_filename)
+        if cfg.experiment.ckpt_filename is not None
+        else None
+        )
+    if ckpt_path is None or not os.path.exists(ckpt_path):
         trainer.fit(model=model, datamodule=datamodule)
     else:
         lgr_logger.info("Checkpoint exists, skipping training.")

@@ -29,7 +29,8 @@ experiment:
   # save checkpoints/results
   ds_ckpt_dir: ./assets/checkpoints/f107
   output_dir: ./assets/ds_results/f107/
-  checkpoint_filename: f107_best_validation_sdofmv2_all
+  ckpt_tag: sdofmv2-all
+  ckpt_filename: test.ckpt
   test_results_filename: f107_results_ALL.csv
 
   # Dataloader

@@ -119,6 +119,7 @@ model:
     mask_only_inner: false
 
   head:
+    pooling_type: "mean_max"
     input_dim: 1536
     mask_ratio: 0.0
     output_dim: 1

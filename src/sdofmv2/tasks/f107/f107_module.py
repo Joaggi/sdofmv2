@@ -14,15 +14,15 @@ class MultiLayerPerceptron(BaseModule):
 
     This class implements a regression or classification head that sits on top of a
     pre-trained backbone. It extracts latent representations from the backbone,
-    aggregates patch tokens using both mean and max pooling, and processes the
-    combined features through a series of fully connected layers.
+    aggregates patch tokens using either mean and max pooling (with optional disk masking)
+    or cross-attention pooling, and processes the features through a series of
+    fully connected layers.
 
     Args:
         backbone (nn.Module): The feature extraction model containing an autoencoder.
         freeze (bool): Whether to freeze the backbone parameters to prevent training.
         input_dim (int): The dimensionality of the backbone's latent features.
-            The internal MLP input dimension is twice this value due to the
-            concatenation of mean and max pooled features.
+            If mean/max pooling is used, the internal MLP input dimension is twice this value.
         output_dim (int, optional): The number of output units. Defaults to 1.
         hidden_layer_dims (list[int], optional): Dimensions of the hidden MLP layers.
             Defaults to [512, 512, 512].
@@ -30,6 +30,9 @@ class MultiLayerPerceptron(BaseModule):
             Defaults to 0.0.
         mask_ratio (float, optional): Fraction of input patches to mask during
             the forward pass. Defaults to 0.0.
+        pooling_type (str, optional): The type of pooling to perform.
+            Options are "mean_max", "disk_masked_mean_max", "cross_attention".
+            Defaults to "mean_max".
         optimizer_dict (dict, optional): Configuration for the optimizer.
             Defaults to None.
         scheduler_dict (dict, optional): Configuration for the learning rate scheduler.
@@ -51,6 +54,7 @@ class MultiLayerPerceptron(BaseModule):
         hidden_layer_dims=None,
         dropout=0.0,
         mask_ratio=0.0,
+        pooling_type="mean_max",
         optimizer_dict=None,
         scheduler_dict=None,
         test_results_path: str = "./",
@@ -74,10 +78,29 @@ class MultiLayerPerceptron(BaseModule):
                 param.requires_grad = False
 
         self.mask_ratio = mask_ratio
-        self.norm = nn.LayerNorm(input_dim)
+        self.pooling_type = pooling_type
+
+        # Detect backbone embed dim dynamically
+        try:
+            backbone_embed_dim = backbone.autoencoder.cls_token.shape[-1]
+        except AttributeError:
+            # Fallback for backbones that don't have cls_token
+            backbone_embed_dim = input_dim // 2 if "mean_max" in self.pooling_type else input_dim
+
+        if self.pooling_type == "cross_attention":
+            feature_dim = backbone_embed_dim
+            self.query = nn.Parameter(torch.zeros(1, 1, backbone_embed_dim))
+            nn.init.normal_(self.query, std=0.02)
+            self.cross_attn = nn.MultiheadAttention(
+                embed_dim=backbone_embed_dim, num_heads=8, batch_first=True
+            )
+        else:
+            feature_dim = backbone_embed_dim * 2
+
+        self.norm = nn.LayerNorm(feature_dim)
 
         # Define the dimensions of the MLP layers
-        dims = [input_dim] + hidden_layer_dims
+        dims = [feature_dim] + hidden_layer_dims
 
         # Define the dropout layer
         self.dropout = nn.Dropout(p=dropout)
@@ -116,9 +139,42 @@ class MultiLayerPerceptron(BaseModule):
 
         patch_tokens = latent[:, 1:, :]
 
-        x_avg = patch_tokens.mean(dim=1)
-        x_max = patch_tokens.max(dim=1).values
-        x_cls = torch.cat([x_avg, x_max], dim=-1)
+        if self.pooling_type == "disk_masked_mean_max":
+            mask_buffer = getattr(self.backbone.autoencoder, "patch_off_limb_mask", None)
+            if mask_buffer is not None and isinstance(mask_buffer, torch.Tensor):
+                # mask_buffer is True for off-limb patches
+                on_disk_weight = (~mask_buffer).float().unsqueeze(0).unsqueeze(-1)  # Shape: [1, L, 1]
+                masked_tokens = patch_tokens * on_disk_weight
+                num_on_disk = (~mask_buffer).sum().clamp(min=1)
+                x_avg = masked_tokens.sum(dim=1) / num_on_disk
+
+                # Fill off-limb tokens with large negative values for max pooling
+                max_tokens = patch_tokens.masked_fill(
+                    mask_buffer.unsqueeze(0).unsqueeze(-1), float("-inf")
+                )
+                x_max = max_tokens.max(dim=1).values
+                x_cls = torch.cat([x_avg, x_max], dim=-1)
+            else:
+                x_avg = patch_tokens.mean(dim=1)
+                x_max = patch_tokens.max(dim=1).values
+                x_cls = torch.cat([x_avg, x_max], dim=-1)
+        elif self.pooling_type == "cross_attention":
+            q = self.query.expand(patch_tokens.shape[0], -1, -1)
+            mask_buffer = getattr(self.backbone.autoencoder, "patch_off_limb_mask", None)
+            if mask_buffer is not None and isinstance(mask_buffer, torch.Tensor):
+                # key_padding_mask expects a boolean tensor of shape [B, L] where True means ignored (masked out)
+                key_padding_mask = mask_buffer.unsqueeze(0).expand(patch_tokens.shape[0], -1)
+                attn_out, _ = self.cross_attn(
+                    q, patch_tokens, patch_tokens, key_padding_mask=key_padding_mask
+                )
+            else:
+                attn_out, _ = self.cross_attn(q, patch_tokens, patch_tokens)
+            x_cls = attn_out.squeeze(1)
+        else:
+            # Default mean_max
+            x_avg = patch_tokens.mean(dim=1)
+            x_max = patch_tokens.max(dim=1).values
+            x_cls = torch.cat([x_avg, x_max], dim=-1)
 
         x_cls = self.norm(x_cls)
         for fc, act in zip(self.fcs, self.acts, strict=True):

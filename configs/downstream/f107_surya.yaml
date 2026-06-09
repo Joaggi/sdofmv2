@@ -53,6 +53,9 @@ backbone:
   path_weights: ./assets/checkpoints/surya/surya.366m.v1.pt
 
 model:
+  transformer_pooling: True
+  dropout: 0.1
+  penultimate_linear_layer: True
   mlp_hidden_layer_dims: [512, 512, 512]
 
 optimizer:

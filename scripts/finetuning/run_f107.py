@@ -1,5 +1,5 @@
-import os
 import inspect
+import os
 from pathlib import Path
 
 import hydra
@@ -117,6 +117,7 @@ def main(cfg: DictConfig):
         freeze=cfg.experiment.backbone.freeze,
         input_dim=cfg.model.head.input_dim,
         mask_ratio=cfg.model.head.mask_ratio,
+        pooling_type=cfg.model.head.get("pooling_type", "mean_max"),
         optimizer_dict=cfg.model.optimizer,
         scheduler_dict=cfg.model.scheduler,
         test_results_path=cfg.experiment.output_dir,

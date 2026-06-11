@@ -80,7 +80,7 @@ class MAE(BaseModule):
         mlp_ratio=4.0,
         norm_layer="LayerNorm",
         masking_ratio=0.75,
-        mask_only_inner=False,
+        mask_only_inner=True,
         limb_mask=None,
         loss_dict=None,
         optimizer_dict=None,

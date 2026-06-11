@@ -160,15 +160,15 @@ class MultiLayerPerceptron(BaseModule):
                 x_cls = torch.cat([x_avg, x_max], dim=-1)
         elif self.pooling_type == "cross_attention":
             q = self.query.expand(patch_tokens.shape[0], -1, -1)
-            mask_buffer = getattr(self.backbone.autoencoder, "patch_off_limb_mask", None)
-            if mask_buffer is not None and isinstance(mask_buffer, torch.Tensor):
-                # key_padding_mask expects a boolean tensor of shape [B, L] where True means ignored (masked out)
-                key_padding_mask = mask_buffer.unsqueeze(0).expand(patch_tokens.shape[0], -1)
-                attn_out, _ = self.cross_attn(
-                    q, patch_tokens, patch_tokens, key_padding_mask=key_padding_mask
-                )
-            else:
-                attn_out, _ = self.cross_attn(q, patch_tokens, patch_tokens)
+            # mask_buffer = getattr(self.backbone.autoencoder, "patch_off_limb_mask", None)
+            # if mask_buffer is not None and isinstance(mask_buffer, torch.Tensor):
+            #     # key_padding_mask expects a boolean tensor of shape [B, L] where True means ignored (masked out)
+            #     key_padding_mask = mask_buffer.unsqueeze(0).expand(patch_tokens.shape[0], -1)
+            #     attn_out, _ = self.cross_attn(
+            #         q, patch_tokens, patch_tokens, key_padding_mask=key_padding_mask
+            #     )
+            # else:
+            attn_out, _ = self.cross_attn(q, patch_tokens, patch_tokens)
             x_cls = attn_out.squeeze(1)
         else:
             # Default mean_max

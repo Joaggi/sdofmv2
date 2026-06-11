@@ -13,7 +13,7 @@ experiment:
   
   wandb:
     enable: true
-    name: f10.7-ALL-base-final
+    name: f10.7-ALL-base-high-lr
     run_id: null
     entity: allshaman
     project: sdofmv2-downstream-f10.7
@@ -30,8 +30,8 @@ experiment:
   ds_ckpt_dir: ./assets/checkpoints/f107
   output_dir: ./assets/ds_results/f107/
   ckpt_tag: sdofmv2-all
-  ckpt_filename: test.ckpt
-  test_results_filename: f107_results_ALL.csv
+  ckpt_filename: null
+  test_results_filename: f107_results_ALL_cross_attn.csv
 
   # Dataloader
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
@@ -121,7 +121,7 @@ model:
     mask_only_inner: false
 
   head:
-    pooling_type: "mean_max"
+    pooling_type: cross_attention # mean_max, disk_masked_mean_max, cross_attention
     input_dim: 1536
     mask_ratio: 0.0
     output_dim: 1
@@ -181,8 +181,8 @@ model:
   # for optimizer
   optimizer: 
     use: adamw
-    learning_rate: 1.0e-4
-    weight_decay: 0.05
+    learning_rate: 5.0e-4
+    weight_decay: 1e-3
   
   # for scheduler
   scheduler: 

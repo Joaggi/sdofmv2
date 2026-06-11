@@ -19,7 +19,7 @@ from sdofmv2.tasks.f107 import EmbSolarProxyDataModule, MultiLayerPerceptron
 from sdofmv2.utils import flatten_dict
 
 
-@hydra.main(config_path="../../configs/downstream", config_name="f107_sdofmv1")
+@hydra.main(config_path="../../configs/downstream", config_name="f107_sdofmv2_test")
 def main(cfg: DictConfig):
     lgr_logger.info("Starting F10.7 experiment...")
 
@@ -131,7 +131,7 @@ def main(cfg: DictConfig):
         filename=f"{cfg.experiment.ckpt_tag}" + "-{epoch:02d}-{val_loss:.4f}",
         monitor="val_loss",
         mode="min",
-        save_top_k=1,
+        save_top_k=3,
     )
 
     trainer = l.Trainer(
@@ -147,15 +147,22 @@ def main(cfg: DictConfig):
         os.path.join(cfg.experiment.ds_ckpt_dir, cfg.experiment.ckpt_filename)
         if cfg.experiment.ckpt_filename is not None
         else None
-        )
+    )
+
     if ckpt_path is None or not os.path.exists(ckpt_path):
+        lgr_logger.info("No existing checkpoint found. Starting training...")
         trainer.fit(model=model, datamodule=datamodule)
+        
+        # Tell Lightning to automatically use the best checkpoint from the run we just finished
+        test_ckpt_path = "best"
     else:
         lgr_logger.info("Checkpoint exists, skipping training.")
+        
+        # Use the specific checkpoint we verified exists
+        test_ckpt_path = ckpt_path
 
     # Predict/Evaluate
-    trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path, weights_only=False)
-
+    trainer.test(model=model, datamodule=datamodule, ckpt_path=test_ckpt_path, weights_only=False)
 
 if __name__ == "__main__":
     main()

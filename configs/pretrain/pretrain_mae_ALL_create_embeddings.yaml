@@ -1,46 +1,19 @@
-# General
+# general
 experiment:
-  model: mae_old
+  model: mae
   backbone:
-    model: mae_old
+    model: mae
     is_backbone: true
-    ckpt_dir: ./assets/checkpoints/backbone/
-    weight_name: pretrained_mae_e128.ckpt # AIA_MSEloss_epoch=171-val_loss=0.00.ckpt
+    ckpt_dir: ./assets/checkpoints/backbone/ALL/
+    weight_name: id_qu7tsc5c_mae_epoch=80-val_loss=0.07.ckpt
     weights_only: false
-    freeze: true
-  seed: 0
-  disable_cuda: false
-  wandb:
-    enable: true
-    name: f10.7-sdofmv1-mean-max-v1
-    run_id: null
-    entity: allshaman
-    project: sdofmv2-downstream-f10.7
-    group: sdofmv1
-    job_type: finetune
-    tags: []
-    notes: sdofmv1
-    output_directory: ./assets/wandb
-    log_model: false # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
-    offline: false
-  fold: null
-
-  # save checkpoints/results
-  ds_ckpt_dir: ./assets/checkpoints/f107
-  output_dir: ./assets/ds_results/f107/
-  ckpt_tag: sdofmv1-mean-max-v1
-  ckpt_filename: sdofmv1-mean-max-v1-epoch=95-val_loss=0.0010.ckpt
-  test_results_filename: f107_results_sdofmv1_mean-max_final.csv
-
-  # Dataloader
-  profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
-  # lightining pretrainer
   precision: 32 #-true'       # (32, 64) for cuda, ('32-true', '16-true', 'bf16-true') for tpu
   log_every_n_steps: 1
   accelerator: gpu  # options are "auto", "gpu", "tpu", "ipu", or "cpu"
   distributed:
     enabled: true
     devices: [0] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
+  zarr_path: ./assets/embeddings/sdofmv2_embeddings.zarr
 
 # dataset configuration
 data:
@@ -53,21 +26,18 @@ data:
     test: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
 
   month_splits: # non selected months will form training set 
-    train: [1,2,3,4,5,6,7,8]
-    val: [9]
-    test: [10, 11, 12]
+    train: [1,2,3,4,5,6,7,8,9,10] #,2,3,4,5,6,7,8,9,10]
+    val: [11]
+    test: [12]
     holdout: []
   
   # index path
-  index_save_path: ./assets/cache/f107/
-  train_index: ./assets/cache/f107/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv
-  val_index: ./assets/cache/f107/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv
-  test_index: ./assets/cache/f107/AIA_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv
-  hmi_mask: ./assets/cache/hmi_mask_512x512.npy
-  normalization_stat_path: ./assets/cache/AIA/
-
-  # f10.7 data
-  ds_data_path: ./assets/cache/f10.7.csv
+  index_save_path: ./assets/cache/ALL/
+  train_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv
+  val_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv
+  test_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_full.csv
+  hmi_mask: ./assets/cache/ALL/hmi_mask_512x512.npy
+  normalization_stat_path: ./assets/cache/ALL/
 
   # for dataloader
   num_workers: 8    # set appropriately for your machine
@@ -81,7 +51,7 @@ data:
   sdoml:
     base_directory: /mnt/jade
     sub_directory:
-      hmi: null
+      hmi: HMI.zarr
       aia: AIA.zarr
       eve: null
       cache: cache
@@ -90,7 +60,7 @@ data:
     ions: null # null to select all ion channels ["C III", "Fe IX", "Fe VIII", "Fe X", "Fe XI", "Fe XII", "Fe XIII", "Fe XIV", "Fe XIX", "Fe XV", "Fe XVI", "Fe XVIII", "Fe XVI_2", "Fe XX", "Fe XX_2", "Fe XX_3", "H I", "H I_2", "H I_3", "He I", "He II", "He II_2", "He I_2", "Mg IX", "Mg X", "Mg X_2", "Ne VII", "Ne VIII", "O II", "O III", "O III_2", "O II_2", "O IV", "O IV_2", "O V", "O VI", "S XIV", "Si XII", "Si XII_2"]
     frequency: 12min # smallest is 12min
     mask_with_hmi_threshold: null # None/null for no mask, float for threshold
-    apply_mask: true
+    apply_mask: false
     feature_engineering:
       enabled: false
       dclass: Log
@@ -107,7 +77,7 @@ model:
     patch_size: 16
     num_frames: 1
     tubelet_size: 1
-    in_chans: 9
+    in_chans: 12
     embed_dim: 768
     depth: 12
     num_heads: 12
@@ -116,16 +86,8 @@ model:
     decoder_num_heads: 16
     mlp_ratio: 4.0
     norm_layer: LayerNorm
-    masking_ratio: 0.0
+    masking_ratio: 0.5
     mask_only_inner: false
-
-  head:
-    pooling_type: mean_max # mean_max, disk_masked_mean_max, cross_attention
-    input_dim: 1024
-    mask_ratio: 0.0
-    output_dim: 1
-    hidden_layer_dims: [512, 512, 512]
-    dropout: 0.5
 
   # for loss
   loss:
@@ -180,8 +142,8 @@ model:
   # for optimizer
   optimizer: 
     use: adamw
-    learning_rate: 1e-4
-    weight_decay: 1e-3
+    learning_rate: 1.0e-4
+    weight_decay: 0.05
   
   # for scheduler
   scheduler: 
@@ -203,7 +165,7 @@ model:
     
   misc:
     limb_mask: false
-    epochs: 100
+    epochs: 300
     batch_size: 16
     accumulate_grad_batches: 16 # accumulate grad for 32 steps
     limit_train_batches: null

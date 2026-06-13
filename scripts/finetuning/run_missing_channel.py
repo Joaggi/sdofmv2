@@ -133,13 +133,17 @@ def main(cfg: DictConfig):
         normalization_stat=data_module.normalization_stat,
         wavelengths=channels,
         masking_ratio=0.0,
+        test_result_path=os.path.join(
+                cfg.experiment.output_dir,
+                cfg.experiment.test_results_filename
+                ),
         hyperparam_ignore=["backbone"],
     )
 
     # Callbacks
     checkpoint_callback = ModelCheckpoint(
         dirpath=cfg.experiment.ds_ckpt_dir,
-        filename=cfg.experiment.checkpoint_filename,
+        filename=f"{cfg.experiment.ckpt_tag}" + "-{epoch:02d}-{val_loss:.4f}",
         monitor="val_loss",
         mode="min",
         save_top_k=1,
@@ -163,8 +167,8 @@ def main(cfg: DictConfig):
     )
 
     # Training
-    ckpt_path = os.path.join(cfg.experiment.ds_ckpt_dir, cfg.experiment.checkpoint_filename)
-    if not os.path.exists(ckpt_path):
+    ckpt_path = os.path.join(cfg.experiment.ds_ckpt_dir, cfg.experiment.checkpoint_filename) if cfg.experiment.checkpoint_filename is not None else None
+    if ckpt_path is None and not os.path.exists(ckpt_path):
         lgr_logger.info("Starting model training...")
         trainer.fit(model=model, datamodule=data_module)
     else:
@@ -174,6 +178,10 @@ def main(cfg: DictConfig):
             map_location="cpu",
             weights_only=False,
             backbone=backbone,
+            test_result_path=os.path.join(
+                cfg.experiment.output_dir,
+                cfg.experiment.test_results_filename
+                ),
         )
 
     # Evaluation

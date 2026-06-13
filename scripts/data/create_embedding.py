@@ -130,9 +130,10 @@ class Predictor:
     def load_from_ckpt(self, model_hyperparams):
         if self.ckpt_path and os.path.exists(self.ckpt_path):
             lgr_logger.info(f"Loading weights from checkpoint: {self.ckpt_path}")
-            ckpt = torch.load(self.ckpt_path, map_location="cpu", weights_only=False)
-            model = MAE(**model_hyperparams)
-            model.load_state_dict(ckpt["state_dict"], strict=False)
+            # ckpt = torch.load(self.ckpt_path, map_location="cpu", weights_only=False)
+            # model = MAE(**model_hyperparams)
+            # model.load_state_dict(ckpt["state_dict"], strict=False)
+            model = MAE.load_from_checkpoint(self.ckpt_path, weights_only=False, map_location="cpu")
         else:
             lgr_logger.warning("No checkpoint found! Initializing model from scratch.")
             model = MAE(**model_hyperparams)
@@ -146,20 +147,21 @@ class Predictor:
         self.trainer.predict(
             model=self.model,
             datamodule=self.data_module,
+            return_predictions=False
         )
 
 
 @hydra.main(
     config_path="../../configs/pretrain/",
-    config_name="pretrain_mae_ALL.yaml",
+    config_name="pretrain_mae_ALL_create_embeddings.yaml",
     version_base=None,
 )
 def main(cfg: DictConfig) -> None:
     # set seed
-    torch.manual_seed(cfg.experiment.seed)
-    np.random.seed(cfg.experiment.seed)
-    random.seed(cfg.experiment.seed)
-    seed_everything(cfg.experiment.seed)
+    # torch.manual_seed(cfg.experiment.seed)
+    # np.random.seed(cfg.experiment.seed)
+    # random.seed(cfg.experiment.seed)
+    # seed_everything(cfg.experiment.seed)
 
     print("\nRunning Prediction with config:")
     print(OmegaConf.to_yaml(cfg, resolve=False, sort_keys=False))

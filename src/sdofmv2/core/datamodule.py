@@ -738,3 +738,14 @@ class SDOMLDataModule(pl.LightningDataModule):
             persistent_workers=self.persistent_workers,
             multiprocessing_context=spawn_ctx,
         )
+    
+    def predict_dataloader(self):
+        spawn_ctx = mp.get_context("spawn") if self.multiprocessing_context == "spawn" else None
+        return torch.utils.data.DataLoader(
+            self.predict_ds,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+            persistent_workers=self.persistent_workers,
+            multiprocessing_context=spawn_ctx,
+        )

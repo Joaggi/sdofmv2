@@ -4,6 +4,7 @@
 *.egg-info
 *.log
 *.csv
+*.zarr
 AGENTS.md
 
 .vscode/

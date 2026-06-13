@@ -21,7 +21,7 @@ experiment:          # this is the wandb run_id of the checkpoint to load
     notes: ALL-pretrain
     output_directory: ./assets/wandb
     log_model: false # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
-    offline: false
+    offline: true
   fold: null
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
   # lightining pretrainer
@@ -35,7 +35,8 @@ experiment:          # this is the wandb run_id of the checkpoint to load
     # save checkpoints/results
   ds_ckpt_dir: ./assets/checkpoints/missing_channel
   output_dir: ./assets/ds_results/missing_channel
-  checkpoint_filename: missing_channel_best_validation_sdofmv2_all
+  ckpt_tag: sdofmv2-all-missing
+  checkpoint_filename: missing_channel_best_validation_sdofmv2_all.ckpt
   test_results_filename: missing_channel_test_results_ALL.csv
 
 # dataset configuration

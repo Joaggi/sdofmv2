@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 import pandas as pd
+from loguru import logger
 from sdofmv2.core import BaseModule
 from sdofmv2.utils import unpatchify, ALL_WAVELENGTHS
 from sdofmv2.core.reconstruction import compute_metrics_pytorch
@@ -38,6 +39,7 @@ class MissingDataModel(BaseModule):
         normalization_stat=None,
         wavelengths=None,
         masking_ratio=0.0,
+        test_result_path=None,
         *args,
         **kwargs,
     ):
@@ -55,6 +57,7 @@ class MissingDataModel(BaseModule):
         self.masking_ratio = masking_ratio
         self.val_reconstruction_metrics_batches = []
         self.test_reconstruction_metrics_batches = []
+        self.test_result_path = test_result_path
 
         if freeze_encoder:
             self.backbone.autoencoder.blocks.eval()
@@ -247,5 +250,7 @@ class MissingDataModel(BaseModule):
         for wave, row in agg.iterrows():
             for metric, value in row.items():
                 self.log(f"test/{wave}/{metric}", value, sync_dist=True)
-
+        
+        agg.to_csv(self.test_result_path, index=False)
+        logger.info(f"Saved test results to {self.test_result_path}")
         self.test_reconstruction_metrics_batches.clear()

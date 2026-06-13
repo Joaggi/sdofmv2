@@ -86,7 +86,7 @@ def main(cfg: DictConfig):
         normalization_stat_path=cfg.data.normalization_stat_path,
         ds_data_path=cfg.data.ds_data_path,
     )
-    datamodule.setup()
+    # datamodule.setup()
 
     # Load Backbone
     ckpt_path = os.path.join(cfg.experiment.backbone.ckpt_dir, cfg.experiment.backbone.weight_name)
@@ -99,17 +99,26 @@ def main(cfg: DictConfig):
             scheduler_dict=cfg.model.scheduler,
         )
     else:
-        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-        hyper_parameters = ckpt["hyper_parameters"]
+        try:
+            backbone = MAE.load_from_checkpoint(
+                checkpoint_path=ckpt_path,
+                map_location="cpu",
+                weights_only=False,
+            )
 
-        # Get MAE.__init__ argument names (excluding self)
-        valid_args = set(inspect.signature(MAE.__init__).parameters.keys()) - {"self"}
+        except Exception as e:
+            print(f"Standard loading failed: {e}. Falling back to manual load...")
+            ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+            hyper_parameters = ckpt["hyper_parameters"]
 
-        # Keep only parameters accepted by MAE
-        model_hparams = {k: v for k, v in hyper_parameters.items() if k in valid_args}
+            # Get MAE.__init__ argument names (excluding self)
+            valid_args = set(inspect.signature(MAE.__init__).parameters.keys()) - {"self"}
 
-        backbone = MAE(**model_hparams)
-        backbone.load_state_dict(ckpt["state_dict"], strict=False)
+            # Keep only parameters accepted by MAE
+            model_hparams = {k: v for k, v in hyper_parameters.items() if k in valid_args}
+
+            backbone = MAE(**model_hparams)
+            backbone.load_state_dict(ckpt["state_dict"], strict=False)
 
     # Create MLP
     model = MultiLayerPerceptron(

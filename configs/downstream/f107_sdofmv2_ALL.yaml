@@ -13,7 +13,7 @@ experiment:
   
   wandb:
     enable: true
-    name: f10.7-ALL-base-high-lr
+    name: f10.7-ALL-base-mean-max-only-inner
     run_id: null
     entity: allshaman
     project: sdofmv2-downstream-f10.7
@@ -29,9 +29,9 @@ experiment:
   # save checkpoints/results
   ds_ckpt_dir: ./assets/checkpoints/f107
   output_dir: ./assets/ds_results/f107/
-  ckpt_tag: sdofmv2-all
-  ckpt_filename: null
-  test_results_filename: f107_results_ALL_cross_attn.csv
+  ckpt_tag: sdofmv2-all-mean-max-only-inner
+  ckpt_filename: sdofmv2-all-mean-max-only-inner-epoch=94-val_loss=0.0013.ckpt
+  test_results_filename: f107_results_ALL_mean-max-only-inner.csv
 
   # Dataloader
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
@@ -121,11 +121,11 @@ model:
     mask_only_inner: false
 
   head:
-    pooling_type: cross_attention # mean_max, disk_masked_mean_max, cross_attention
+    pooling_type: disk_masked_mean_max # mean_max, disk_masked_mean_max, cross_attention
     input_dim: 1536
     mask_ratio: 0.0
     output_dim: 1
-    hidden_layer_dims: [768, 512, 512]
+    hidden_layer_dims: [512, 512, 512]
     dropout: 0.5
 
   # for loss
@@ -181,8 +181,8 @@ model:
   # for optimizer
   optimizer: 
     use: adamw
-    learning_rate: 5.0e-4
-    weight_decay: 1e-3
+    learning_rate: 3.0e-4
+    weight_decay: 5e-2
   
   # for scheduler
   scheduler: 

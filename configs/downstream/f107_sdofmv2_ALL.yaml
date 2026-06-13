@@ -5,7 +5,7 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_qu7tsc5c_mae_epoch=80-val_loss=0.07.ckpt
+    weight_name: id_qu7tsc5c_mae_epoch=97-val_loss=0.07.ckpt
     weights_only: false
     freeze: true
   seed: 0
@@ -13,7 +13,7 @@ experiment:
   
   wandb:
     enable: true
-    name: f10.7-ALL-base-mean-max-only-inner
+    name: f10.7-ALL-base-ep97
     run_id: null
     entity: allshaman
     project: sdofmv2-downstream-f10.7
@@ -29,9 +29,9 @@ experiment:
   # save checkpoints/results
   ds_ckpt_dir: ./assets/checkpoints/f107
   output_dir: ./assets/ds_results/f107/
-  ckpt_tag: sdofmv2-all-mean-max-only-inner
-  ckpt_filename: sdofmv2-all-mean-max-only-inner-epoch=94-val_loss=0.0013.ckpt
-  test_results_filename: f107_results_ALL_mean-max-only-inner.csv
+  ckpt_tag: sdofmv2-all-ep97
+  ckpt_filename: null
+  test_results_filename: f107_results_ALL_ep97.csv
 
   # Dataloader
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
@@ -181,8 +181,8 @@ model:
   # for optimizer
   optimizer: 
     use: adamw
-    learning_rate: 3.0e-4
-    weight_decay: 5e-2
+    learning_rate: 5.0e-4
+    weight_decay: 1e-3
   
   # for scheduler
   scheduler: 

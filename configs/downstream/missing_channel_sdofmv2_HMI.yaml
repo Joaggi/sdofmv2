@@ -35,7 +35,8 @@ experiment:          # this is the wandb run_id of the checkpoint to load
     # save checkpoints/results
   ds_ckpt_dir: ./assets/checkpoints/missing_channel
   output_dir: ./assets/ds_results/missing_channel
-  checkpoint_filename: missing_channel_best_validation_sdofmv2_hmi.ckpt
+  ckpt_tag: missing-channel-best-sdofmv2-hmi
+  checkpoint_filename: null
   test_results_filename: missing_channel_test_results_hmi.csv
 
 # dataset configuration
@@ -61,10 +62,10 @@ data:
   hmi_mask: ./assets/cache/hmi_mask_512x512.npy
   normalization_stat_path: ./assets/cache/missing_channel/
 
-  num_workers: 12    # set appropriately for your machine
-  pin_memory: true
-  prefetch_factor: 2
-  persistent_workers: true
+  num_workers: 8    # set appropriately for your machine
+  pin_memory: false
+  prefetch_factor: 1
+  persistent_workers: false
   multiprocessing_context: spawn
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
   drop_frame_dim: false         # Requires num_frames=1, for backwards compatibility
@@ -159,8 +160,8 @@ model:
   # for optimizer
   optimizer: 
     use: adamw
-    learning_rate: 1.0e-5
-    weight_decay: 0.01
+    learning_rate: 3.0e-4
+    weight_decay: 0.05
   
   # for scheduler
   scheduler: 

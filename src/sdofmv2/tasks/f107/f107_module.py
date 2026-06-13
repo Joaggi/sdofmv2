@@ -307,18 +307,18 @@ class MultiLayerPerceptron(BaseModule):
             logger.info(f"Saved test results to {output_path}")
             self.test_preds.clear()
 
-    def on_before_optimizer_step(self, optimizer):
-        # Compute the norm of the gradients
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
+    # def on_before_optimizer_step(self, optimizer):
+    #     # Compute the norm of the gradients
+    #     grad_norm = torch.nn.utils.clip_grad_norm_(self.parameters(), max_norm=1.0)
 
-        # Check if gradients are exploding or NaN
-        if torch.isnan(grad_norm) or torch.isinf(grad_norm):
-            print("SKIPPING STEP: Gradients are NaN/Inf! Weights saved from corruption.")
+    #     # Check if gradients are exploding or NaN
+    #     if torch.isnan(grad_norm) or torch.isinf(grad_norm):
+    #         print("SKIPPING STEP: Gradients are NaN/Inf! Weights saved from corruption.")
 
-            # Only unscale if a scaler actually exists (i.e., if using fp16)
-            scaler = getattr(self.trainer, "scaler", None)
-            if scaler is not None:
-                scaler.unscale_(optimizer)
+    #         # Only unscale if a scaler actually exists (i.e., if using fp16)
+    #         scaler = getattr(self.trainer, "scaler", None)
+    #         if scaler is not None:
+    #             scaler.unscale_(optimizer)
 
-            optimizer.zero_grad()  # Clear the bad gradients (Don't update weights!)
-            return
+    #         optimizer.zero_grad()  # Clear the bad gradients (Don't update weights!)
+    #         return

@@ -1,4 +1,5 @@
 import os
+import inspect
 import matplotlib.pyplot as plt
 import numpy as np
 import omegaconf
@@ -96,28 +97,25 @@ def main(cfg: DictConfig):
     # Visualization setup
     channels = (data_module.wavelengths or []) + (data_module.components or [])
 
-    # Load hyper-parameters from config
-    config_hparams = {
-        **cfg.model.mae,
-        "chan_types": channels,
-        "limb_mask": torch.Tensor(np.load(cfg.data.hmi_mask)),
-        "loss_dict": cfg.model.loss,
-        "optimizer_dict": cfg.model.optimizer,
-        "scheduler_dict": cfg.model.scheduler,
-    }
-
-    # Load the checkpoint and its parameters
+    # load checkpoint
     ckpt_path = os.path.join(cfg.experiment.backbone.ckpt_dir, cfg.experiment.backbone.weight_name)
-    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    ckpt_hparams = ckpt.get("hyper_parameters", {})
+    
+    try:
+        backbone = MAE.load_from_checkpoint(ckpt_path, weights_only=False, map_location="cpu")
 
-    # Merge them: Checkpoint overwrites Config for matching keys
-    merged_hparams = {**config_hparams, **ckpt_hparams}
+    except Exception as e:
+        print(f"Standard loading failed: {e}. Falling back to manual load...")
+        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        hyper_parameters = ckpt["hyper_parameters"]
 
-    backbone = MAE(**merged_hparams)
-    zero_shot = MAE(**merged_hparams)
-    backbone.load_state_dict(ckpt["state_dict"], strict=False)
-    zero_shot.load_state_dict(ckpt["state_dict"], strict=False)
+        # Get MAE.__init__ argument names (excluding self)
+        valid_args = set(inspect.signature(MAE.__init__).parameters.keys()) - {"self"}
+
+        # Keep only parameters accepted by MAE
+        model_hparams = {k: v for k, v in hyper_parameters.items() if k in valid_args}
+
+        backbone = MAE(**model_hparams)
+        backbone.load_state_dict(ckpt["state_dict"], strict=False)
 
     # Create MissingDataModel
     lgr_logger.info("Creating MissingDataModel...")
@@ -143,7 +141,7 @@ def main(cfg: DictConfig):
     # Callbacks
     checkpoint_callback = ModelCheckpoint(
         dirpath=cfg.experiment.ds_ckpt_dir,
-        filename=f"{cfg.experiment.ckpt_tag}" + "-{epoch:02d}-{val_loss:.4f}",
+        filename=cfg.experiment.ckpt_tag,
         monitor="val_loss",
         mode="min",
         save_top_k=1,
@@ -168,7 +166,7 @@ def main(cfg: DictConfig):
 
     # Training
     ckpt_path = os.path.join(cfg.experiment.ds_ckpt_dir, cfg.experiment.checkpoint_filename) if cfg.experiment.checkpoint_filename is not None else None
-    if ckpt_path is None and not os.path.exists(ckpt_path):
+    if ckpt_path is None or not os.path.exists(ckpt_path):
         lgr_logger.info("Starting model training...")
         trainer.fit(model=model, datamodule=data_module)
     else:

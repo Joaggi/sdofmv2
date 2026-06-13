@@ -163,7 +163,7 @@ class Pretrainer:
             normalization=self.cfg.data.sdoml.normalization,
             normalization_stat_path=self.cfg.data.normalization_stat_path,
         )
-        self.data_module.setup()
+        # self.data_module.setup()
 
         model_hyperparams = {
             **cfg.model.mae,
@@ -210,6 +210,8 @@ class Pretrainer:
         )
 
     def load_from_ckpt(self, model_hyperparams):
+        model = MAE(**model_hyperparams)
+
         # load backbone weights if specified
         # NOTE: weights_only=False is required because we need hyper_parameters
         if self.cfg.experiment.backbone.is_backbone:
@@ -219,13 +221,11 @@ class Pretrainer:
                     weights_only=False,
                     map_location="cpu",
                 )
-
                 lgr_logger.info("Loading weights only from checkpoint...")
                 lgr_logger.info(f"ckpt: {self.cfg.experiment.backbone.weight_name}")
                 lgr_logger.info("Using hyperparameters from checkpoint")
 
                 # load weights and hyperparameters
-                model = MAE(**model_hyperparams)
                 model.load_state_dict(ckpt["state_dict"], strict=False)
 
             else:
@@ -235,7 +235,6 @@ class Pretrainer:
         else:
             lgr_logger.info("No checkpoint, training from scratch")
 
-        model = MAE(**model_hyperparams)
         return model
 
 

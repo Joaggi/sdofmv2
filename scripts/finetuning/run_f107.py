@@ -86,7 +86,6 @@ def main(cfg: DictConfig):
         normalization_stat_path=cfg.data.normalization_stat_path,
         ds_data_path=cfg.data.ds_data_path,
     )
-    # datamodule.setup()
 
     # Load Backbone
     ckpt_path = os.path.join(cfg.experiment.backbone.ckpt_dir, cfg.experiment.backbone.weight_name)
@@ -149,6 +148,8 @@ def main(cfg: DictConfig):
         precision=cfg.experiment.precision,
         callbacks=[checkpoint_callback],
         logger=logger,
+        gradient_clip_algorithm=cfg.model.misc.gradient_clip_algorithm,
+        gradient_clip_val=cfg.model.misc.gradient_clip_val,
     )
 
     # Train

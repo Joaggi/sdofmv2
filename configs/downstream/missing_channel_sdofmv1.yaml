@@ -2,10 +2,10 @@
 experiment:          # this is the wandb run_id of the checkpoint to load
   corrupted_channel_index: 5
   backbone:
-    model: mae
+    model: mae_old
     is_backbone: true
-    ckpt_dir: ./assets/checkpoints/backbone/AIA/
-    weight_name: id_2bs2j2u8_mae_epoch=61-val_loss=0.03.ckpt # AIA_MSEloss_epoch=171-val_loss=0.00.ckpt
+    ckpt_dir: ./assets/checkpoints/backbone/
+    weight_name: pretrained_mae_e128.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
@@ -35,9 +35,9 @@ experiment:          # this is the wandb run_id of the checkpoint to load
     # save checkpoints/results
   ds_ckpt_dir: ./assets/checkpoints/missing_channel
   output_dir: ./assets/ds_results/missing_channel
-  ckpt_tag: missing-sdofmv2-aia-best
-  checkpoint_filename: missing_channel_best_validation_sdofmv2_aia.ckpt
-  test_results_filename: missing_channel_test_results_AIA.csv
+  ckpt_tag: missing-sdofmv1-best
+  checkpoint_filename: null
+  test_results_filename: missing_channel_test_results_sdofmv1.csv
 
 # dataset configuration
 data:
@@ -63,9 +63,9 @@ data:
   normalization_stat_path: ./assets/cache/missing_channel/
 
   num_workers: 8    # set appropriately for your machine
-  pin_memory: true
-  prefetch_factor: 2
-  persistent_workers: true
+  pin_memory: false
+  prefetch_factor: 1
+  persistent_workers: false
   multiprocessing_context: spawn
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
   drop_frame_dim: false         # Requires num_frames=1, for backwards compatibility
@@ -160,8 +160,8 @@ model:
   # for optimizer
   optimizer: 
     use: adamw
-    learning_rate: 1.0e-5
-    weight_decay: 0.01
+    learning_rate: 3.0e-4
+    weight_decay: 0.05
   
   # for scheduler
   scheduler: 

@@ -5,15 +5,15 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_qu7tsc5c_mae_epoch=67-val_loss=0.08.ckpt
-    weights_only: false
+    weight_name: id_qu7tsc5c_mae_epoch=97-val_loss=0.07.ckpt
+    weights_only: true
   seed: 0
   disable_cuda: false
   
   wandb:
     enable: true
-    name: mae-pretrain-all-bright_path_weighted_loss-huber-base
-    run_id: qu7tsc5c
+    name: mae-pretrain-all-bright_path_weighted_loss-huber-base-resume
+    run_id: d4rp0lo8
     entity: allshaman
     project: sdofmv2
     group: ""
@@ -59,9 +59,9 @@ data:
 
   # for dataloader
   num_workers: 8    # set appropriately for your machine
-  pin_memory: true
+  pin_memory: false
   prefetch_factor: 2
-  persistent_workers: true
+  persistent_workers: false
   multiprocessing_context: spawn
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
   drop_frame_dim: false
@@ -112,9 +112,9 @@ model:
     space: patch # pixel, patch
     type: bright_patch_weighted_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
     bright_patch_weighted_loss:
-      weight_inner: 0.6
-      weight_outer_bright: 0.3
-      weight_outer_dark: 0.1
+      weight_inner: 1.0
+      weight_outer_bright: 1.0
+      weight_outer_dark: 0.01
       zero_threshold: 0.9
       base_type: huber
       huber_delta: 1.0
@@ -160,7 +160,7 @@ model:
   # for optimizer
   optimizer: 
     use: adamw
-    learning_rate: 1.0e-4
+    learning_rate: 3.0e-4
     weight_decay: 0.05
   
   # for scheduler
@@ -182,7 +182,7 @@ model:
       gamma: 0.95
     
   misc:
-    limb_mask: false
+    # limb_mask: false
     epochs: 300
     batch_size: 16
     accumulate_grad_batches: 16 # accumulate grad for 32 steps

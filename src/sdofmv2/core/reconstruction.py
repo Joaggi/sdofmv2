@@ -34,6 +34,10 @@ def compute_metrics_pytorch(
     mse = (diff**2) * mask_c
     rmse = torch.sqrt(mse.sum(dim=[0, 2, 3, 4]) / (mask_c.sum(dim=[0, 2, 3, 4]) + 1e-6))
 
+    mask_sum = mask_c.sum(dim=[0, 2, 3, 4])
+    mse_mean = mse.sum(dim=[0, 2, 3, 4]) / (mask_sum + 1e-6)
+    mae = (torch.abs(diff) * mask_c).sum(dim=[0, 2, 3, 4]) / (mask_sum + 1e-6)
+
     # Flux Error: [C]
     real_masked = real * mask_c
     gen_masked = generated * mask_c
@@ -80,6 +84,8 @@ def compute_metrics_pytorch(
     metrics = {}
     for c, channel in enumerate(channels):
         metrics[channel] = {
+            "mse": mse_mean[c].item(),
+            "mae": mae[c].item(),
             "rmse_intensity": rmse[c].item(),
             "flux_difference": flux_error[c].item(),
             "ppe10s": ppe10[c].item(),

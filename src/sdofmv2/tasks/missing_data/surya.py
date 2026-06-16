@@ -1,6 +1,7 @@
 import os
 import random
 
+import pandas as pd
 import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
@@ -9,6 +10,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data._utils.collate import default_collate
 from omegaconf import DictConfig, OmegaConf
 
+from sdofmv2.core.reconstruction import compute_metrics_pytorch
 from terratorch_surya.datasets.helio import HelioNetCDFDataset
 from terratorch_surya.models.helio_spectformer import HelioSpectFormer
 
@@ -148,6 +150,10 @@ class SuryaReconstructionModel(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.config = config
+
+        self.test_result_path = config.experiment.test_result_path
+        self.test_reconstruction_metrics_batches = []
+        self.channels = list(config.data.channels)
 
         in_channels = len(config.data.channels)
 
@@ -309,7 +315,41 @@ class SuryaReconstructionModel(pl.LightningModule):
 
         loss = F.mse_loss(pred, target)
         self.log("test_loss", loss, prog_bar=True, sync_dist=True)
+
+        # Compute metrics
+        real = original_x[:, :, -1:, :, :].cpu()
+        generated = predicted_x.unsqueeze(2).cpu()
+        mask_ones = torch.ones(real.shape[0], real.shape[2], real.shape[3], real.shape[4], device="cpu")
+        
+        metrics = compute_metrics_pytorch(real, generated, mask_ones, self.channels)
+
+        # Only record metrics for the dropped channel
+        dropped_channel_name = self.channels[dropped_channel]
+        dropped_metrics = {dropped_channel_name: metrics[dropped_channel_name]}
+        self.test_reconstruction_metrics_batches.append(dropped_metrics)
+
         return loss
+
+    def on_test_epoch_end(self):
+        if not self.test_reconstruction_metrics_batches:
+            return
+
+        data = []
+        for batch in self.test_reconstruction_metrics_batches:
+            for wave, metrics in batch.items():
+                row = {"wavelength": wave}
+                row.update(metrics)
+                data.append(row)
+        df = pd.DataFrame(data)
+        agg = df.groupby("wavelength").mean()
+
+        for wave, row in agg.iterrows():
+            for metric, value in row.items():
+                self.log(f"test/{wave}/{metric}", value, sync_dist=True)
+        
+        agg.to_csv(self.test_result_path, index=False)
+        logger.info(f"Saved test results to {self.test_result_path}")
+        self.test_reconstruction_metrics_batches.clear()
 
     def configure_optimizers(self):
         """Configures the optimizer.

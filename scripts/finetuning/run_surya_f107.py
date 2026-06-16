@@ -53,9 +53,10 @@ def main(cfg: DictConfig):
     checkpoint_callback = ModelCheckpoint(
         monitor="val_loss",
         mode="min",
-        save_top_k=1,
-        dirpath=cfg.experiment.wandb.output_directory,
-        filename="best-model-{epoch:02d}-{val_loss:.4f}",
+        save_top_k=3,
+        save_last=True,
+        dirpath=cfg.etc.ds_ckpt_dir,
+        filename=cfg.etc.checkpoint_filename + "-{epoch:02d}-{val_loss:.4f}",
     )
 
     lr_monitor = LearningRateMonitor(logging_interval="epoch")
@@ -73,9 +74,15 @@ def main(cfg: DictConfig):
         log_every_n_steps=cfg.etc.log_every_n_steps,
         enable_progress_bar=True,
     )
-
-    trainer.fit(model, datamodule=datamodule)
-    trainer.test(model=model, datamodule=datamodule, ckpt_path="best", weights_only=False)
+    ckpt_path = (
+        os.path.join(cfg.etc.ds_ckpt_dir, cfg.etc.ckpt_resume)
+        if cfg.etc.ckpt_resume is not None
+        else None
+    )
+    if cfg.etc.phase == "train":
+        trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path, weights_only=False)
+    elif cfg.etc.phase == "test":
+        trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path, weights_only=False)
 
 
 if __name__ == "__main__":

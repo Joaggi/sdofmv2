@@ -63,7 +63,7 @@ def main(config: DictConfig):
         save_top_k=3,
         save_last=True,
         dirpath=config.etc.ckpt_dir,
-        filename="reconstruction-best-{epoch:02d}-{val_loss:.4f}",
+        filename="missing-channel-surya-{epoch:02d}-{val_loss:.4f}",
     )
     lr_monitor = LearningRateMonitor(logging_interval="epoch")
 
@@ -82,17 +82,21 @@ def main(config: DictConfig):
         limit_test_batches=config.etc.limit_test_batches,
     )
 
-    trainer.fit(
-        model,
-        datamodule=datamodule,
-        ckpt_path=(
-            os.path.join(config.etc.ckpt_dir, config.etc.ckpt_name)
-            if config.etc.ckpt_name is not None
-            else None
-        ),
-        weights_only=False,
+    ckpt_path = (
+        os.path.join(config.etc.ckpt_dir, config.etc.ckpt_name)
+        if config.etc.ckpt_name is not None
+        else None
     )
-    trainer.test(model, datamodule, weights_only=False, ckpt_path="best")
+    if config.etc.phase == "train":
+        trainer.fit(
+            model,
+            datamodule=datamodule,
+            ckpt_path=ckpt_path,
+            weights_only=False,
+        )
+    elif config.etc.phase == "test":
+        trainer.test(model, datamodule, weights_only=False, ckpt_path=ckpt_path)
+
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import os
 
 import hydra
+import numpy as np
 import torch
 import wandb
 
@@ -97,6 +98,7 @@ def main(cfg):
         drop_frame_dim=cfg.data.drop_frame_dim,
         precision=cfg.experiment.trainer.precision,
         normalization=cfg.data.sdoml.normalization,
+        normalization_stat_path=cfg.data.normalization_stat_path,
         cfg=cfg,
         radial_norm=cfg.data.in_situ.radial_norm,
         radial_parameters=cfg.data.in_situ.radial_parameters,
@@ -111,6 +113,7 @@ def main(cfg):
         merged_splits_dir=cfg.data.index_save_path,
         hmi_mask_path=cfg.data.hmi_mask,
     )
+    data_module.setup()
 
     # Define channels for input/model
     aia_list = (
@@ -143,7 +146,7 @@ def main(cfg):
         backbone = MAE(
             **cfg.model.mae,
             chan_types=channels,
-            limb_mask=data_module.hmi_mask if cfg.model.misc.get("limb_mask", False) else None,
+            limb_mask=torch.Tensor(np.load(cfg.data.hmi_mask)) if cfg.model.misc.get("limb_mask", False) else None,
         )
 
     # Downstream model

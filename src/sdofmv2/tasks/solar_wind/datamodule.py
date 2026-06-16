@@ -208,6 +208,7 @@ class SWDataModule(SDOMLDataModule):
         drop_frame_dim=False,
         precision="32",
         normalization=None,
+        normalization_stat_path="",
         train_index="",
         val_index="",
         test_index="",
@@ -234,7 +235,8 @@ class SWDataModule(SDOMLDataModule):
             batch_size=batch_size,
             num_workers=num_workers,
             normalization=normalization,
-            hmi_mask=hmi_mask_path,
+            normalization_stat_path=normalization_stat_path,
+            hmi_mask_path=hmi_mask_path,
             apply_mask=apply_mask,
             num_frames=num_frames,
             drop_frame_dim=drop_frame_dim,
@@ -243,6 +245,8 @@ class SWDataModule(SDOMLDataModule):
             val_index=val_index,
             test_index=test_index,
         )
+        self.radial_mean = None
+        self.radial_std = None
         self.cfg = cfg
         self.cadence = cadence
 
@@ -286,7 +290,11 @@ class SWDataModule(SDOMLDataModule):
             # Normalization
             if self.radial_norm:
                 for col in self.radial_parameters:
-                    df_merge[f"{col}_norm"] = (df_merge[col] - df_merge[col].mean()) / df_merge[col].std()
+                    mean, std = df_merge[col].mean(), df_merge[col].std()
+                    df_merge[f"{col}_norm"] = (df_merge[col] - mean) / std
+                    if getattr(self, "radial_mean", None) is None:
+                        self.radial_mean = mean
+                        self.radial_std = std
 
             return df_merge.set_index("time_sdo_loc_est")
 
@@ -347,28 +355,6 @@ class SWDataModule(SDOMLDataModule):
                     precision=self.precision,
                 ),
             )
-
-
-            # Filtering
-            if "lon_footpoint" in self.latlon_parameters:
-                df_merge = df_merge.loc[
-                    df_merge["lon_footpoint"].abs() < self.cfg.data.in_situ.lon_cutoff
-                ]
-            elif "sc_pos_SH_lon" in self.latlon_parameters:
-                df_merge = df_merge.loc[
-                    df_merge["sc_pos_SH_lon"].abs() < self.cfg.data.in_situ.lon_cutoff
-                ]
-            df_merge = df_merge.loc[df_merge["vp_fit_RTN_0_mean"] >= 100]
-            df_merge.dropna(subset=["Time_sdoml"], inplace=True)
-
-            # Normalization
-            if self.radial_norm:
-                for col in self.radial_parameters:
-                    df_merge[f"{col}_norm"] = (df_merge[col] - df_merge[col].mean()) / df_merge[
-                        col
-                    ].std()
-
-            return df_merge.set_index("time_sdo_loc_est")
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(
@@ -449,53 +435,6 @@ def main(cfg):
         cache_dir=os.path.join(
             cfg.data.sdoml.save_directory, cfg.data.sdoml.sub_directory.cache
         ),
-        num_frames=cfg.data.num_frames,
-        drop_frame_dim=cfg.data.drop_frame_dim,
-        radial_parameters=cfg.data.in_situ.radial_parameters,
-        latlon_parameters=cfg.data.in_situ.latlon_parameters,
-        cadence=cfg.data.in_situ.cadence,
-        label_type=cfg.data.label_type,
-        sampling_ratio=cfg.data.under_sampling.ratio,
-        random_state=cfg.data.under_sampling.random_state,
-        cfg=cfg,
-    )
-
-            if cfg.data.sdoml.sub_directory.hmi
-            else None
-        ),
-        aia_path=(
-            os.path.join(
-                cfg.data.sdoml.base_directory,
-                cfg.data.sdoml.sub_directory.aia,
-            )
-            if cfg.data.sdoml.sub_directory.aia
-            else None
-        ),
-        eve_path=(
-            os.path.join(
-                cfg.data.sdoml.base_directory,
-                cfg.data.sdoml.sub_directory.eve,
-            )
-            if cfg.data.sdoml.sub_directory.eve
-            else None
-        ),
-        normalization=cfg.data.normalization,
-        components=cfg.data.sdoml.components,
-        wavelengths=cfg.data.sdoml.wavelengths,
-        ions=cfg.data.sdoml.ions,
-        frequency=cfg.data.sdoml.frequency,
-        batch_size=cfg.model.misc.batch_size,
-        num_workers=cfg.data.num_workers,
-        val_months=cfg.data.month_splits.val,
-        train_months=cfg.data.month_splits.train,
-        test_months=cfg.data.month_splits.test,
-        train_years=cfg.data.year_splits.train,
-        val_years=cfg.data.year_splits.val,
-        test_years=cfg.data.year_splits.test,
-        holdout_months=cfg.data.month_splits.holdout,
-        cache_dir=os.path.join(cfg.data.sdoml.save_directory, cfg.data.sdoml.sub_directory.cache),
-        min_date=cfg.data.min_date,
-        max_date=cfg.data.max_date,
         num_frames=cfg.data.num_frames,
         drop_frame_dim=cfg.data.drop_frame_dim,
         radial_parameters=cfg.data.in_situ.radial_parameters,

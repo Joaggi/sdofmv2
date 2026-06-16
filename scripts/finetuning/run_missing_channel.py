@@ -23,7 +23,7 @@ from sdofmv2.tasks.missing_data import MissingDataModel
 @hydra.main(
     version_base=None,
     config_path="../../configs/downstream",
-    config_name="missing_channel_sdofmv2_ALL.yaml",
+    config_name="missing_channel_sdofmv2_HMI.yaml",
 )
 def main(cfg: DictConfig):
     # Set seed for reproducibility
@@ -113,7 +113,7 @@ def main(cfg: DictConfig):
 
         # Keep only parameters accepted by MAE
         model_hparams = {k: v for k, v in hyper_parameters.items() if k in valid_args}
-
+        model_hparams["loss_dict"] =  cfg.model.loss
         backbone = MAE(**model_hparams)
         backbone.load_state_dict(ckpt["state_dict"], strict=False)
 
@@ -164,28 +164,46 @@ def main(cfg: DictConfig):
         limit_train_batches=cfg.model.misc.limit_train_batches,
     )
 
-    # Training
-    ckpt_path = os.path.join(cfg.experiment.ds_ckpt_dir, cfg.experiment.checkpoint_filename) if cfg.experiment.checkpoint_filename is not None else None
-    if ckpt_path is None or not os.path.exists(ckpt_path):
-        lgr_logger.info("Starting model training...")
+    ckpt_path = (
+        os.path.join(
+            cfg.experiment.ds_ckpt_dir,
+            cfg.experiment.checkpoint_filename
+        )
+        if cfg.experiment.checkpoint_filename
+        else None
+    )
+
+    phase = cfg.experiment.phase
+
+    if phase == "train":
         trainer.fit(model=model, datamodule=data_module)
-    else:
-        lgr_logger.info("Checkpoint found! Loading model from checkpoint...")
-        model = MissingDataModel.load_from_checkpoint(
-            checkpoint_path=ckpt_path,
-            map_location="cpu",
+
+    elif phase == "resume":
+        trainer.fit(
+            model=model,
+            datamodule=data_module,
+            ckpt_path=ckpt_path,
             weights_only=False,
-            backbone=backbone,
-            test_result_path=os.path.join(
-                cfg.experiment.output_dir,
-                cfg.experiment.test_results_filename
-                ),
         )
 
-    # Evaluation
-    lgr_logger.info("Running evaluation on test set...")
-    trainer.test(model=model, datamodule=data_module)
+    elif phase == "test":
+        lgr_logger.info("Test run from ckpt...")
+        trainer.test(
+            model=model,
+            datamodule=data_module,
+            ckpt_path=ckpt_path,
+            weights_only=False,
+        )
+        return
 
+    # train/resume only
+    best_ckpt = trainer.checkpoint_callback.best_model_path
+    lgr_logger.info("Running evaluation on test set...")
+    trainer.test(
+        datamodule=data_module,
+        ckpt_path=best_ckpt,
+        weights_only=False,
+    )
     lgr_logger.info("Evaluation complete. Metrics logged to WandB via epoch-end hooks.")
 
 

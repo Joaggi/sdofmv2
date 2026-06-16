@@ -91,7 +91,7 @@ class TestInverseLogNorm:
         data_transformed = np.array([[0.0, 0.5], [1.0, 1.5]])
         normalization_stat = {"171": {"mean": 0.5, "std": 0.5}}
         result = inverse_log_norm(
-            data_transformed, normalization_stat, "171", scaler_factor=1.0
+            data_transformed, normalization_stat, "171", scaler_factor=1.0, norm=True,
         )
         assert result.shape == data_transformed.shape
         assert np.all(result >= 0)
@@ -100,6 +100,6 @@ class TestInverseLogNorm:
         data_transformed = np.array([[0.0, 0.5], [1.0, 1.5]])
         normalization_stat = {"171": {"mean": 0.5, "std": 0.5}}
         result = inverse_log_norm(
-            data_transformed, normalization_stat, "171", scaler_factor=None
+            data_transformed, normalization_stat, "171", scaler_factor=None, norm=True,
         )
         assert result.shape == data_transformed.shape

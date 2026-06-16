@@ -18,12 +18,13 @@ from lightning.pytorch.loggers.wandb import WandbLogger
 
 from sdofmv2 import utils
 from sdofmv2.utils import flatten_dict
-from pretrain import Pretrainer
+from sdofmv2.core import Pretrainer
 
 
 @hydra.main(
-    config_path="../configs/pretrain/",
-    config_name="pretrain_mae_HMI.yaml",
+    config_path="../../configs/test_run/",
+    config_name="test_mae_ALL",
+    version_base=None,
 )
 def main(cfg: DictConfig) -> None:
     """Sets up and executes the pretraining experiment using the Hydra configuration.
@@ -46,17 +47,6 @@ def main(cfg: DictConfig) -> None:
     random.seed(cfg.experiment.seed)
     seed_everything(cfg.experiment.seed)
 
-    # set precision of torch tensors
-    match cfg.experiment.precision:
-        case 64:
-            torch.set_default_tensor_type(torch.DoubleTensor)
-        case 32:
-            torch.set_default_tensor_type(torch.FloatTensor)
-        case _:
-            warnings.warn(
-                f"Setting precision {cfg.experiment.precision} will pass through to the trainer but not other operations."
-            )
-
     # run experiment
     print(f"\nRunning with config:")
     print(OmegaConf.to_yaml(cfg, resolve=False, sort_keys=False))
@@ -69,21 +59,16 @@ def main(cfg: DictConfig) -> None:
         wandb.login()
         output_dir = Path(cfg.experiment.wandb.output_directory)
         output_dir.mkdir(exist_ok=True, parents=True)
-        print(
-            f"Created directory for storing results: {cfg.experiment.wandb.output_directory}"
-        )
+        print(f"Created directory for storing results: {cfg.experiment.wandb.output_directory}")
         cache_dir = Path(f"{cfg.experiment.wandb.output_directory}/.cache")
         cache_dir.mkdir(exist_ok=True, parents=True)
 
-        os.environ["WANDB_CACHE_DIR"] = (
-            f"{cfg.experiment.wandb.output_directory}/.cache"
-        )
+        os.environ["WANDB_CACHE_DIR"] = f"{cfg.experiment.wandb.output_directory}/.cache"
 
         logger = WandbLogger(
             # WandbLogger params
-            name=cfg.experiment.name
-            + f"_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            project=cfg.experiment.project,
+            name=cfg.experiment.wandb.name,
+            project=cfg.experiment.wandb.project,
             dir=cfg.experiment.wandb.output_directory,
             log_model=cfg.experiment.wandb.log_model,
             # kwargs for wandb.init
@@ -104,7 +89,6 @@ def main(cfg: DictConfig) -> None:
     pretrainer = Pretrainer(
         cfg,
         logger=logger,
-        is_backbone=cfg.experiment.backbone.is_backbone,
     )
     pretrainer.test()
 

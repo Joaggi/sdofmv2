@@ -44,17 +44,19 @@ def min_max_norm(data, channel, normalization_stat):
     return data
 
 
-def log_norm(data, normalization_stat, channel, scaler_factor):
+def log_norm(data, normalization_stat, channel, scaler_factor, norm=True):
     x = data * scaler_factor if scaler_factor is not None else data
 
     # Log transform
     x_log = np.sign(x) * np.log1p(np.abs(x))
 
     # zscore norm
-    x_transformed = (x_log - normalization_stat[channel]["mean"]) / (
-        normalization_stat[channel]["std"] + 1e-8
-    )
-
+    if norm:
+        x_transformed = (x_log - normalization_stat[channel]["mean"]) / (
+            normalization_stat[channel]["std"] + 1e-8
+        )
+    else:
+        return x_log
     return x_transformed
 
 
@@ -73,14 +75,18 @@ def inverse_log_norm(
     normalization_stat,
     channel,
     scaler_factor=None,
+    norm=True,
 ):
     # Retrieve the exact log-domain statistics used during forward normalization
     mean = normalization_stat[channel]["mean"]
     std = normalization_stat[channel]["std"]
 
-    # Reverse the Z-score standardization
-    # x_transformed = (x_log - mean) / std  ->  x_log = (x_transformed * std) + mean
-    x_log = (data_transformed * (std + 1e-8)) + mean
+    if norm:
+        # Reverse the Z-score standardization
+        # x_transformed = (x_log - mean) / std  ->  x_log = (x_transformed * std) + mean
+        x_log = (data_transformed * (std + 1e-8)) + mean
+    else:
+        x_log = data_transformed
 
     # Reverse the SymLog Transform
     # The inverse of y = sign(x) * log(1 + |x|) is x = sign(y) * (exp(|y|) - 1)
@@ -272,6 +278,7 @@ class SDOMLDataset(Dataset):
                 self.normalization_stat,
                 channel,
                 self.normalization.scaler_factor,
+                self.normalization.norm,
             )
 
         elif self.normalization.type == "zscore":

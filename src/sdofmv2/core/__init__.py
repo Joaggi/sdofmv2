@@ -17,3 +17,4 @@ from .mae_module import MAE
 from .mae_module_old import MAE_old
 from .pca_analysis import mapping_dense_to_rgb
 from .attention_map import patch_attn_layers, visualize_head
+from .pretrainer import Pretrainer

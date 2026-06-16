@@ -5,14 +5,14 @@ experiment:          # this is the wandb run_id of the checkpoint to load
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_qu7tsc5c_mae_epoch=97-val_loss=0.07.ckpt # AIA_MSEloss_epoch=171-val_loss=0.00.ckpt
+    weight_name: id_qu7tsc5c_mae_epoch=104-val_loss=0.07.ckpt # AIA_MSEloss_epoch=171-val_loss=0.00.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
   wandb:
     enable: true
-    name: missing_channel_sdofmv2_ALL_ep97
-    run_id: null
+    name: missing_channel_sdofmv2_ALL_final
+    run_id: 37dtjgoy
     entity: allshaman
     project: sdofmv2_missing_channel
     group: ""
@@ -33,11 +33,12 @@ experiment:          # this is the wandb run_id of the checkpoint to load
     devices: [0] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
   
     # save checkpoints/results
+  phase: test
   ds_ckpt_dir: ./assets/checkpoints/missing_channel
   output_dir: ./assets/ds_results/missing_channel
-  ckpt_tag: missing-sdofmv2-all-best
-  checkpoint_filename: null
-  test_results_filename: missing_channel_test_results_ALL.csv
+  ckpt_tag: missing-channel-best-sdofmv2-all
+  checkpoint_filename: missing-channel-best-sdofmv2-all.ckpt
+  test_results_filename: missing_channel_test_sdofmv2-all.csv
 
 # dataset configuration
 data:
@@ -86,6 +87,7 @@ data:
       enabled: true
       type: log #log, zscore, min-max
       scaler_factor: 1
+      norm: true
 
 # model configurations
 model:
@@ -104,13 +106,13 @@ model:
     decoder_num_heads: 16
     mlp_ratio: 4.0
     norm_layer: LayerNorm
-    masking_ratio: 0.5
+    masking_ratio: 0.0
     mask_only_inner: false
 
   # for loss
   loss:
     space: patch # pixel, patch
-    type: bright_patch_weighted_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
+    type: mse # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
     bright_patch_weighted_loss:
       weight_inner: 0.6
       weight_outer_bright: 0.3

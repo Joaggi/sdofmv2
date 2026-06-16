@@ -1,5 +1,6 @@
 import lightning.pytorch as pl
 import numpy as np
+import pandas as pd
 import torch
 
 from sdofmv2.core.basemodule import BaseModule
@@ -85,6 +86,7 @@ class MAE(BaseModule):
         loss_dict=None,
         optimizer_dict=None,
         scheduler_dict=None,
+        save_test_results_csv=None,
         zarr_path="embeddings.zarr",
         # pass to BaseModule
         *args,
@@ -109,6 +111,7 @@ class MAE(BaseModule):
         self.loss_dict = loss_dict if loss_dict is not None else {}
         self.test_results = []
         self.zarr_path = zarr_path
+        self.save_test_results_csv = save_test_results_csv
 
         # compute limb_mask_ids
         limb_mask_ids = None
@@ -252,19 +255,13 @@ class MAE(BaseModule):
 
         # Vectorized metrics on GPU
         batch_size, num_channels, num_frames_in, height, width = x.shape
-        grid_size = self.img_size // self.patch_size
-        num_frames_p = num_frames_in // self.tubelet_size
-
-        # [batch_size, num_frames_p, grid_size, grid_size]
-        mask_full = mask.view(batch_size, num_frames_p, grid_size, grid_size)
 
         # [batch_size, num_frames_in, height, width]
-        mask_full = (
-            mask_full.repeat_interleave(self.tubelet_size, dim=1)
-            .repeat_interleave(self.patch_size, dim=2)
-            .repeat_interleave(self.patch_size, dim=3)
-            .bool()
-        )
+        mask_full = torch.ones(
+                (batch_size, num_frames_in, height, width),
+                dtype=torch.bool,
+                device=x.device
+            )
 
         # Intersect with limb_mask if present
         if self.limb_mask is not None:
@@ -280,17 +277,24 @@ class MAE(BaseModule):
         """Called at the end of the test epoch."""
         # Average metrics across samples
         averaged_metrics = {}
+        metrics_names = [
+            "rmse_intensity",
+            "flux_difference",
+            "ppe10s",
+            "ppe50s",
+            "r2_score",
+            "pixel_correlation",
+        ]
         for chan in self.chan_types:
             averaged_metrics[chan] = {}
-            for met in [
-                "rmse_intensity",
-                "flux_difference",
-                "ppe10s",
-                "ppe50s",
-                "r2_score",
-                "pixel_correlation",
-            ]:
+            for met in metrics_names:
                 averaged_metrics[chan][met] = np.mean([m[chan][met] for m in self.test_results])
+
+        # Save metrics to CSV
+        if getattr(self.trainer, "global_rank", 0) == 0:
+            df = pd.DataFrame.from_dict(averaged_metrics, orient="index")
+            df.index.name = "channel"
+            df.to_csv(self.save_test_results_csv)
 
         # Logging to WandB if enabled, otherwise just log to trainer
         if isinstance(self.logger, pl.loggers.wandb.WandbLogger):

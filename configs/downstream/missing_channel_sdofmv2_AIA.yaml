@@ -11,8 +11,8 @@ experiment:          # this is the wandb run_id of the checkpoint to load
   disable_cuda: false
   wandb:
     enable: true
-    name: missing_channel_sdofmv2_AIA
-    run_id: null
+    name: missing_channel_sdofmv2_AIA_final
+    run_id: kt9k0wnn
     entity: allshaman
     project: sdofmv2_missing_channel
     group: ""
@@ -21,7 +21,7 @@ experiment:          # this is the wandb run_id of the checkpoint to load
     notes: ALL-pretrain
     output_directory: ./assets/wandb
     log_model: false # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
-    offline: true
+    offline: false
   fold: null
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
   # lightining pretrainer
@@ -33,11 +33,12 @@ experiment:          # this is the wandb run_id of the checkpoint to load
     devices: [0] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
   
     # save checkpoints/results
+  phase: test
   ds_ckpt_dir: ./assets/checkpoints/missing_channel
   output_dir: ./assets/ds_results/missing_channel
-  ckpt_tag: missing-sdofmv2-aia-best
-  checkpoint_filename: missing_channel_best_validation_sdofmv2_aia.ckpt
-  test_results_filename: missing_channel_test_results_AIA.csv
+  ckpt_tag: missing-channel-best-sdofmv2-aia
+  checkpoint_filename: missing-channel-best-sdofmv2-aia.ckpt
+  test_results_filename: missing_channel_test_sdofmv2-aia.csv
 
 # dataset configuration
 data:
@@ -86,6 +87,7 @@ data:
       enabled: true
       type: log #log, zscore, min-max
       scaler_factor: 1
+      norm: true
 
 # model configurations
 model:
@@ -104,7 +106,7 @@ model:
     decoder_num_heads: 16
     mlp_ratio: 4.0
     norm_layer: LayerNorm
-    masking_ratio: 0.5
+    masking_ratio: 0.0
     mask_only_inner: false
 
   # for loss
@@ -160,8 +162,8 @@ model:
   # for optimizer
   optimizer: 
     use: adamw
-    learning_rate: 1.0e-5
-    weight_decay: 0.01
+    learning_rate: 3.0e-4
+    weight_decay: 0.05
   
   # for scheduler
   scheduler: 

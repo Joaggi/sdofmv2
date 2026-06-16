@@ -86,6 +86,7 @@ data:
       enabled: true
       type: log #log, zscore, min-max
       scaler_factor: 1
+      norm: true
 
 # model configurations
 model:

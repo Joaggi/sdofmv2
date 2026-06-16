@@ -5,15 +5,15 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_qu7tsc5c_mae_epoch=97-val_loss=0.07.ckpt
-    weights_only: true
+    weight_name: id_qu7tsc5c_mae_epoch=104-val_loss=0.07.ckpt
+    weights_only: false
   seed: 0
   disable_cuda: false
   
   wandb:
     enable: true
-    name: mae-pretrain-all-bright_path_weighted_loss-huber-base-resume
-    run_id: d4rp0lo8
+    name: mae-pretrain-all-resume-mse
+    run_id: null
     entity: allshaman
     project: sdofmv2
     group: ""
@@ -22,7 +22,7 @@ experiment:
     notes: ALL-pretrain
     output_directory: ./assets/wandb
     log_model: false # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
-    offline: false
+    offline: true
   fold: null
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
   # lightining pretrainer
@@ -86,6 +86,7 @@ data:
       enabled: true
       type: log #log, zscore, min-max
       scaler_factor: 1
+      norm: true
 
 # model configurations
 model:

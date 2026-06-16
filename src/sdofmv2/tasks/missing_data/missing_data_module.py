@@ -75,6 +75,7 @@ class MissingDataModel(BaseModule):
                 self.normalization_stat,
                 channel,
                 scaler_factor=self.normalization.scaler_factor,
+                norm=self.normalization.norm,
             )
         elif self.normalization.type == "zscore":
             data_ch = inverse_zscore_norm(
@@ -164,7 +165,7 @@ class MissingDataModel(BaseModule):
             self.backbone.autoencoder.tubelet_size,
         )
 
-        loss = F.mse_loss(x_hat[:, target_idx, ...], x[:, target_idx, ...])
+        loss = F.mse_loss(x_hat, x)
 
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
@@ -180,7 +181,7 @@ class MissingDataModel(BaseModule):
             self.backbone.autoencoder.tubelet_size,
         )
 
-        loss = F.mse_loss(x_hat[:, target_idx, ...], x[:, target_idx, ...])
+        loss = F.mse_loss(x_hat, x)
 
         # Apply inverse transform
         x_inv = self._apply_inverse_transform(x)
@@ -251,6 +252,6 @@ class MissingDataModel(BaseModule):
             for metric, value in row.items():
                 self.log(f"test/{wave}/{metric}", value, sync_dist=True)
         
-        agg.to_csv(self.test_result_path, index=False)
+        agg.to_csv(self.test_result_path)
         logger.info(f"Saved test results to {self.test_result_path}")
         self.test_reconstruction_metrics_batches.clear()

@@ -21,7 +21,7 @@ experiment:          # this is the wandb run_id of the checkpoint to load
     notes: ALL-pretrain
     output_directory: ./assets/wandb
     log_model: false # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
-    offline: true
+    offline: false
   fold: null
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
   # lightining pretrainer
@@ -86,6 +86,7 @@ data:
       enabled: true
       type: log #log, zscore, min-max
       scaler_factor: 1
+      norm: false
 
 # model configurations
 model:
@@ -104,13 +105,13 @@ model:
     decoder_num_heads: 16
     mlp_ratio: 4.0
     norm_layer: LayerNorm
-    masking_ratio: 0.5
+    masking_ratio: 0.0
     mask_only_inner: true
 
   # for loss
   loss:
     space: patch # pixel, patch
-    type: bright_patch_weighted_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
+    type: mse # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
     bright_patch_weighted_loss:
       weight_inner: 1.0
       weight_outer_bright: 1.0
@@ -182,7 +183,7 @@ model:
       gamma: 0.95
     
   misc:
-    limb_mask: false
+    # limb_mask: false
     epochs: 15
     batch_size: 16
     accumulate_grad_batches: 16 # accumulate grad for 32 steps

@@ -32,7 +32,7 @@ class SWDataset(SDOMLDataset):
     training sets, and automated column index mapping for coordinate features.
 
     Args:
-        aligndata_path (str): Path to the CSV file containing aligned temporal indices and targets.
+        aligndata_path (str): Path to the Parquet file containing aligned temporal indices and targets.
         hmi_path (str): Path to HMI Zarr data.
         aia_path (str): Path to AIA Zarr data.
         eve_path (str): Path to EVE Zarr data.
@@ -78,8 +78,8 @@ class SWDataset(SDOMLDataset):
         latlon_parameters=None,
         precision="32",
     ):
-        # Load aligndata from CSV
-        aligndata = pd.read_csv(aligndata_path, index_col="time_sdo_loc_est", parse_dates=True)
+        # Load aligndata from Parquet
+        aligndata = pd.read_parquet(aligndata_path)
         super().__init__(
             aligndata=aligndata,
             hmi_path=hmi_path,
@@ -264,7 +264,6 @@ class SWDataModule(SDOMLDataModule):
     def setup(self, stage=None):
         super().setup(stage)
 
-
         def _merge_and_filter(sdoml_df, psp_df):
             # Merge
             df_merge = pd.merge_asof(
@@ -279,9 +278,13 @@ class SWDataModule(SDOMLDataModule):
 
             # Filtering
             if "lon_footpoint" in self.latlon_parameters:
-                df_merge = df_merge.loc[df_merge["lon_footpoint"].abs() < self.cfg.data.in_situ.lon_cutoff]
+                df_merge = df_merge.loc[
+                    df_merge["lon_footpoint"].abs() < self.cfg.data.in_situ.lon_cutoff
+                ]
             elif "sc_pos_SH_lon" in self.latlon_parameters:
-                df_merge = df_merge.loc[df_merge["sc_pos_SH_lon"].abs() < self.cfg.data.in_situ.lon_cutoff]
+                df_merge = df_merge.loc[
+                    df_merge["sc_pos_SH_lon"].abs() < self.cfg.data.in_situ.lon_cutoff
+                ]
             df_merge = df_merge.loc[df_merge["vp_fit_RTN_0_mean"] >= 100]
             df_merge.dropna(subset=["Time_sdoml"], inplace=True)
 
@@ -299,8 +302,8 @@ class SWDataModule(SDOMLDataModule):
         # Process splits
         df_psp = None
         for split, ds in [("train", self.train_ds), ("val", self.valid_ds), ("test", self.test_ds)]:
-            save_path = os.path.join(self.merged_splits_dir, f"{split}_merged.csv")
-            
+            save_path = os.path.join(self.merged_splits_dir, f"solarwind_{split}.parquet")
+
             if os.path.exists(save_path):
                 logger.info(f"Loading existing merged {split} data from {save_path}")
             else:
@@ -325,12 +328,12 @@ class SWDataModule(SDOMLDataModule):
                         df_psp["time"] - df_psp[self.cfg.data.propagation_type]
                     )
                     df_psp.sort_values(by="time_sdo_loc_est", inplace=True)
-                
+
                 merged_df = _merge_and_filter(ds.aligndata, df_psp)
-                merged_df.to_csv(save_path)
+                merged_df.to_parquet(save_path)
                 logger.info(f"Generated and saved merged {split} data to {save_path}")
-            
-            # Re-instantiate SWDataset with CSV path
+
+            # Re-instantiate SWDataset with Parquet path
             setattr(
                 self,
                 f"{split}_ds",

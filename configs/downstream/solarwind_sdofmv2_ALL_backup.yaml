@@ -4,12 +4,26 @@ experiment:
   model: mae
   task: finetune
   head_task: classification # regression
+  # model design
+  head: skip_linear  # transformer, linear, skip_linear ...
+  dropout_p: 0.1
+  skips: [4]
+  include_raw_coordinates: False
+  num_hidden_layers: 8
   file_format: blosc # h5, blosc, zarr
+  transformer:
+    nhead: 4
+  linear:
+    hidden_dim: 256
+  head_input: 
+    path: /mnt/local_ssd/cache # or "/mnt/sdoml" if working with images instead of embeddings
+    filename: sdofm_mae_embeddings_20250811.h5 # null or '' if working with images instead of embeddings
+  resuming: false # for foundation mode, be carefule with is_backbone
   backbone:
     model: mae
     is_backbone: true
-    ckpt_dir: ./assets/checkpoints/backbone/ALL
-    weight_name: id_qu7tsc5c_mae_epoch=113-val_loss=0.07.ckpt
+    ckpt_dir: ./assets/check_point/backbone/AIA
+    weight_name: id_qu7tsc5c_mae_epoch=1-val_loss=1.32.ckpt
     weights_only: false
     freeze: true
     unfreeze_epoch: 2
@@ -20,14 +34,37 @@ experiment:
     ckpt_dir: ./assets/checkpoints/solarwind_cls/
     ckpt_name: null
     weights_only: false
+  
+# lightning trainer & callbacks
+  trainer:
+    accelerator: gpu # "cpu", "mps", "auto"
+    devices: [0] # "auto", 1, [0, 2], etc
+    strategy: auto # multi-gpu: ddp_find_unused_parameters_true, single-gpu: "auto"
+    precision: 32 # "16-mixed", "32-true", "32-float", "16-mixed", etc
+    profiler: simple # options are 'XLAProfiler' (TPU), 'PyTorchProfiler', warning: PyTorchProfiler only works on cpu/gpu according to docs
+    max_epochs: 30 # number of epochs to train for
+    log_every_n_steps: 10
+    check_val_every_n_epoch: 1
+    limit_train_batches: 1.0  #0.05
+    limit_val_batches: 1.0
+    limit_test_batches: 1.0
+    limit_predict_batches: 1.0
+    gradient_clip_val: 1.0
+    gradient_clip_algorithm: norm
+    ckpt_monitor: val_loss
+  
+  #embedding
+  #hardware condition
   seed: 0
-
+  disable_cuda: false
+  plt_style: classification/solar_wind.mplstyle
+  
   wandb:
     enable: true
     name: solarwind-ALL-base
     run_id: null
     entity: allshaman
-    project: sdofmv2-solarwind-cls 
+    project: sdofmv2-solarwand-cls 
     group: sdofmv2
     job_type: finetune
     tags: []
@@ -36,11 +73,13 @@ experiment:
     log_model: false             # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
     offline: true
   fold: null
+  evaluate: false               # skip training and only evaluate (requires checkpoint to be set)
   precision: 32
+  log_every_n_steps: 1
   accelerator: gpu
   distributed:
     enabled: true
-    devices: [0]
+    devices: [1]
 
 # Dataset Configuration
 data:  
@@ -60,15 +99,15 @@ data:
 
   # index path
   index_save_path: ./assets/cache/solarwind/
-  train_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2019-01-0100:00:00-2023-12-3123:59:59_aligndata_train.csv
-  val_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2019-01-0100:00:00-2023-12-3123:59:59_aligndata_val.csv
-  test_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2019-01-0100:00:00-2023-12-3123:59:59_aligndata_test.csv
+  train_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv
+  val_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv
+  test_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv
   hmi_mask: ./assets/cache/hmi_mask_512x512.npy
   normalization_stat_path: ./assets/cache/solarwind/
 
   num_workers: 8               # set appropriately for your machine
   pin_memory: false
-  prefetch_factor: 1
+  prefetch_factor: 2
   persistent_workers: false
   multiprocessing_context: spawn
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
@@ -115,16 +154,7 @@ data:
 
 # model configurations
 model:
-  head:
-    type: skip_linear  # transformer, linear, skip_linear ...
-    dropout_p: 0.1
-    skips: [4]
-    num_hidden_layers: 8
-    transformer:
-      nhead: 4
-    linear:
-      hidden_dim: 256
-    include_raw_coordinates: False
+  # classifier
   linear:
     d_input: 524800 # 513*512 : CLS token + [512x512] embeddings from MAE encoder block
     num_classes: 4
@@ -183,20 +213,13 @@ model:
       gamma: 0.95
     
   misc:
+    limb_mask: false
+    epochs: 100
     batch_size: 16
-    ckpt_monitor: val_loss
-    
-    # for trainer
-    max_epochs: 30 # number of epochs to train for
-    log_every_n_steps: 1
-    check_val_every_n_epoch: 1
-    limit_train_batches: 1.0  #0.05
-    limit_val_batches: 1.0
-    limit_test_batches: 1.0
-    limit_predict_batches: 1.0
-    gradient_clip_val: 1.0
-    gradient_clip_algorithm: norm
     accumulate_grad_batches: 16
+    limit_train_batches: null
+    gradient_clip_algorithm: norm
+    gradient_clip_val: 1.0
 
 etc:
   mpl_style: ./solar_wind.mplstyle

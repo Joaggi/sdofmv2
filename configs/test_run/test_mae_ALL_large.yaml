@@ -32,7 +32,7 @@ experiment:
   distributed:
     enabled: true
     devices: [1] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
-
+  save_test_results_csv: ./assets/test_results/sdofmv2-large-all-test-results.csv
 # dataset configuration
 data:
   # data split information

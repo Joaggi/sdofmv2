@@ -360,9 +360,9 @@ def calc_normalizations(
             "EVE",
             ions,
             hmi_mask,
-            components,
-            wavelengths,
-            training_years,
+            # components,
+            # wavelengths,
+            # training_years,
             normalization_cfg,
             cache_id,
             cache_dir,
@@ -375,9 +375,9 @@ def calc_normalizations(
             "AIA",
             wavelengths,
             hmi_mask,
-            components,
-            wavelengths,
-            training_years,
+            # components,
+            # wavelengths,
+            # training_years,
             normalization_cfg,
             cache_id,
             cache_dir,
@@ -390,9 +390,9 @@ def calc_normalizations(
             "HMI",
             components,
             hmi_mask,
-            components,
-            wavelengths,
-            training_years,
+            # components,
+            # wavelengths,
+            # training_years,
             normalization_cfg,
             cache_id,
             cache_dir,
@@ -407,9 +407,9 @@ def _compute_data_statistic(
     instrument,
     channels,
     hmi_mask,
-    components,
-    wavelengths,
-    training_years,
+    # components,
+    # wavelengths,
+    # training_years,
     normalization_cfg,
     cache_id,
     cache_dir,
@@ -469,7 +469,7 @@ def _compute_data_statistic(
 
             # put nan to limb
             if hmi_mask is not None:
-                mask_expanded = hmi_mask.cpu().numpy()[None, :, :].astype(bool)
+                mask_expanded = hmi_mask[None, :, :].astype(bool)
                 ch_data_year = da.where(
                     mask_expanded == 1, ch_data_year, np.nan
                 )  # outter area to nan
@@ -487,10 +487,10 @@ def _compute_data_statistic(
             ch_data = ch_data * scaler_factor if scaler_factor is not None else ch_data
             ch_data = da.sign(ch_data) * da.log1p(da.abs(ch_data))
 
-        elif normalization_cfg.type == "zscore" and normalization_cfg.clipping.enabled:
-            low, high = normalization_cfg.clipping[ch]
-            if normalization_cfg.clipping.enabled:
-                ch_data = da.clip(ch_data, low, high)
+        # elif normalization_cfg.type == "zscore" and normalization_cfg.clipping.enabled:
+        #     low, high = normalization_cfg.clipping[ch]
+        #     if normalization_cfg.clipping.enabled:
+        #         ch_data = da.clip(ch_data, low, high)
 
         logger.info(f"\nCalculating normalizations for wavelength {ch}:")
         logger.info("-" * 50)

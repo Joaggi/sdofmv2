@@ -25,8 +25,8 @@ from sdofmv2.utils import ALL_COMPONENTS, ALL_WAVELENGTHS, flatten_dict
 
 @hydra.main(
     version_base=None,
-    config_path="../configs/downstream/",
-    config_name="finetune_solarwind_config.yaml",
+    config_path="../../configs/downstream/",
+    config_name="solarwind_sdofmv2_ALL.yaml",
 )
 def main(cfg):
     """Executes the fine-tuning pipeline for the solar wind classification task.
@@ -92,11 +92,10 @@ def main(cfg):
         frequency=cfg.data.sdoml.frequency,
         batch_size=cfg.model.misc.batch_size,
         num_workers=cfg.data.num_workers,
-        cache_dir=os.path.join(cfg.data.sdoml.save_directory, cfg.data.sdoml.sub_directory.cache),
         apply_mask=cfg.data.sdoml.apply_mask,
         num_frames=cfg.data.num_frames,
         drop_frame_dim=cfg.data.drop_frame_dim,
-        precision=cfg.experiment.trainer.precision,
+        precision=cfg.experiment.precision,
         normalization=cfg.data.sdoml.normalization,
         normalization_stat_path=cfg.data.normalization_stat_path,
         cfg=cfg,
@@ -113,7 +112,6 @@ def main(cfg):
         merged_splits_dir=cfg.data.index_save_path,
         hmi_mask_path=cfg.data.hmi_mask,
     )
-    data_module.setup()
 
     # Define channels for input/model
     aia_list = (
@@ -136,7 +134,7 @@ def main(cfg):
     if cfg.experiment.backbone.is_backbone:
         backbone = MAE.load_from_checkpoint(
             checkpoint_path=os.path.join(
-                cfg.experiment.backbone.ckpt_dir, cfg.experiment.backbone.ckpt_name
+                cfg.experiment.backbone.ckpt_dir, cfg.experiment.backbone.weight_name
             ),
             map_location="cpu",
             weights_only=cfg.experiment.backbone.weights_only,
@@ -155,13 +153,16 @@ def main(cfg):
         num_classes=cfg.model.linear.num_classes,
         class_names=cfg.data.class_names,
         channels=channels,
-        head_type=cfg.experiment.head,
-        hidden_dim=cfg.experiment.linear.hidden_dim,
-        p_drop=cfg.experiment.dropout_p,
-        nhead=cfg.experiment.transformer.nhead,
+        head_type=cfg.model.head.type,
+        hidden_dim=cfg.model.head.linear.hidden_dim,
+        p_drop=cfg.model.head.dropout_p,
+        nhead=cfg.model.head.transformer.nhead,
         embed_dim=cfg.model.mae.embed_dim,
         max_position_element=cfg.model.linear.max_position_element,
         position_size=len(cfg.data.in_situ.latlon_parameters),
+        skips=cfg.model.head.skips,
+        include_raw_coordinates=cfg.model.head.include_raw_coordinates,
+        num_hidden_layers=cfg.model.head.num_hidden_layers,
         # backbone
         backbone=backbone,
         freeze_encoder=cfg.experiment.backbone.freeze,
@@ -179,11 +180,11 @@ def main(cfg):
         ModelCheckpoint(
             dirpath=cfg.experiment.downstream_model.ckpt_dir,
             filename=(
-                f"id_{logger.experiment.id}_{cfg.experiment.backbone.model}_{cfg.experiment.head}_"
+                f"id_{logger.experiment.id}_{cfg.experiment.backbone.model}_{cfg.model.head.type}_"
                 "{epoch}-{val_loss:.2f}-{val_f1:.2f}"
             ),
             verbose=True,
-            monitor=cfg.experiment.trainer.ckpt_monitor,
+            monitor=cfg.model.misc.ckpt_monitor,
             mode="min",
             save_top_k=3,
             save_weights_only=False,
@@ -195,20 +196,19 @@ def main(cfg):
     ]
 
     trainer = Trainer(
-        accelerator=cfg.experiment.trainer.accelerator,
-        devices=cfg.experiment.trainer.devices,
-        strategy=cfg.experiment.trainer.strategy,
-        max_epochs=cfg.experiment.trainer.max_epochs,
-        precision=cfg.experiment.trainer.precision,
+        accelerator=cfg.experiment.accelerator,
+        devices=cfg.experiment.distributed.devices,
+        max_epochs=cfg.model.misc.max_epochs,
+        precision=cfg.experiment.precision,
         callbacks=callbacks,
-        profiler=cfg.experiment.trainer.profiler,
-        check_val_every_n_epoch=cfg.experiment.trainer.check_val_every_n_epoch,
-        log_every_n_steps=cfg.experiment.trainer.log_every_n_steps,
+        # profiler=cfg.model.misc.profiler,
+        check_val_every_n_epoch=cfg.model.misc.check_val_every_n_epoch,
+        log_every_n_steps=cfg.model.misc.log_every_n_steps,
         logger=logger,
-        limit_train_batches=cfg.experiment.trainer.limit_train_batches,
-        limit_val_batches=cfg.experiment.trainer.limit_val_batches,
-        limit_test_batches=cfg.experiment.trainer.limit_test_batches,
-        limit_predict_batches=cfg.experiment.trainer.limit_predict_batches,
+        limit_train_batches=cfg.model.misc.limit_train_batches,
+        limit_val_batches=cfg.model.misc.limit_val_batches,
+        limit_test_batches=cfg.model.misc.limit_test_batches,
+        limit_predict_batches=cfg.model.misc.limit_predict_batches,
         accumulate_grad_batches=cfg.model.misc.accumulate_grad_batches,
     )
 

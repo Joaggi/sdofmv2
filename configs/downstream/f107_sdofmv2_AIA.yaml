@@ -5,14 +5,14 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/AIA/
-    weight_name: id_2bs2j2u8_mae_epoch=41-val_loss=0.04.ckpt # AIA_MSEloss_epoch=171-val_loss=0.00.ckpt
+    weight_name: id_2bs2j2u8_mae_epoch=71-val_loss=0.03.ckpt # AIA_MSEloss_epoch=171-val_loss=0.00.ckpt
     weights_only: false
     freeze: true
   seed: 0
   disable_cuda: false
   wandb:
     enable: true
-    name: f10.7-AIA-base
+    name: f10.7-AIA-base-ep71-inner-disk
     run_id: null
     entity: allshaman
     project: sdofmv2-downstream-f10.7
@@ -28,9 +28,9 @@ experiment:
   # save checkpoints/results
   ds_ckpt_dir: ./assets/checkpoints/f107
   output_dir: ./assets/ds_results/f107/
-  ckpt_tag: sdofmv2-aia
+  ckpt_tag: sdofmv2-aia-ep71
   ckpt_filename: null
-  test_results_filename: test_results_AIA-base.csv
+  test_results_filename: f107_results_AIA-base-ep71-inner-disk.csv
 
   # Dataloader
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
@@ -97,6 +97,7 @@ data:
       enabled: true
       type: log #log, zscore, min-max
       scaler_factor: 1
+      norm: true
 
 # model configurations
 model:
@@ -119,7 +120,7 @@ model:
     mask_only_inner: false
 
   head:
-    pooling_type: "mean_max"
+    pooling_type: "disk_masked_mean_max"
     input_dim: 1536
     mask_ratio: 0.0
     output_dim: 1

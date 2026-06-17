@@ -15,8 +15,7 @@ from omegaconf import DictConfig, OmegaConf
 import lightning.pytorch as pl
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
-
-from sdofmv2.core import SDOMLDataModule, MAE
+from sdofmv2.core import SDOMLDataModule, MAE, MAE_old
 from sdofmv2.tasks.missing_data import MissingDataModel
 
 
@@ -100,22 +99,35 @@ def main(cfg: DictConfig):
     # load checkpoint
     ckpt_path = os.path.join(cfg.experiment.backbone.ckpt_dir, cfg.experiment.backbone.weight_name)
     
-    try:
-        backbone = MAE.load_from_checkpoint(ckpt_path, weights_only=False, map_location="cpu")
+    if cfg.experiment.backbone.model == "mae_old":
+        backbone = MAE_old.load_from_checkpoint(
+            checkpoint_path=ckpt_path,
+            map_location="cpu",
+            weights_only=False,
+            optimizer_dict=cfg.model.optimizer,
+            scheduler_dict=cfg.model.scheduler,
+        )
+    else:
+        try:
+            backbone = MAE.load_from_checkpoint(
+                checkpoint_path=ckpt_path,
+                map_location="cpu",
+                weights_only=False,
+            )
 
-    except Exception as e:
-        print(f"Standard loading failed: {e}. Falling back to manual load...")
-        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-        hyper_parameters = ckpt["hyper_parameters"]
+        except Exception as e:
+            print(f"Standard loading failed: {e}. Falling back to manual load...")
+            ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+            hyper_parameters = ckpt["hyper_parameters"]
 
-        # Get MAE.__init__ argument names (excluding self)
-        valid_args = set(inspect.signature(MAE.__init__).parameters.keys()) - {"self"}
+            # Get MAE.__init__ argument names (excluding self)
+            valid_args = set(inspect.signature(MAE.__init__).parameters.keys()) - {"self"}
 
-        # Keep only parameters accepted by MAE
-        model_hparams = {k: v for k, v in hyper_parameters.items() if k in valid_args}
-        model_hparams["loss_dict"] =  cfg.model.loss
-        backbone = MAE(**model_hparams)
-        backbone.load_state_dict(ckpt["state_dict"], strict=False)
+            # Keep only parameters accepted by MAE
+            model_hparams = {k: v for k, v in hyper_parameters.items() if k in valid_args}
+
+            backbone = MAE(**model_hparams)
+            backbone.load_state_dict(ckpt["state_dict"], strict=False)
 
     # Create MissingDataModel
     lgr_logger.info("Creating MissingDataModel...")

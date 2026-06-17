@@ -150,7 +150,7 @@ class Pretrainer:
         )
         # self.data_module.setup()
 
-        model_hyperparams = {
+        self.model_hyperparams = {
             **cfg.model.mae,
             "chan_types": self.chan_types,
             "limb_mask": torch.Tensor(np.load(self.cfg.data.hmi_mask)),
@@ -160,7 +160,7 @@ class Pretrainer:
             "save_test_results_csv": self.cfg.experiment.save_test_results_csv,
         }
 
-        self.model = self.load_from_ckpt(model_hyperparams)
+        self.model = self.load_from_ckpt(self.model_hyperparams)
 
     def run(self):
         """Executes the pre-training loop.
@@ -188,12 +188,40 @@ class Pretrainer:
 
     def test(self):
         """Runs the test loop on the test set."""
-        self.trainer.test(
-            model=self.model,
-            datamodule=self.data_module,
-            ckpt_path=self.ckpt_path,
-            weights_only=False,
-        )
+        try:
+            self.trainer.test(
+                model=self.model,
+                datamodule=self.data_module,
+                ckpt_path=self.ckpt_path,
+                weights_only=False,
+            )
+
+        except Exception as e:
+            print(f"Standard loading failed: {e}. Falling back to manual load...")
+            ckpt = torch.load(self.ckpt_path, map_location="cpu", weights_only=False)
+            hyper_parameters = ckpt["hyper_parameters"]
+            extra = {
+                "chan_types": self.chan_types,
+                "limb_mask": torch.Tensor(np.load(self.cfg.data.hmi_mask)),
+                "loss_dict": self.cfg.model.loss,
+                "optimizer_dict": self.cfg.model.optimizer,
+                "scheduler_dict": self.cfg.model.scheduler,
+                "save_test_results_csv": self.cfg.experiment.save_test_results_csv,
+            }
+            model_hparams = {**self.model_hyperparams, **hyper_parameters, **extra}
+            model = MAE(
+                **model_hparams,
+            )
+            ckpt["state_dict"].pop("autoencoder.ids_limb_mask", None)
+            model.load_state_dict(ckpt["state_dict"], strict=False)
+
+            # test run
+            self.trainer.test(
+                model=self.model,
+                datamodule=self.data_module,
+                ckpt_path=self.ckpt_path,
+                weights_only=False,
+            )
 
     def load_from_ckpt(self, model_hyperparams):
         model = MAE(**model_hyperparams)

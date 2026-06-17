@@ -3,9 +3,9 @@ experiment:
   model: mae
   backbone:
     model: mae
-    is_backbone: false
+    is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/HMI/
-    weight_name: id_mycczy8p_mae_epoch=299-val_loss=0.03.ckpt
+    weight_name: id_mycczy8p_mae_epoch=299-val_loss=0.03v1.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
@@ -15,7 +15,7 @@ experiment:
     name: mae-pretrain-hmi # generate random name in wandb
     run_id: null
     entity: allshaman
-    project: sdofmv2
+    project: sdofmv2-test
     group: ""
     job_type: pretrain
     tags: []
@@ -32,7 +32,7 @@ experiment:
   distributed:
     enabled: true
     devices: [0] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
-
+  save_test_results_csv: ./assets/test_results/sdofmv2-hmi-test-results.csv
 # dataset configuration
 data:
   min_date: 2010-05-01 00:00:00  # NOT IMPLEMENTED # minimum is '2010-09-09 00:00:11.08'
@@ -66,7 +66,7 @@ data:
   drop_frame_dim: false
   # output_directory: "wandb_output"
   sdoml:
-    base_directory: /mnt/baobab
+    base_directory: /mnt/jade
     sub_directory:
       hmi: HMI.zarr
       aia: null
@@ -85,7 +85,7 @@ data:
       enabled: true
       type: log #log, zscore, min-max
       scaler_factor: 0.01
-      norm: true
+      norm: false
 
 
 # model configurations
@@ -106,7 +106,7 @@ model:
     mlp_ratio: 4.0
     norm_layer: LayerNorm
     masking_ratio: 0.25
-    mask_only_inner: false
+    mask_only_inner: true
 
   # for loss
   loss:

@@ -8,8 +8,8 @@ experiment:
   backbone:
     model: mae
     is_backbone: true
-    ckpt_dir: ./assets/checkpoints/backbone/ALL
-    weight_name: id_qu7tsc5c_mae_epoch=113-val_loss=0.07.ckpt
+    ckpt_dir: ./assets/check_point/backbone/AIA
+    weight_name: id_qu7tsc5c_mae_epoch=1-val_loss=1.32.ckpt
     weights_only: false
     freeze: true
     unfreeze_epoch: 2
@@ -27,7 +27,7 @@ experiment:
     name: solarwind-ALL-base
     run_id: null
     entity: allshaman
-    project: sdofmv2-solarwind-cls 
+    project: sdofmv2-solarwand-cls 
     group: sdofmv2
     job_type: finetune
     tags: []
@@ -40,7 +40,7 @@ experiment:
   accelerator: gpu
   distributed:
     enabled: true
-    devices: [0]
+    devices: [1]
 
 # Dataset Configuration
 data:  
@@ -60,15 +60,15 @@ data:
 
   # index path
   index_save_path: ./assets/cache/solarwind/
-  train_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2019-01-0100:00:00-2023-12-3123:59:59_aligndata_train.csv
-  val_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2019-01-0100:00:00-2023-12-3123:59:59_aligndata_val.csv
-  test_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2019-01-0100:00:00-2023-12-3123:59:59_aligndata_test.csv
+  train_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv
+  val_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv
+  test_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv
   hmi_mask: ./assets/cache/hmi_mask_512x512.npy
   normalization_stat_path: ./assets/cache/solarwind/
 
   num_workers: 8               # set appropriately for your machine
   pin_memory: false
-  prefetch_factor: 1
+  prefetch_factor: 2
   persistent_workers: false
   multiprocessing_context: spawn
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE

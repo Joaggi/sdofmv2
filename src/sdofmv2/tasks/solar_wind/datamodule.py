@@ -165,7 +165,6 @@ class SWDataModule(SDOMLDataModule):
         frequency (str): Sampling frequency of the instruments.
         batch_size (int): Number of samples per batch. Defaults to 32.
         num_workers (int): Number of subprocesses for data loading.
-        cache_dir (str): Directory for temporary data.
         apply_mask (bool): Whether to apply the limb mask to spatial data.
         num_frames (int): Temporal frames per sample.
         drop_frame_dim (bool): Whether to squeeze the temporal dimension.
@@ -202,7 +201,6 @@ class SWDataModule(SDOMLDataModule):
         frequency,
         batch_size: int = 32,
         num_workers=None,
-        cache_dir="",
         apply_mask=True,
         num_frames=1,
         drop_frame_dim=False,
@@ -320,11 +318,11 @@ class SWDataModule(SDOMLDataModule):
                     df_psp.dropna(
                         subset=self.radial_parameters + self.latlon_parameters, inplace=True
                     )
-                    df_psp[self.cfg.experiment.propagation_type] = df_psp[
-                        self.cfg.experiment.propagation_type
+                    df_psp[self.cfg.data.propagation_type] = df_psp[
+                        self.cfg.data.propagation_type
                     ].apply(lambda x: pd.Timedelta(x, unit="seconds"))
                     df_psp["time_sdo_loc_est"] = (
-                        df_psp["time"] - df_psp[self.cfg.experiment.propagation_type]
+                        df_psp["time"] - df_psp[self.cfg.data.propagation_type]
                     )
                     df_psp.sort_values(by="time_sdo_loc_est", inplace=True)
                 
@@ -432,9 +430,6 @@ def main(cfg):
         frequency=cfg.data.sdoml.frequency,
         batch_size=cfg.model.misc.batch_size,
         num_workers=cfg.data.num_workers,
-        cache_dir=os.path.join(
-            cfg.data.sdoml.save_directory, cfg.data.sdoml.sub_directory.cache
-        ),
         num_frames=cfg.data.num_frames,
         drop_frame_dim=cfg.data.drop_frame_dim,
         radial_parameters=cfg.data.in_situ.radial_parameters,

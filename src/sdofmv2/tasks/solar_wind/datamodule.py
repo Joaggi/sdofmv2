@@ -221,6 +221,7 @@ class SWDataModule(SDOMLDataModule):
         random_state=None,
         merged_splits_dir="",
         hmi_mask_path="hmi_mask_512x512.npy",
+        merged_file_prefix="solarwind",
     ):
         self.hmi_mask_path = hmi_mask_path
         super().__init__(
@@ -259,6 +260,7 @@ class SWDataModule(SDOMLDataModule):
         self.frequency = frequency
         self.hmi_mask_path = hmi_mask_path
         self.merged_splits_dir = merged_splits_dir
+        self.merged_file_prefix = merged_file_prefix
         os.makedirs(self.merged_splits_dir, exist_ok=True)
 
     def setup(self, stage=None):
@@ -302,7 +304,7 @@ class SWDataModule(SDOMLDataModule):
         # Process splits
         df_psp = None
         for split, ds in [("train", self.train_ds), ("val", self.valid_ds), ("test", self.test_ds)]:
-            save_path = os.path.join(self.merged_splits_dir, f"solarwind_{split}.parquet")
+            save_path = os.path.join(self.merged_splits_dir, f"{self.merged_file_prefix}_{split}.parquet")
 
             if os.path.exists(save_path):
                 logger.info(f"Loading existing merged {split} data from {save_path}")
@@ -442,6 +444,7 @@ def main(cfg):
         sampling_ratio=cfg.data.under_sampling.ratio,
         random_state=cfg.data.under_sampling.random_state,
         cfg=cfg,
+        merged_file_prefix=cfg.data.get("merged_file_prefix", "solarwind"),
     )
     datamodule.setup()
     # Check dataset and data alignment

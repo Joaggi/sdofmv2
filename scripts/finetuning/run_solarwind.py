@@ -111,6 +111,7 @@ def main(cfg):
         test_index=cfg.data.test_index,
         merged_splits_dir=cfg.data.index_save_path,
         hmi_mask_path=cfg.data.hmi_mask,
+        merged_file_prefix=cfg.data.get("merged_file_prefix", "solarwind"),
     )
 
     # Define channels for input/model

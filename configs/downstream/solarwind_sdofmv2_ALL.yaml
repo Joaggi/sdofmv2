@@ -34,7 +34,7 @@ experiment:
     notes: ALL-base
     output_directory: ./assets/wandb
     log_model: false             # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
-    offline: true
+    offline: false
   fold: null
   precision: 32
   accelerator: gpu
@@ -126,7 +126,7 @@ model:
       hidden_dim: 256
     include_raw_coordinates: False
   linear:
-    d_input: 524800 # 513*512 : CLS token + [512x512] embeddings from MAE encoder block
+    # d_input: 524800 # 513*512 : CLS token + [512x512] embeddings from MAE encoder block
     num_classes: 4
     max_position_element: 32
   

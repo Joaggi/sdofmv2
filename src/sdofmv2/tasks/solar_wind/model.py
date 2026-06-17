@@ -84,12 +84,12 @@ class SWClassifier(BaseModule):
         self.backbone = backbone
         self.mask_ratio = self.backbone.masking_ratio
         self.input_feature_dim = int(
-            self.backbone.hparams.embed_dim * (550) * self.mask_ratio
+            self.backbone.hparams.embed_dim * 1024 * (1-self.mask_ratio)
         )
         self.plt_style = plt_style
         self.num_classes = num_classes
         self.class_names = class_names
-        self.channels = sorted(channels)
+        self.channels = channels
         self.id_193 = self.channels.index("193A") if "193A" in self.channels else None
         self.max_position_element = max_position_element
         self.head_type = head_type
@@ -204,9 +204,9 @@ class SWClassifier(BaseModule):
         Returns:
             torch.Tensor: Class logits of shape (B, num_classes).
         """
-        latent, mask, ids_restore = self.backbone.forward_encoder(x, self.mask_ratio)
+        latent, mask, ids_restore = self.backbone.autoencoder.forward_encoder(x, self.mask_ratio)
         # head layer
-        y_hat = self.head(latent, position, r_distance)
+        y_hat = self.head(latent[:, 1:, :], position, r_distance)
 
         return y_hat
 

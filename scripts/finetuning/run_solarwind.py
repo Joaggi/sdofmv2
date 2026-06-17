@@ -138,13 +138,21 @@ def main(cfg):
             ),
             map_location="cpu",
             weights_only=cfg.experiment.backbone.weights_only,
+            masking_ratio=cfg.model.mae.masking_ratio
         )
 
     else:
-        backbone = MAE(
+        model_hyperparams = {
             **cfg.model.mae,
-            chan_types=channels,
-            limb_mask=torch.Tensor(np.load(cfg.data.hmi_mask)) if cfg.model.misc.get("limb_mask", False) else None,
+            "chan_types": channels,
+            "limb_mask": torch.Tensor(np.load(cfg.data.hmi_mask)),
+            "loss_dict": cfg.model.loss,
+            "optimizer_dict": cfg.model.optimizer,
+            "scheduler_dict": cfg.model.scheduler,
+            "save_test_results_csv": cfg.experiment.save_test_results_csv,
+        }
+        backbone = MAE(
+            **model_hyperparams
         )
 
     # Downstream model

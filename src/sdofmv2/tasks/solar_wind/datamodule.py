@@ -125,7 +125,7 @@ class SWDataset(SDOMLDataset):
     def __getitem__(self, idx):
         # start = time.time()
         label = self.aligndata.iloc[idx, self.id_label].astype("int64")  # make it start from 0
-        position = np.radians(self.aligndata.iloc[idx, self.position_list].values)
+        position = np.radians(self.aligndata.iloc[idx, self.position_list].to_numpy(dtype=np.float32))
         r_distance = self.aligndata.iloc[idx, self.r_dist_list].to_numpy(dtype=np.float32)
         timestamps = self.aligndata.index[idx].value
 
@@ -368,7 +368,7 @@ class SWDataModule(SDOMLDataModule):
 
     def val_dataloader(self):
         return torch.utils.data.DataLoader(
-            self.valid_ds,
+            self.val_ds,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             shuffle=True,  # shuffle true for visualization

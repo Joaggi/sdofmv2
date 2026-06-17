@@ -38,6 +38,7 @@ class MAE(BaseModule):
         loss_dict: Configuration for reconstruction losses.
         optimizer_dict: Configuration for the optimizer.
         scheduler_dict: Configuration for the learning rate scheduler.
+        noise: Percentage of added noise (by default 0)
         *args: Variable length argument list passed to BaseModule.
         **kwargs: Arbitrary keyword arguments passed to BaseModule.
 
@@ -88,6 +89,7 @@ class MAE(BaseModule):
         scheduler_dict=None,
         save_test_results_csv=None,
         zarr_path="embeddings.zarr",
+        noise=0.0,
         # pass to BaseModule
         *args,
         **kwargs,
@@ -112,6 +114,7 @@ class MAE(BaseModule):
         self.test_results = []
         self.zarr_path = zarr_path
         self.save_test_results_csv = save_test_results_csv
+        self.noise = noise
 
         # compute limb_mask_ids
         limb_mask_ids = None
@@ -145,6 +148,7 @@ class MAE(BaseModule):
             limb_mask_ids,
             loss_dict,
             chan_types=self.chan_types,
+            noise=self.noise
         )
 
     def forward(self, x, mask_ratio=None):

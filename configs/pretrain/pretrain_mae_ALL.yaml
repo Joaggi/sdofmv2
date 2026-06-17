@@ -5,14 +5,14 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_qu7tsc5c_mae_epoch=104-val_loss=0.07.ckpt
-    weights_only: false
+    weight_name: id_buewhmpk_mae_epoch=5-step=4900-val_loss=0.05.ckpt
+    weights_only: true
   seed: 0
   disable_cuda: false
   
   wandb:
     enable: true
-    name: mae-pretrain-all-resume-mse
+    name: mae-pretrain-all-bright_path_weighted_loss-huber-base-wo-mask
     run_id: null
     entity: allshaman
     project: sdofmv2
@@ -105,8 +105,9 @@ model:
     decoder_num_heads: 16
     mlp_ratio: 4.0
     norm_layer: LayerNorm
-    masking_ratio: 0.5
+    masking_ratio: 0.0
     mask_only_inner: false
+    noise: 0.0 # added noise, by default 0
 
   # for loss
   loss:
@@ -114,9 +115,9 @@ model:
     type: bright_patch_weighted_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
     bright_patch_weighted_loss:
       weight_inner: 1.0
-      weight_outer_bright: 1.0
-      weight_outer_dark: 0.01
-      zero_threshold: 0.9
+      weight_outer_bright: 0.2
+      weight_outer_dark: 0.05
+      zero_threshold: 0.95
       base_type: huber
       huber_delta: 1.0
       corner_size: 4

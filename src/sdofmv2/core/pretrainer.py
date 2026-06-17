@@ -66,6 +66,21 @@ class Pretrainer:
                 save_weights_only=False,
                 enable_version_counter=True,
             ),
+            ModelCheckpoint(
+                dirpath=cfg.experiment.backbone.ckpt_dir,
+                filename=(
+                    f"id_{logger.experiment.id}_{cfg.experiment.model}_{{epoch}}-{{step}}-{{val_loss:.2f}}"
+                ),
+                verbose=True,
+                monitor="train_loss",
+                mode="min",
+                save_top_k=10,              # save all checkpoints
+                save_last=True,
+                save_weights_only=False,
+                enable_version_counter=True,
+                every_n_train_steps=100,   # save every 100 optimizer steps -> accum * number
+                save_on_train_epoch_end=False,
+            ),
             Timer(),
             RichProgressBar(),
             LearningRateMonitor(logging_interval="step"),

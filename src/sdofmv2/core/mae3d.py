@@ -145,6 +145,7 @@ class MaskedAutoencoderViT3D(nn.Module):
         loss_dict (dict): Configuration dictionary specifying the loss
             space (e.g., "patch" or "pixel"), loss type (e.g., "mse", "mae"), and
             other loss-specific hyperparameters. Defaults to an empty dict.
+        noise: Percentage of added noise (by default 0)
     """
 
     def __init__(
@@ -166,6 +167,7 @@ class MaskedAutoencoderViT3D(nn.Module):
         ids_limb_mask=None,
         loss_dict=None,
         chan_types=None,
+        noise=0.0,
     ):
         super().__init__()
         self.img_size = img_size
@@ -173,6 +175,7 @@ class MaskedAutoencoderViT3D(nn.Module):
         self.num_frames = num_frames
         self.tubelet_size = tubelet_size
         self.chan_types = chan_types
+        self.noise = noise
         self.loss_dict = loss_dict if loss_dict is not None else {}
 
         # define loss
@@ -410,6 +413,12 @@ class MaskedAutoencoderViT3D(nn.Module):
         return x_masked, mask, ids_restore
 
     def forward_encoder(self, x, mask_ratio):
+
+        mean = 0.0
+        std = self.noise
+
+        noise = torch.randn_like(x) * std + mean
+        x = x + noise
         # embed patches
         x = self.patch_embed(x)
         # print("patch_embed dim", x.shape)

@@ -8,7 +8,6 @@ from sdofmv2.core.mae3d import MaskedAutoencoderViT3D
 from sdofmv2.core.reconstruction import compute_metrics_pytorch
 from sdofmv2.utils import spatial_to_patch_mask, unpatchify
 from sdofmv2.utils.constants import ALL_WAVELENGTHS
-from sdofmv2.core.datamodule import inverse_log_norm, inverse_zscore_norm
 
 
 class MAE(BaseModule):
@@ -96,9 +95,9 @@ class MAE(BaseModule):
         **kwargs,
     ):
         super().__init__(
+            *args,
             optimizer_dict=optimizer_dict if optimizer_dict is not None else {},
             scheduler_dict=scheduler_dict if scheduler_dict is not None else {},
-            *args,
             **kwargs,
         )
         self.save_hyperparameters(ignore=["limb_mask"])
@@ -273,7 +272,78 @@ class MAE(BaseModule):
             mask_full = mask_full & (self.disk_mask.bool().unsqueeze(0).unsqueeze(1))
 
         # Compute metrics
-        step_metrics = compute_metrics_pytorch(x, x_hat_reconstructed, mask_full, self.chan_types)
+        step_metrics_norm = compute_metrics_pytorch(x, x_hat_reconstructed, mask_full, self.chan_types)
+
+        step_metrics = {}
+        for c in self.chan_types:
+            step_metrics[c] = {}
+            for met, val in step_metrics_norm[c].items():
+                step_metrics[c][f"{met}_norm"] = val
+
+        # Determine if we have datamodule and normalization stats
+        dm = getattr(self.trainer, "datamodule", None)
+
+        has_norm = False
+        try:
+            if dm is not None and getattr(dm, "normalization", None) is not None and getattr(dm, "normalization_stat", None) is not None and getattr(dm.normalization, "enabled", False):
+                has_norm = True
+        except Exception:
+            pass
+
+        if has_norm:
+            try:
+                norm_type = dm.normalization.type
+                scaler_factor = getattr(dm.normalization, "scaler_factor", None)
+                norm_bool = getattr(dm.normalization, "norm", True)
+
+                x_unnorm = torch.zeros_like(x)
+                x_hat_unnorm = torch.zeros_like(x_hat_reconstructed)
+
+                for c_idx, chan in enumerate(self.chan_types):
+                    mean = dm.normalization_stat[chan]["mean"]
+                    std = dm.normalization_stat[chan]["std"]
+
+                    if norm_type == "log":
+                        x_log = (x[:, c_idx] * (std + 1e-8)) + mean if norm_bool else x[:, c_idx]
+                        x_orig = torch.sign(x_log) * torch.expm1(torch.abs(x_log))
+                        if scaler_factor is not None:
+                            x_orig = x_orig / scaler_factor
+                        x_unnorm[:, c_idx] = x_orig
+
+                        x_hat_log = (x_hat_reconstructed[:, c_idx] * (std + 1e-8)) + mean if norm_bool else x_hat_reconstructed[:, c_idx]
+                        x_hat_orig = torch.sign(x_hat_log) * torch.expm1(torch.abs(x_hat_log))
+                        if scaler_factor is not None:
+                            x_hat_orig = x_hat_orig / scaler_factor
+                        x_hat_unnorm[:, c_idx] = x_hat_orig
+
+                    elif norm_type == "zscore":
+                        x_unnorm[:, c_idx] = x[:, c_idx] * std + mean
+                        x_hat_unnorm[:, c_idx] = x_hat_reconstructed[:, c_idx] * std + mean
+
+                    elif norm_type == "min-max":
+                        min_val = dm.normalization_stat[chan]["min"]
+                        max_val = dm.normalization_stat[chan]["max"]
+                        diff = max_val - min_val
+                        x_unnorm[:, c_idx] = x[:, c_idx] * diff + min_val
+                        x_hat_unnorm[:, c_idx] = x_hat_reconstructed[:, c_idx] * diff + min_val
+                    else:
+                        x_unnorm[:, c_idx] = x[:, c_idx]
+                        x_hat_unnorm[:, c_idx] = x_hat_reconstructed[:, c_idx]
+
+                step_metrics_unnorm = compute_metrics_pytorch(x_unnorm, x_hat_unnorm, mask_full, self.chan_types)
+                for c in self.chan_types:
+                    for met, val in step_metrics_unnorm[c].items():
+                        step_metrics[c][f"{met}_unnorm"] = val
+            except Exception as e:
+                import warnings
+                warnings.warn(f"Failed to unnormalize data: {e}", stacklevel=2)
+                for c in self.chan_types:
+                    for met, val in step_metrics_norm[c].items():
+                        step_metrics[c][f"{met}_unnorm"] = val
+        else:
+            for c in self.chan_types:
+                for met, val in step_metrics_norm[c].items():
+                    step_metrics[c][f"{met}_unnorm"] = val
 
         self.test_results.append(step_metrics)
         self.log("test_loss", loss.detach(), sync_dist=True)
@@ -283,11 +353,16 @@ class MAE(BaseModule):
         # Average metrics across samples
         averaged_metrics = {}
         metrics_names = [
-            "mse",
-            "rmse_intensity",
-            "mae",
-            "r2_score",
-            "pixel_correlation",
+            "mse_norm",
+            "rmse_intensity_norm",
+            "mae_norm",
+            "r2_score_norm",
+            "pixel_correlation_norm",
+            "mse_unnorm",
+            "rmse_intensity_unnorm",
+            "mae_unnorm",
+            "r2_score_unnorm",
+            "pixel_correlation_unnorm",
         ]
         for chan in self.chan_types:
             averaged_metrics[chan] = {}
@@ -329,24 +404,24 @@ class MAE(BaseModule):
         timestamps_np = np.array(ts_list, dtype="<U64")
 
         # Warning: Direct Zarr append in predict_step is safe for single-device prediction.
-        # For DDP (multi-GPU), consider using Trainer(devices=1) for prediction or 
+        # For DDP (multi-GPU), consider using Trainer(devices=1) for prediction or
         # implementing a custom PyTorch Lightning BasePredictionWriter to gather tensors.
         if getattr(self.trainer, "global_rank", 0) == 0:
             import zarr
             root = zarr.open_group(self.zarr_path, mode="a")
-            
+
             if "embeddings" not in root:
                 root.create_dataset(  # type: ignore
-                    "embeddings", 
-                    data=embeddings_np, 
+                    "embeddings",
+                    data=embeddings_np,
                     shape=embeddings_np.shape,
                     chunks=(1, *embeddings_np.shape[1:]),
                     dtype=embeddings_np.dtype,
                     maxshape=(None, *embeddings_np.shape[1:])
                 )
                 root.create_dataset(  # type: ignore
-                    "timestamps", 
-                    data=timestamps_np, 
+                    "timestamps",
+                    data=timestamps_np,
                     shape=timestamps_np.shape,
                     chunks=(1,),
                     dtype=timestamps_np.dtype,

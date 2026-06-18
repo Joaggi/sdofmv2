@@ -7,6 +7,7 @@ import torchmetrics.functional as functional
 from loguru import logger
 
 from sdofmv2.core import BaseModule
+from sdofmv2.utils import spatial_to_patch_mask
 
 
 class MultiLayerPerceptron(BaseModule):
@@ -60,6 +61,7 @@ class MultiLayerPerceptron(BaseModule):
         test_results_path: str = "./",
         test_results_filename: str = "test_results.csv",
         max_norm: float = 1.0,
+        limb_mask=None,
     ):
         super().__init__(optimizer_dict=optimizer_dict, scheduler_dict=scheduler_dict)
         if hidden_layer_dims is None:
@@ -79,7 +81,8 @@ class MultiLayerPerceptron(BaseModule):
 
         self.mask_ratio = mask_ratio
         self.pooling_type = pooling_type
-
+        mask_tensor = spatial_to_patch_mask(limb_mask, self.backbone.patch_size, self.backbone.num_frames)
+        self.register_buffer("patch_off_limb_mask", mask_tensor, persistent=False)
         # Detect backbone embed dim dynamically
         try:
             backbone_embed_dim = backbone.autoencoder.cls_token.shape[-1]
@@ -140,34 +143,21 @@ class MultiLayerPerceptron(BaseModule):
         patch_tokens = latent[:, 1:, :]
 
         if self.pooling_type == "disk_masked_mean_max":
-            mask_buffer = getattr(self.backbone.autoencoder, "patch_off_limb_mask", None)
-            if mask_buffer is not None and isinstance(mask_buffer, torch.Tensor):
-                # mask_buffer is True for off-limb patches
-                on_disk_weight = (~mask_buffer).float().unsqueeze(0).unsqueeze(-1)  # Shape: [1, L, 1]
-                masked_tokens = patch_tokens * on_disk_weight
-                num_on_disk = (~mask_buffer).sum().clamp(min=1)
-                x_avg = masked_tokens.sum(dim=1) / num_on_disk
+            # mask_buffer is True for off-limb patches
+            on_disk_weight = (~self.patch_off_limb_mask).float().unsqueeze(0).unsqueeze(-1)  # Shape: [1, L, 1]
+            masked_tokens = patch_tokens * on_disk_weight
+            num_on_disk = (~self.patch_off_limb_mask).sum().clamp(min=1)
+            x_avg = masked_tokens.sum(dim=1) / num_on_disk
 
-                # Fill off-limb tokens with large negative values for max pooling
-                max_tokens = patch_tokens.masked_fill(
-                    mask_buffer.unsqueeze(0).unsqueeze(-1), float("-inf")
-                )
-                x_max = max_tokens.max(dim=1).values
-                x_cls = torch.cat([x_avg, x_max], dim=-1)
-            else:
-                x_avg = patch_tokens.mean(dim=1)
-                x_max = patch_tokens.max(dim=1).values
-                x_cls = torch.cat([x_avg, x_max], dim=-1)
+            # Fill off-limb tokens with large negative values for max pooling
+            max_tokens = patch_tokens.masked_fill(
+                self.patch_off_limb_mask.unsqueeze(0).unsqueeze(-1), float("-inf")
+            )
+            x_max = max_tokens.max(dim=1).values
+            x_cls = torch.cat([x_avg, x_max], dim=-1)
+
         elif self.pooling_type == "cross_attention":
             q = self.query.expand(patch_tokens.shape[0], -1, -1)
-            # mask_buffer = getattr(self.backbone.autoencoder, "patch_off_limb_mask", None)
-            # if mask_buffer is not None and isinstance(mask_buffer, torch.Tensor):
-            #     # key_padding_mask expects a boolean tensor of shape [B, L] where True means ignored (masked out)
-            #     key_padding_mask = mask_buffer.unsqueeze(0).expand(patch_tokens.shape[0], -1)
-            #     attn_out, _ = self.cross_attn(
-            #         q, patch_tokens, patch_tokens, key_padding_mask=key_padding_mask
-            #     )
-            # else:
             attn_out, _ = self.cross_attn(q, patch_tokens, patch_tokens)
             x_cls = attn_out.squeeze(1)
         else:

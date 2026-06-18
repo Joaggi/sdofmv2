@@ -8,8 +8,8 @@ experiment:
   backbone:
     model: mae
     is_backbone: true
-    ckpt_dir: ./assets/check_point/backbone/AIA
-    weight_name: id_qu7tsc5c_mae_epoch=1-val_loss=1.32.ckpt
+    ckpt_dir: ./assets/checkpoints/backbone/AIA
+    weight_name: id_2bs2j2u8_mae_epoch=71-val_loss=0.03.ckpt
     weights_only: false
     freeze: true
     unfreeze_epoch: 2
@@ -27,7 +27,7 @@ experiment:
     name: solarwind-ALL-base
     run_id: null
     entity: allshaman
-    project: sdofmv2-solarwand-cls 
+    project: sdofmv2-solarwind-cls 
     group: sdofmv2
     job_type: finetune
     tags: []
@@ -40,7 +40,7 @@ experiment:
   accelerator: gpu
   distributed:
     enabled: true
-    devices: [1]
+    devices: [0]
 
 # Dataset Configuration
 data:  
@@ -55,14 +55,15 @@ data:
   month_splits: # non selected months will form training set 
     train: [4,5,6,7,8,9,10,11,12] #[1,2,3,4,5,6,7,8,9,10] 
     val: [1,2,3]
-    test: [1,2,3,4,5,6,7,8,9,10,11,12]
+    test: [1,2,3]
     holdout: []
 
   # index path
   index_save_path: ./assets/cache/solarwind/
-  train_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv
-  val_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv
-  test_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv
+  merged_file_prefix: solarwind-aia
+  train_index: ./assets/cache/solarwind/AIA_all_12min_2019-01-0100:00:00-2023-12-3123:59:59_aligndata_train.csv
+  val_index: ./assets/cache/solarwind/AIA_all_12min_2019-01-0100:00:00-2023-12-3123:59:59_aligndata_val.csv
+  test_index: ./assets/cache/solarwind/AIA_all_12min_2019-01-0100:00:00-2023-12-3123:59:59_aligndata_test.csv
   hmi_mask: ./assets/cache/hmi_mask_512x512.npy
   normalization_stat_path: ./assets/cache/solarwind/
 
@@ -95,7 +96,7 @@ data:
   sdoml:
     base_directory: /mnt/jade
     sub_directory:
-      hmi: HMI.zarr
+      hmi: null
       aia: AIA.zarr
       eve: null
       cache: cache
@@ -126,7 +127,6 @@ model:
       hidden_dim: 256
     include_raw_coordinates: False
   linear:
-    d_input: 524800 # 513*512 : CLS token + [512x512] embeddings from MAE encoder block
     num_classes: 4
     max_position_element: 32
   
@@ -183,7 +183,7 @@ model:
       gamma: 0.95
     
   misc:
-    batch_size: 16
+    batch_size: 32
     ckpt_monitor: val_loss
     
     # for trainer
@@ -196,7 +196,7 @@ model:
     limit_predict_batches: 1.0
     gradient_clip_val: 1.0
     gradient_clip_algorithm: norm
-    accumulate_grad_batches: 16
+    accumulate_grad_batches: 8
 
 etc:
   mpl_style: ./solar_wind.mplstyle

@@ -2,6 +2,7 @@ import inspect
 import os
 from pathlib import Path
 
+import numpy as np
 import hydra
 import lightning as l
 import torch
@@ -19,7 +20,7 @@ from sdofmv2.tasks.f107 import EmbSolarProxyDataModule, MultiLayerPerceptron
 from sdofmv2.utils import flatten_dict
 
 
-@hydra.main(config_path="../../configs/downstream", config_name="f107_sdofmv2_test")
+@hydra.main(config_path="../../configs/downstream", config_name="f107_sdofmv2_ALL")
 def main(cfg: DictConfig):
     lgr_logger.info("Starting F10.7 experiment...")
 
@@ -131,6 +132,7 @@ def main(cfg: DictConfig):
         test_results_path=cfg.experiment.output_dir,
         test_results_filename=cfg.experiment.test_results_filename,
         max_norm=float(datamodule.max_norm),
+        limb_mask=torch.Tensor(np.load(cfg.data.hmi_mask)),
     )
 
     # Trainer

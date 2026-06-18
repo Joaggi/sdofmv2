@@ -84,6 +84,20 @@ class MaskedAutoencoderViT3D_old(nn.Module):
         ids_limb_mask=None,
     ):
         super().__init__()
+        self.img_size = img_size
+        self.patch_size = patch_size
+        self.num_frames=num_frames
+        self.tubelet_size=tubelet_size
+        self.in_chans=in_chans
+        self.embed_dim=embed_dim
+        self.depth=depth
+        self.num_heads=num_heads
+        self.decoder_embed_dim=decoder_embed_dim
+        self.decoder_depth=decoder_depth
+        self.decoder_num_heads=decoder_num_heads
+        self.mlp_ratio=mlp_ratio
+        self.norm_layer=norm_layer
+        self.norm_pix_loss=norm_pix_loss
 
         match norm_layer:
             case "LayerNorm":

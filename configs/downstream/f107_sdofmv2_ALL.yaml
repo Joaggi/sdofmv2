@@ -5,7 +5,7 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_qu7tsc5c_mae_epoch=97-val_loss=0.07.ckpt
+    weight_name: id_uj0jxwrn_mae_epoch=55-val_loss=0.03.ckpt
     weights_only: false
     freeze: true
   seed: 0
@@ -13,7 +13,7 @@ experiment:
   
   wandb:
     enable: true
-    name: f10.7-ALL-base-ep97
+    name: f10.7-ALL-base-womasking
     run_id: null
     entity: allshaman
     project: sdofmv2-downstream-f10.7
@@ -29,9 +29,9 @@ experiment:
   # save checkpoints/results
   ds_ckpt_dir: ./assets/checkpoints/f107
   output_dir: ./assets/ds_results/f107/
-  ckpt_tag: sdofmv2-all-ep97
+  ckpt_tag: sdofmv2-all-womasking
   ckpt_filename: null
-  test_results_filename: f107_results_ALL_ep97.csv
+  test_results_filename: f107_results_ALL_womasking.csv
 
   # Dataloader
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
@@ -41,7 +41,7 @@ experiment:
   accelerator: gpu  # options are "auto", "gpu", "tpu", "ipu", or "cpu"
   distributed:
     enabled: true
-    devices: [0] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
+    devices: [1] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
 
 # dataset configuration
 data:
@@ -181,8 +181,8 @@ model:
   # for optimizer
   optimizer: 
     use: adamw
-    learning_rate: 5.0e-4
-    weight_decay: 1e-3
+    learning_rate: 1.0e-4
+    weight_decay: 0.05
   
   # for scheduler
   scheduler: 

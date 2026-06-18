@@ -8,6 +8,7 @@ from sdofmv2.core.mae3d import MaskedAutoencoderViT3D
 from sdofmv2.core.reconstruction import compute_metrics_pytorch
 from sdofmv2.utils import spatial_to_patch_mask, unpatchify
 from sdofmv2.utils.constants import ALL_WAVELENGTHS
+from sdofmv2.core.datamodule import inverse_log_norm, inverse_zscore_norm
 
 
 class MAE(BaseModule):
@@ -282,10 +283,9 @@ class MAE(BaseModule):
         # Average metrics across samples
         averaged_metrics = {}
         metrics_names = [
+            "mse",
             "rmse_intensity",
-            "flux_difference",
-            "ppe10s",
-            "ppe50s",
+            "mae",
             "r2_score",
             "pixel_correlation",
         ]

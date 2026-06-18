@@ -16,16 +16,16 @@ experiment:
   
   # save condition
   downstream_model:
-    resuming: false
+    resuming: true
     ckpt_dir: ./assets/checkpoints/solarwind_cls/
-    ckpt_name: null
+    ckpt_name: id_hwkmvlo6_mae_skip_linear_epoch=0-val_loss=0.08-val_f1=0.29.ckpt
     weights_only: false
   seed: 0
 
   wandb:
     enable: true
     name: solarwind-ALL-base
-    run_id: null
+    run_id: hwkmvlo6
     entity: allshaman
     project: sdofmv2-solarwind-cls 
     group: sdofmv2
@@ -55,11 +55,12 @@ data:
   month_splits: # non selected months will form training set 
     train: [4,5,6,7,8,9,10,11,12] #[1,2,3,4,5,6,7,8,9,10] 
     val: [1,2,3]
-    test: [1,2,3,4,5,6,7,8,9,10,11,12]
+    test: [1,2,3]
     holdout: []
 
   # index path
   index_save_path: ./assets/cache/solarwind/
+  merged_file_prefix: solarwind-all
   train_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2019-01-0100:00:00-2023-12-3123:59:59_aligndata_train.csv
   val_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2019-01-0100:00:00-2023-12-3123:59:59_aligndata_val.csv
   test_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2019-01-0100:00:00-2023-12-3123:59:59_aligndata_test.csv
@@ -68,7 +69,7 @@ data:
 
   num_workers: 8               # set appropriately for your machine
   pin_memory: false
-  prefetch_factor: 1
+  prefetch_factor: 2
   persistent_workers: false
   multiprocessing_context: spawn
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
@@ -183,20 +184,20 @@ model:
       gamma: 0.95
     
   misc:
-    batch_size: 16
+    batch_size: 32
     ckpt_monitor: val_loss
     
     # for trainer
     max_epochs: 30 # number of epochs to train for
     log_every_n_steps: 1
     check_val_every_n_epoch: 1
-    limit_train_batches: 1.0  #0.05
+    limit_train_batches: 0.5  #0.05
     limit_val_batches: 1.0
     limit_test_batches: 1.0
     limit_predict_batches: 1.0
     gradient_clip_val: 1.0
     gradient_clip_algorithm: norm
-    accumulate_grad_batches: 16
+    accumulate_grad_batches: 8
 
 etc:
   mpl_style: ./solar_wind.mplstyle

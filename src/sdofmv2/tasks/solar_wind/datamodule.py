@@ -77,9 +77,24 @@ class SWDataset(SDOMLDataset):
         radial_parameters=None,
         latlon_parameters=None,
         precision="32",
+        sampling_ratio=None,
+        random_state=None,
+        is_train=False,
     ):
         # Load aligndata from Parquet
         aligndata = pd.read_parquet(aligndata_path)
+        
+        # Apply undersampling for training set
+        if is_train and sampling_ratio is not None:
+            dfs = []
+            for i, ratio in enumerate(sampling_ratio):
+                class_df = aligndata[aligndata[label_type] == i]
+                if len(class_df) > 0 and ratio < 1.0:
+                    class_df = class_df.sample(frac=ratio, random_state=random_state)
+                dfs.append(class_df)
+            if dfs:
+                aligndata = pd.concat(dfs).sort_index()
+                
         super().__init__(
             aligndata=aligndata,
             hmi_path=hmi_path,
@@ -264,7 +279,16 @@ class SWDataModule(SDOMLDataModule):
         os.makedirs(self.merged_splits_dir, exist_ok=True)
 
     def setup(self, stage=None):
-        super().setup(stage)
+
+        # Load mask (bypassing super().setup() to save time if parquets exist)
+        if self.apply_mask and getattr(self, "hmi_mask", None) is None:
+            if os.path.exists(self.hmi_mask_path):
+                self.hmi_mask = torch.Tensor(np.load(self.hmi_mask_path))
+            else:
+                logger.warning(f"HMI mask not found at {self.hmi_mask_path}, applying no mask.")
+                self.hmi_mask = None
+        elif not getattr(self, "apply_mask", True):
+            self.hmi_mask = None
 
         def _merge_and_filter(sdoml_df, psp_df):
             # Merge
@@ -303,7 +327,13 @@ class SWDataModule(SDOMLDataModule):
 
         # Process splits
         df_psp = None
-        for split, ds in [("train", self.train_ds), ("val", self.valid_ds), ("test", self.test_ds)]:
+        
+        # Determine which splits to process based on stage
+        splits_to_process = [("train", self.train_index), ("val", self.val_index), ("test", self.test_index)]
+        if stage == "predict":
+            splits_to_process.append(("predict", self.test_index))
+
+        for split, split_index_path in splits_to_process:
             save_path = os.path.join(self.merged_splits_dir, f"{self.merged_file_prefix}_{split}.parquet")
 
             if os.path.exists(save_path):
@@ -331,7 +361,7 @@ class SWDataModule(SDOMLDataModule):
                     )
                     df_psp.sort_values(by="time_sdo_loc_est", inplace=True)
 
-                merged_df = _merge_and_filter(ds.aligndata, df_psp)
+                merged_df = _merge_and_filter(self._load_aligndata(split_index_path), df_psp)
                 merged_df.to_parquet(save_path)
                 logger.info(f"Generated and saved merged {split} data to {save_path}")
 
@@ -356,6 +386,9 @@ class SWDataModule(SDOMLDataModule):
                     latlon_parameters=self.latlon_parameters,
                     label_type=self.label_type,
                     precision=self.precision,
+                    sampling_ratio=self.sampling_ratio,
+                    random_state=self.random_state,
+                    is_train=(split == "train"),
                 ),
             )
 
@@ -385,76 +418,6 @@ class SWDataModule(SDOMLDataModule):
         return torch.utils.data.DataLoader(
             self.predict_ds, batch_size=self.batch_size, num_workers=self.num_workers
         )
-
-
-@hydra.main(version_base=None, config_path="../configs", config_name="finetune_solarwind_config")
-def main(cfg):
-    """Initializes the solar wind data module and validates dataset alignment.
-
-    This function sets up the SWDataModule using parameters from the Hydra
-    configuration. It verifies the training dataset length, checks frame range
-    accessibility, and retrieves a sample to ensure the data pipeline works
-    correctly.
-
-    Args:
-        cfg (DictConfig): Hydra configuration object containing data paths,
-            split definitions, and experiment parameters.
-
-    Returns:
-        None
-    """
-    datamodule = SWDataModule(
-        hmi_path=(
-            os.path.join(
-                cfg.data.sdoml.base_directory,
-                cfg.data.sdoml.sub_directory.hmi,
-            )
-            if cfg.data.sdoml.sub_directory.hmi
-            else None
-        ),
-        aia_path=(
-            os.path.join(
-                cfg.data.sdoml.base_directory,
-                cfg.data.sdoml.sub_directory.aia,
-            )
-            if cfg.data.sdoml.sub_directory.aia
-            else None
-        ),
-        eve_path=(
-            os.path.join(
-                cfg.data.sdoml.base_directory,
-                cfg.data.sdoml.sub_directory.eve,
-            )
-            if cfg.data.sdoml.sub_directory.eve
-            else None
-        ),
-        normalization=cfg.data.normalization,
-        components=cfg.data.sdoml.components,
-        wavelengths=cfg.data.sdoml.wavelengths,
-        ions=cfg.data.sdoml.ions,
-        frequency=cfg.data.sdoml.frequency,
-        batch_size=cfg.model.misc.batch_size,
-        num_workers=cfg.data.num_workers,
-        num_frames=cfg.data.num_frames,
-        drop_frame_dim=cfg.data.drop_frame_dim,
-        radial_parameters=cfg.data.in_situ.radial_parameters,
-        latlon_parameters=cfg.data.in_situ.latlon_parameters,
-        cadence=cfg.data.in_situ.cadence,
-        label_type=cfg.data.label_type,
-        sampling_ratio=cfg.data.under_sampling.ratio,
-        random_state=cfg.data.under_sampling.random_state,
-        cfg=cfg,
-        merged_file_prefix=cfg.data.get("merged_file_prefix", "solarwind"),
-    )
-    datamodule.setup()
-    # Check dataset and data alignment
-    ds = datamodule.train_ds
-    print(f"Dataset __len__: {len(ds)}")
-    print(f"Aligndata rows: {len(ds.aligndata)}")
-
-    # Check what index 0
-    image, timestamps, position, r_distance, label = datamodule.train_ds[0]
-    print(f"Sample retrieved successfully: image shape {image.shape}, label {label}")
 
 
 if __name__ == "__main__":

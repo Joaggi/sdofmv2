@@ -29,10 +29,7 @@ def get_dtype_from_precision(precision):
         return torch.float32
 
 
-def zscore_norm(data, channel, normalization_stat, clip_value):
-    if clip_value is not None:
-        low, high = clip_value
-        data = np.clip(data, low, high)
+def zscore_norm(data, channel, normalization_stat):
     data -= normalization_stat[channel]["mean"]
     data /= normalization_stat[channel]["std"]
     return data
@@ -62,10 +59,10 @@ def log_norm(data, normalization_stat, channel, scaler_factor, norm=True):
 
 def inverse_zscore_norm(data, instrument, channel, normalization_stat):
     # Reverse the division
-    data = data * normalization_stat[instrument][channel]["std"]
+    data = data * normalization_stat[channel]["std"]
 
     # Reverse the subtraction
-    data = data + normalization_stat[instrument][channel]["mean"]
+    data = data + normalization_stat[channel]["mean"]
 
     return data
 
@@ -286,11 +283,6 @@ class SDOMLDataset(Dataset):
                 data,
                 channel,
                 self.normalization_stat,
-                (
-                    self.normalization.clipping[channel]
-                    if self.normalization.clipping.enabled
-                    else None
-                ),
             )
 
         elif self.normalization.type == "min-max":

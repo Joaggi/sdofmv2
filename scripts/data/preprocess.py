@@ -52,6 +52,7 @@ def main(cfg: DictConfig):
     base_dir = sdoml_cfg.base_directory
     sub_dir = sdoml_cfg.sub_directory
     output_dir = cfg.data.index_save_path
+    mask_path = cfg.data.hmi_mask
 
     hmi_path = os.path.join(base_dir, sub_dir.hmi) if sub_dir.hmi else None
     aia_path = os.path.join(base_dir, sub_dir.aia) if sub_dir.aia else None
@@ -181,7 +182,6 @@ def main(cfg: DictConfig):
         aligndata = aligndata[aligndata.index <= max_date]
 
     # 2. Compute HMI Mask
-    mask_path = os.path.join(output_dir, "hmi_mask_512x512.npy")
     logger.info("Computing HMI mask...")
 
     if not os.path.exists(mask_path):

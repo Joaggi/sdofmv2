@@ -98,7 +98,7 @@ def main(cfg: DictConfig):
 
     # load checkpoint
     ckpt_path = os.path.join(cfg.experiment.backbone.ckpt_dir, cfg.experiment.backbone.weight_name)
-    
+    lgr_logger.info("Loading checkpoint...")
     if cfg.experiment.backbone.model == "mae_old":
         backbone = MAE_old.load_from_checkpoint(
             checkpoint_path=ckpt_path,

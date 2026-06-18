@@ -82,10 +82,10 @@ class MissingDataModel(BaseModule):
                 data[:, channel_idx, :, :, :].detach().cpu(),
                 None,  # Instrument not used in this simplified call
                 channel,
-                {channel: stats},  # Simplified stats
+                self.normalization_stat
             )
         elif self.normalization.type == "min-max":
-            data_ch = data[:, channel_idx, :, :, :] * (stats["max"] - stats["min"]) + stats["min"]
+            data_ch = data[:, channel_idx, :, :, :] * (self.normalization_stat["max"] - self.normalization_stat["min"]) + self.normalization_stat["min"]
         else:
             data_ch = data[:, channel_idx, :, :, :]
 

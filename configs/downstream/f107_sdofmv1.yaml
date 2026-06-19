@@ -12,7 +12,7 @@ experiment:
   disable_cuda: false
   wandb:
     enable: true
-    name: f10.7-sdofmv1-mean-max-v1
+    name: f10.7-sdofmv1-zscore
     run_id: null
     entity: allshaman
     project: sdofmv2-downstream-f10.7
@@ -28,9 +28,9 @@ experiment:
   # save checkpoints/results
   ds_ckpt_dir: ./assets/checkpoints/f107
   output_dir: ./assets/ds_results/f107/
-  ckpt_tag: sdofmv1-mean-max-v1
-  ckpt_filename: sdofmv1-mean-max-v1-epoch=95-val_loss=0.0010.ckpt
-  test_results_filename: f107_results_sdofmv1_mean-max_final.csv
+  ckpt_tag: sdofmv1-zscore
+  ckpt_filename: null
+  test_results_filename: f107_results_sdofmv1_zscore.csv
 
   # Dataloader
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
@@ -71,9 +71,9 @@ data:
 
   # for dataloader
   num_workers: 8    # set appropriately for your machine
-  pin_memory: true
+  pin_memory: false
   prefetch_factor: 2
-  persistent_workers: true
+  persistent_workers: false
   multiprocessing_context: spawn
   num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
   drop_frame_dim: false
@@ -119,6 +119,7 @@ model:
     norm_layer: LayerNorm
     masking_ratio: 0.0
     mask_only_inner: false
+    noise: 0.0
 
   head:
     pooling_type: mean_max # mean_max, disk_masked_mean_max, cross_attention
@@ -131,7 +132,7 @@ model:
   # for loss
   loss:
     space: patch # pixel, patch
-    type: bright_patch_weighted_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
+    type: mse # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
     bright_patch_weighted_loss:
       weight_inner: 0.6
       weight_outer_bright: 0.3

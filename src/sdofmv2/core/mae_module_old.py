@@ -43,6 +43,7 @@ class MAE_old(BaseModule):
         # self.validation_step_outputs = {'x': [], 'x_hat': []}
         self.img_size = img_size
         self.patch_size = patch_size
+        self.num_frames = num_frames
         self.tubelet_size = tubelet_size
         self.validation_metrics = []
         self.masking_ratio = masking_ratio

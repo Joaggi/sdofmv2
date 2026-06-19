@@ -23,7 +23,7 @@ from sdofmv2.core import Pretrainer
 
 @hydra.main(
     config_path="../../configs/test_run/",
-    config_name="test_mae_HMI",
+    config_name="test_mae_ALL",
     version_base=None,
 )
 def main(cfg: DictConfig) -> None:

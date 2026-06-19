@@ -101,8 +101,9 @@ model:
     decoder_num_heads: 16
     mlp_ratio: 4.0
     norm_layer: LayerNorm
-    masking_ratio: 0.5
+    masking_ratio: 0.0
     mask_only_inner: false
+    noise: 0.0
 
   # for loss
   loss:

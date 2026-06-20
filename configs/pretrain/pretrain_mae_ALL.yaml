@@ -9,6 +9,7 @@ experiment:
     weights_only: true
   seed: 0
   disable_cuda: false
+  save_test_results_csv: "./"
   
   wandb:
     enable: true

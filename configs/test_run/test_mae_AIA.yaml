@@ -12,7 +12,7 @@ experiment:
   
   wandb:
     enable: true
-    name: mae-test-sdofmv2-aia
+    name: mae-test-sdofmv2-aia-final
     run_id: null
     entity: allshaman
     project: sdofmv2-test
@@ -32,7 +32,7 @@ experiment:
   distributed:
     enabled: true
     devices: [1] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
-  save_test_results_csv: ./assets/test_results/sdofmv2-aia-test-results.csv
+  save_test_results_csv: ./assets/test_results/sdofmv2-aia-test-results-final.csv
 
 # dataset configuration
 data:
@@ -104,6 +104,7 @@ model:
     norm_layer: LayerNorm
     masking_ratio: 0.5
     mask_only_inner: false
+    noise: 0.0
 
   # for loss
   loss:

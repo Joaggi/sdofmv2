@@ -23,7 +23,7 @@ from sdofmv2.core import Pretrainer
 
 @hydra.main(
     config_path="../../configs/test_run/",
-    config_name="test_mae_ALL",
+    config_name="test_mae_ALL_denoise_small",
     version_base=None,
 )
 def main(cfg: DictConfig) -> None:

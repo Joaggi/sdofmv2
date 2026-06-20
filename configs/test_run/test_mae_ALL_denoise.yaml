@@ -5,14 +5,14 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_6c3hnvcm_mae_epoch=2-step=2100-val_loss=0.04.ckpt
+    weight_name: id_tnzqmrb2_mae_epoch=4-step=3600-val_loss=0.06.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
   
   wandb:
     enable: true
-    name: mae-test-sdofmv2-all-denoise
+    name: mae-test-sdofmv2-all-denoise-final
     run_id: null
     entity: allshaman
     project: sdofmv2-test
@@ -32,7 +32,7 @@ experiment:
   distributed:
     enabled: true
     devices: [1] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
-  save_test_results_csv: ./assets/test_results/sdofmv2-all-test-results-denoise.csv
+  save_test_results_csv: ./assets/test_results/sdofmv2-all-test-results-denoise-final.csv
 # dataset configuration
 data:
   # data split information

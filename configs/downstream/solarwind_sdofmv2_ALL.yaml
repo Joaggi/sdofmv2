@@ -18,7 +18,7 @@ experiment:
   downstream_model:
     resuming: true
     ckpt_dir: ./assets/checkpoints/solarwind_cls/
-    ckpt_name: id_hwkmvlo6_mae_skip_linear_epoch=0-val_loss=0.08-val_f1=0.29.ckpt
+    ckpt_name: last.ckpt
     weights_only: false
   seed: 0
 
@@ -148,6 +148,7 @@ model:
     norm_layer: LayerNorm
     masking_ratio: 0.0
     mask_only_inner: false
+    noise: 0.0
 
   # ML optimization arguments:
   loss:

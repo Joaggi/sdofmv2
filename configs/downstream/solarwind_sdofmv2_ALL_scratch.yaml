@@ -1,0 +1,213 @@
+# General
+
+experiment:
+  model: mae
+  task: finetune
+  head_task: classification # regression
+  file_format: blosc # h5, blosc, zarr
+  backbone:
+    model: mae
+    is_backbone: false
+    ckpt_dir: ./assets/checkpoints/backbone/ALL
+    weight_name: null
+    weights_only: false
+    freeze: false
+    unfreeze_epoch: 2
+  
+  # save condition
+  downstream_model:
+    resuming: false
+    ckpt_dir: ./assets/checkpoints/solarwind_cls/
+    ckpt_name: null
+    weights_only: false
+  seed: 0
+
+  wandb:
+    enable: true
+    name: solarwind-ALL-base-scratch
+    run_id: null
+    entity: allshaman
+    project: sdofmv2-solarwind-cls 
+    group: sdofmv2
+    job_type: finetune
+    tags: []
+    notes: ALL-base
+    output_directory: ./assets/wandb
+    log_model: false             # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
+    offline: false
+  fold: null
+  precision: 32
+  accelerator: gpu
+  distributed:
+    enabled: true
+    devices: [1]
+
+# Dataset Configuration
+data:  
+  # if min_data and max_data are not specified, use all data
+  # min/max date can change align_data (indices of sdo images) and statistics of normalization
+  min_date: 2019-01-01 00:00:00    # minimum is '2010-09-09 00:00:11.08'
+  max_date: 2023-12-31 23:59:59    # maximum is '2023-05-26 06:36:08.072'
+  year_splits:                          # True for entire year
+    train: [2019, 2020, 2021, 2022]
+    val: [2019, 2020, 2021, 2022] 
+    test: [2023]
+  month_splits: # non selected months will form training set 
+    train: [4,5,6,7,8,9,10,11,12] #[1,2,3,4,5,6,7,8,9,10] 
+    val: [1,2,3]
+    test: [1,2,3]
+    holdout: []
+
+  # index path
+  index_save_path: ./assets/cache/solarwind/
+  merged_file_prefix: solarwind-all
+  train_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2019-01-0100:00:00-2023-12-3123:59:59_aligndata_train.csv
+  val_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2019-01-0100:00:00-2023-12-3123:59:59_aligndata_val.csv
+  test_index: ./assets/cache/solarwind/AIA_all_HMI_all_12min_2019-01-0100:00:00-2023-12-3123:59:59_aligndata_test.csv
+  hmi_mask: ./assets/cache/hmi_mask_512x512.npy
+  normalization_stat_path: ./assets/cache/solarwind/
+
+  num_workers: 8              # set appropriately for your machine
+  pin_memory: true
+  prefetch_factor: 2
+  persistent_workers: true
+  multiprocessing_context: spawn
+  num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
+  drop_frame_dim: false         # Requires num_frames=1, for backwards compatibility
+  in_situ:
+    base_data_directory: /mnt/baobab/psp/cache/
+    psp_interpolated_path: psp_interpolated_1min_labeled_zv2.zarr
+    alignment_indices_path: combined_1min_2018_2023_aia.zarr #/data/label_new/combined_1min_2018_2023.zarr
+    radial_norm: True
+    radial_parameters: ["sc_pos_SH_r"]
+    latlon_parameters: ["sc_pos_SH_lon", "sc_pos_SH_lat", "lon_footpoint", "lat_footpoint"] # , "lon_footpoint", "lat_footpoint"
+    lon_cutoff: 85 # Degrees of longitude of WSA footpoint after which data is not used. Numbers larger than 90 not recommended. Set to None to turn off
+    cadence: 1min # cadence of in-situ data, "1min", "30sec", "1h", etc 
+    match_tolerance: 12 # acceptable time difference when matching the dataframe between psp and sdoml
+  label_type: label_xb2015 # xb2015 (Xu and Borovsky (2015)), isax # column name: label_xb2015 in combined data
+  propagation_type: wsa_time # ballistic, wsa_time
+  class_names: ["Ejecta", "Coronal Hole", "Sector Reversal", "Streamer Belt"]
+  instrument: psp
+  under_sampling:
+    ratio: [1, 1, 0.7, 0.7] #[1, 1, 0.2, 0.2] # undersample 20% of class 2 and 3.
+    random_state: 1004
+  
+  # SDOML - SDO multi-channel data
+  sdoml:
+    base_directory: /mnt/baobab
+    sub_directory:
+      hmi: HMI.zarr
+      aia: AIA.zarr
+      eve: null
+      cache: cache
+    components: null           # null for select all magnetic components ["Bx", "By", "Bz"]
+    wavelengths: null          # null for select all wavelengths channels ["131A","1600A","1700A","171A","193A","211A","304A","335A","94A"]
+    ions: null                  # null to select all ion channels ["C III", "Fe IX", "Fe VIII", "Fe X", "Fe XI", "Fe XII", "Fe XIII", "Fe XIV", "Fe XIX", "Fe XV", "Fe XVI", "Fe XVIII", "Fe XVI_2", "Fe XX", "Fe XX_2", "Fe XX_3", "H I", "H I_2", "H I_3", "He I", "He II", "He II_2", "He I_2", "Mg IX", "Mg X", "Mg X_2", "Ne VII", "Ne VIII", "O II", "O III", "O III_2", "O II_2", "O IV", "O IV_2", "O V", "O VI", "S XIV", "Si XII", "Si XII_2"]
+    frequency: 12min          # smallest is 12min
+    apply_mask: false
+    feature_engineering:
+      enabled: false
+      dclass: Log
+    normalization:
+      enabled: true
+      type: log #log, zscore, min-max
+      scaler_factor: 1
+      norm: true
+
+# model configurations
+model:
+  head:
+    type: skip_linear  # transformer, linear, skip_linear ...
+    dropout_p: 0.1
+    skips: [4]
+    num_hidden_layers: 8
+    transformer:
+      nhead: 4
+    linear:
+      hidden_dim: 256
+    include_raw_coordinates: False
+  linear:
+    # d_input: 524800 # 513*512 : CLS token + [512x512] embeddings from MAE encoder block
+    num_classes: 4
+    max_position_element: 32
+  
+  # PRETRAINERS
+  mae:
+    img_size: 512
+    patch_size: 16
+    num_frames: 1
+    tubelet_size: 1
+    in_chans: 12
+    embed_dim: 768
+    depth: 12
+    num_heads: 12
+    decoder_embed_dim: 512
+    decoder_depth: 8
+    decoder_num_heads: 16
+    mlp_ratio: 4.0
+    norm_layer: LayerNorm
+    masking_ratio: 0.0
+    mask_only_inner: false
+    noise: 0.0
+
+  # ML optimization arguments:
+  loss:
+    use: focal # cross_entropy, focal
+    focal:
+      alpha: [0.45,0.35,0.1,0.1] # class weights
+      gamma: 2 # down-weight easy examples
+      reduction: mean #  none, mean, sum
+    cross_entropy:
+      class_weights: null #[0.75, 0.18, 0.04, 0.03]
+  
+  # for optimizer
+  optimizer: 
+    use: adamw
+    learning_rate: 1.0e-4
+    weight_decay: 0.05
+  
+  # for scheduler
+  scheduler: 
+    use: cosine_warmup # other options: "cosine", "plateau", "exp"
+    monitor: val_loss
+    cosine:
+      T_max: 100
+      eta_min: 1e-6
+    cosine_warmup:
+      total_steps: 3000
+      warmup_ratio: 0.05
+    plateau:
+      mode: min
+      factor: 0.5
+      min_lr: 1e-6
+      patience: 2
+    exp:
+      gamma: 0.95
+    
+  misc:
+    batch_size: 32
+    ckpt_monitor: val_loss
+    
+    # for trainer
+    max_epochs: 30 # number of epochs to train for
+    log_every_n_steps: 1
+    check_val_every_n_epoch: 1
+    limit_train_batches: 0.5  #0.05
+    limit_val_batches: 1.0
+    limit_test_batches: 1.0
+    limit_predict_batches: 1.0
+    gradient_clip_val: 1.0
+    gradient_clip_algorithm: norm
+    accumulate_grad_batches: 8
+
+etc:
+  mpl_style: ./solar_wind.mplstyle
+
+defaults:
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .

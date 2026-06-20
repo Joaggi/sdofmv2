@@ -1,18 +1,18 @@
 import os
 import random
 
-import pandas as pd
 import lightning.pytorch as pl
+import pandas as pd
 import torch
-import torch.nn.functional as F
+import torch.nn.functional as F  # noqa: N812
 from loguru import logger
-from torch.utils.data import DataLoader
-from torch.utils.data._utils.collate import default_collate
 from omegaconf import DictConfig, OmegaConf
-
-from sdofmv2.core.reconstruction import compute_metrics_pytorch
 from terratorch_surya.datasets.helio import HelioNetCDFDataset
 from terratorch_surya.models.helio_spectformer import HelioSpectFormer
+from torch.utils.data import DataLoader
+from torch.utils.data._utils.collate import default_collate
+
+from sdofmv2.core.reconstruction import compute_metrics_pytorch
 
 
 def safe_collate(batch):
@@ -31,18 +31,6 @@ def safe_collate(batch):
                 metadata["timestamps_targets"] = [str(t) for t in metadata["timestamps_targets"]]
 
     return default_collate(batch)
-
-
-# def safe_collate(batch):
-#     """
-#     Strips metadata and returns only the data dictionary,
-#     collated into a single batch.
-#     """
-#     # Extract only the first part of the tuple (the dictionary of tensors)
-#     data_only_batch = [sample[0] for sample in batch]
-
-#     # default_collate will now only see standard tensors/numbers
-#     return default_collate(data_only_batch)
 
 
 class SuryaReconstructionDataModule(pl.LightningDataModule):
@@ -64,18 +52,18 @@ class SuryaReconstructionDataModule(pl.LightningDataModule):
         Args:
             stage (str, optional): The stage (train, val, test). Defaults to None.
         """
-        common_kwargs = dict(
-            time_delta_input_minutes=list(self.config.data.time_delta_input_minutes),
-            time_delta_target_minutes=self.config.data.time_delta_target_minutes,
-            n_input_timestamps=self.config.data.n_input_timestamps,
-            rollout_steps=0,
-            num_mask_aia_channels=0,
-            channels=list(self.config.data.channels),
-            sdo_data_root_path=self.config.data.sdo_data_root_path,
-            pooling=self.config.data.pooling,
-            random_vert_flip=self.config.data.random_vert_flip,
-            scalers=self.scalers,
-        )
+        common_kwargs = {
+            "time_delta_input_minutes": list(self.config.data.time_delta_input_minutes),
+            "time_delta_target_minutes": self.config.data.time_delta_target_minutes,
+            "n_input_timestamps": self.config.data.n_input_timestamps,
+            "rollout_steps": 0,
+            "num_mask_aia_channels": 0,
+            "channels": list(self.config.data.channels),
+            "sdo_data_root_path": self.config.data.sdo_data_root_path,
+            "pooling": self.config.data.pooling,
+            "random_vert_flip": self.config.data.random_vert_flip,
+            "scalers": self.scalers,
+        }
 
         # Setup train and val datasets for the 'fit' (training) stage
         if stage == "fit" or stage is None:
@@ -154,6 +142,7 @@ class SuryaReconstructionModel(pl.LightningModule):
         self.test_result_path = config.experiment.test_result_path
         self.test_reconstruction_metrics_batches = []
         self.channels = list(config.data.channels)
+        self.scalers = OmegaConf.load(config.data.scalers_path)
 
         in_channels = len(config.data.channels)
 
@@ -194,7 +183,7 @@ class SuryaReconstructionModel(pl.LightningModule):
                 param.requires_grad = False
 
     def mask_input(self, x: torch.Tensor) -> tuple[torch.Tensor, int]:
-        """Randomly masks one channel across all time steps.
+        """Randomly masks one channel at a single time step.
 
         Args:
             x (torch.Tensor): Input tensor of shape (B, C, T, H, W).
@@ -205,9 +194,10 @@ class SuryaReconstructionModel(pl.LightningModule):
         b, c, t, h, w = x.shape
         masked_x = x.clone()
         channel_idx = random.randint(0, c - 1)
+        time_idx = random.randint(0, t - 1)
 
-        mask = torch.ones((c, 1, 1, 1), device=x.device, dtype=x.dtype)
-        mask[channel_idx, ...] = 0.0
+        mask = torch.ones((c, t, 1, 1), device=x.device, dtype=x.dtype)
+        mask[channel_idx, time_idx, ...] = 0.0
 
         masked_x = masked_x * mask
         return masked_x, channel_idx
@@ -223,7 +213,7 @@ class SuryaReconstructionModel(pl.LightningModule):
         """
         # Cast the input tensor to the model's dtype to ensure compatibility
         target_dtype = next(self.model.parameters()).dtype
-        for key in batch.keys():
+        for key in batch:
             if isinstance(batch[key], torch.Tensor) and batch[key].dtype == torch.float64:
                 batch[key] = batch[key].to(target_dtype)
         return self.model(batch)
@@ -240,6 +230,7 @@ class SuryaReconstructionModel(pl.LightningModule):
         """
         data, metadata = batch
         original_x = data["ts"]
+        forecast_x = data["forecast"]
 
         masked_x, dropped_channel = self.mask_input(original_x)
 
@@ -248,9 +239,9 @@ class SuryaReconstructionModel(pl.LightningModule):
 
         predicted_x = self(model_input)
 
-        # Target is the original unmasked channel at the most recent timestep
-        target = original_x[:, dropped_channel, -1, :, :]
-        pred = predicted_x[:, dropped_channel, :, :]
+        # Target is the forecast at the lead time (L=0)
+        target = forecast_x[:, :, 0, :, :]
+        pred = predicted_x
 
         loss = F.mse_loss(pred, target)
 
@@ -277,6 +268,8 @@ class SuryaReconstructionModel(pl.LightningModule):
         """
         data, metadata = batch
         original_x = data["ts"]
+        forecast_x = data["forecast"]
+
         masked_x, dropped_channel = self.mask_input(original_x)
 
         model_input = data.copy()
@@ -284,8 +277,9 @@ class SuryaReconstructionModel(pl.LightningModule):
 
         predicted_x = self(model_input)
 
-        target = original_x[:, dropped_channel, -1, :, :]
-        pred = predicted_x[:, dropped_channel, :, :]
+        # Target is the forecast at the lead time (L=0)
+        target = forecast_x[:, :, 0, :, :]
+        pred = predicted_x
 
         loss = F.mse_loss(pred, target)
         self.log("val_loss", loss, prog_bar=True, sync_dist=True)
@@ -303,6 +297,8 @@ class SuryaReconstructionModel(pl.LightningModule):
         """
         data, metadata = batch
         original_x = data["ts"]
+        forecast_x = data["forecast"]
+
         masked_x, dropped_channel = self.mask_input(original_x)
 
         model_input = data.copy()
@@ -310,22 +306,50 @@ class SuryaReconstructionModel(pl.LightningModule):
 
         predicted_x = self(model_input)
 
-        target = original_x[:, dropped_channel, -1, :, :]
-        pred = predicted_x[:, dropped_channel, :, :]
+        # Target is the forecast at the lead time (L=0)
+        target = forecast_x[:, :, 0, :, :]
+        pred = predicted_x
 
         loss = F.mse_loss(pred, target)
         self.log("test_loss", loss, prog_bar=True, sync_dist=True)
 
         # Compute metrics
-        real = original_x[:, :, -1:, :, :].cpu()
+        real = forecast_x[:, :, 0:1, :, :].cpu()
         generated = predicted_x.unsqueeze(2).cpu()
-        mask_ones = torch.ones(real.shape[0], real.shape[2], real.shape[3], real.shape[4], device="cpu")
-        
-        metrics = compute_metrics_pytorch(real, generated, mask_ones, self.channels)
+        mask_ones = torch.ones(
+            real.shape[0], real.shape[2], real.shape[3], real.shape[4], device="cpu"
+        )
 
-        # Only record metrics for the dropped channel
+        metrics_norm = compute_metrics_pytorch(real, generated, mask_ones, self.channels)
+
+        real_denorm = real.clone()
+        generated_denorm = generated.clone()
+
+        for i, channel_name in enumerate(self.channels):
+            if hasattr(self, "scalers") and self.scalers and channel_name in self.scalers:
+                scaler_params = self.scalers[channel_name]
+                min_val = scaler_params["min"]
+                max_val = scaler_params["max"]
+
+                if max_val - min_val > 0:
+                    real_denorm[:, i, ...] = real_denorm[:, i, ...] * (max_val - min_val) + min_val
+                    generated_denorm[:, i, ...] = (
+                        generated_denorm[:, i, ...] * (max_val - min_val) + min_val
+                    )
+
+        metrics_denorm = compute_metrics_pytorch(
+            real_denorm, generated_denorm, mask_ones, self.channels
+        )
+
         dropped_channel_name = self.channels[dropped_channel]
-        dropped_metrics = {dropped_channel_name: metrics[dropped_channel_name]}
+
+        combined_metrics = {}
+        for k, v in metrics_norm[dropped_channel_name].items():
+            combined_metrics[f"{k}_norm"] = v
+        for k, v in metrics_denorm[dropped_channel_name].items():
+            combined_metrics[f"{k}_denorm"] = v
+
+        dropped_metrics = {dropped_channel_name: combined_metrics}
         self.test_reconstruction_metrics_batches.append(dropped_metrics)
 
         return loss
@@ -346,7 +370,7 @@ class SuryaReconstructionModel(pl.LightningModule):
         for wave, row in agg.iterrows():
             for metric, value in row.items():
                 self.log(f"test/{wave}/{metric}", value, sync_dist=True)
-        
+
         agg.to_csv(self.test_result_path, index=False)
         logger.info(f"Saved test results to {self.test_result_path}")
         self.test_reconstruction_metrics_batches.clear()

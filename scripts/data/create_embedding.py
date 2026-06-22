@@ -1,16 +1,12 @@
 import os
-import random
 import time
+from typing import Any
 
 import hydra
+import lightning.pytorch as pl
 import numpy as np
 import torch
 import torch.multiprocessing as mp
-
-mp.set_sharing_strategy("file_system")
-
-import lightning.pytorch as pl
-from lightning.pytorch import seed_everything
 from lightning.pytorch.callbacks import RichProgressBar
 from loguru import logger as lgr_logger
 from omegaconf import DictConfig, OmegaConf
@@ -27,53 +23,82 @@ class Predictor:
     checkpoint loading and calls the prediction loop to save embeddings.
     """
 
-    def __init__(self, cfg):
+    def __init__(self, cfg: DictConfig) -> None:
+        """Initializes the Predictor.
+
+        Args:
+            cfg (DictConfig): The configuration dict from Hydra.
+        """
         self.cfg = cfg
-        self.ckpt_path = (
-            os.path.join(
+        self.ckpt_path = self._get_ckpt_path()
+        self.callbacks = [RichProgressBar()]
+        self.trainer = self._setup_trainer()
+        self.chan_types = self._extract_channel_types()
+        self.data_module = self._setup_datamodule()
+        self.model = self._setup_model()
+
+    def _get_ckpt_path(self) -> str | None:
+        """Retrieves the checkpoint path from the configuration.
+
+        Returns:
+            str | None: The path to the checkpoint if specified, otherwise None.
+        """
+        if self.cfg.experiment.backbone.weight_name is not None:
+            return os.path.join(
                 self.cfg.experiment.backbone.ckpt_dir,
                 self.cfg.experiment.backbone.weight_name,
             )
-            if self.cfg.experiment.backbone.weight_name is not None
-            else None
-        )
+        return None
 
-        self.callbacks = [RichProgressBar()]
+    def _setup_trainer(self) -> pl.Trainer:
+        """Instantiates the PyTorch Lightning Trainer.
 
-        # Setup Trainer
-        # During prediction we can typically use fewer devices or rely on a simpler setup.
+        During prediction we can typically use fewer devices or rely on a simpler setup.
+
+        Returns:
+            pl.Trainer: The instantiated trainer.
+        """
         if self.cfg.experiment.distributed.enabled:
-            self.trainer = pl.Trainer(
+            return pl.Trainer(
                 devices=self.cfg.experiment.distributed.devices,
                 accelerator=self.cfg.experiment.accelerator,
                 precision=self.cfg.experiment.precision,
                 logger=False,  # Skip WandB logging for prediction
                 callbacks=self.callbacks,  # type: ignore
             )
-        else:
-            self.trainer = pl.Trainer(
-                accelerator=self.cfg.experiment.accelerator,
-                logger=False,
-                callbacks=self.callbacks,  # type: ignore
-            )
+        return pl.Trainer(
+            accelerator=self.cfg.experiment.accelerator,
+            logger=False,
+            callbacks=self.callbacks,  # type: ignore
+        )
 
-        # Extract channel types
+    def _extract_channel_types(self) -> list[str]:
+        """Combines and sorts the AIA and HMI channel types based on configuration.
+
+        Returns:
+            list[str]: The sorted list of combined channel types.
+        """
         aia_list = (
             ALL_WAVELENGTHS
-            if cfg.data.sdoml.sub_directory.aia and cfg.data.sdoml.wavelengths is None
-            else cfg.data.sdoml.wavelengths or []
+            if self.cfg.data.sdoml.sub_directory.aia and self.cfg.data.sdoml.wavelengths is None
+            else self.cfg.data.sdoml.wavelengths or []
         )
         hmi_list = (
             ALL_COMPONENTS
-            if cfg.data.sdoml.sub_directory.hmi and cfg.data.sdoml.components is None
-            else cfg.data.sdoml.components or []
+            if self.cfg.data.sdoml.sub_directory.hmi and self.cfg.data.sdoml.components is None
+            else self.cfg.data.sdoml.components or []
         )
         aia_list.sort()
         hmi_list.sort()
-        self.chan_types = aia_list + hmi_list
+        return aia_list + hmi_list
 
-        # Setup DataModule
-        self.data_module = SDOMLDataModule(
+    def _setup_datamodule(self) -> SDOMLDataModule:
+        """Configures and initializes the SDOMLDataModule.
+
+        Returns:
+            SDOMLDataModule: The initialized and setup data module.
+        """
+        data_module = SDOMLDataModule(
             hmi_path=(
                 os.path.join(
                     self.cfg.data.sdoml.base_directory,
@@ -110,13 +135,19 @@ class Predictor:
             normalization=self.cfg.data.sdoml.normalization,
             normalization_stat_path=self.cfg.data.normalization_stat_path,
         )
-        self.data_module.setup()
+        data_module.setup()
+        return data_module
 
-        # Check for zarr output path in config or default to "embeddings.zarr"
+    def _setup_model(self) -> MAE:
+        """Prepares the hyperparameter dictionary and loads the MAE model.
+
+        Returns:
+            MAE: The initialized MAE model.
+        """
         zarr_path = getattr(self.cfg.experiment, "zarr_path", "embeddings.zarr")
 
         model_hyperparams = {
-            **cfg.model.mae,
+            **self.cfg.model.mae,
             "chan_types": self.chan_types,
             "limb_mask": torch.Tensor(np.load(self.cfg.data.hmi_mask)),
             "loss_dict": self.cfg.model.loss,
@@ -125,9 +156,17 @@ class Predictor:
             "zarr_path": zarr_path,
         }
 
-        self.model = self.load_from_ckpt(model_hyperparams)
+        return self.load_from_ckpt(model_hyperparams)
 
-    def load_from_ckpt(self, model_hyperparams):
+    def load_from_ckpt(self, model_hyperparams: dict[str, Any]) -> MAE:
+        """Loads the MAE model from a checkpoint if available, otherwise initializes from scratch.
+
+        Args:
+            model_hyperparams (dict[str, Any]): The hyperparameters for the model.
+
+        Returns:
+            MAE: The loaded or newly initialized MAE model.
+        """
         if self.ckpt_path and os.path.exists(self.ckpt_path):
             lgr_logger.info(f"Loading weights from checkpoint: {self.ckpt_path}")
             # ckpt = torch.load(self.ckpt_path, map_location="cpu", weights_only=False)
@@ -137,17 +176,14 @@ class Predictor:
         else:
             lgr_logger.warning("No checkpoint found! Initializing model from scratch.")
             model = MAE(**model_hyperparams)
-            
+
         return model
 
-    def run(self):
+    def run(self) -> None:
         """Executes the prediction loop."""
-        print("\nPREDICTING EMBEDDINGS...\n")
-        # Predict uses test dataloader by default in Lightning unless dataloaders are specified
+        lgr_logger.info("PREDICTING EMBEDDINGS...")
         self.trainer.predict(
-            model=self.model,
-            datamodule=self.data_module,
-            return_predictions=False
+            model=self.model, datamodule=self.data_module, return_predictions=False
         )
 
 
@@ -157,27 +193,27 @@ class Predictor:
     version_base=None,
 )
 def main(cfg: DictConfig) -> None:
-    # set seed
     # torch.manual_seed(cfg.experiment.seed)
     # np.random.seed(cfg.experiment.seed)
     # random.seed(cfg.experiment.seed)
     # seed_everything(cfg.experiment.seed)
 
-    print("\nRunning Prediction with config:")
-    print(OmegaConf.to_yaml(cfg, resolve=False, sort_keys=False))
-    print("\n")
-    print(f"Using device: {cfg.experiment.accelerator}")
+    lgr_logger.info(
+        "Running Prediction with config:\n{}",
+        OmegaConf.to_yaml(cfg, resolve=False, sort_keys=False),
+    )
+    lgr_logger.info("Using device: {}", cfg.experiment.accelerator)
 
     predictor = Predictor(cfg)
     predictor.run()
 
 
 if __name__ == "__main__":
+    mp.set_sharing_strategy("file_system")
     time_start = time.time()
-    
-    # Produce a complete stack trace on error
+
     os.environ["HYDRA_FULL_ERROR"] = "1"
 
     main()
-    
-    print(f"\nTotal duration: {utils.days_hours_mins_secs_str(time.time() - time_start)}")
+
+    lgr_logger.info("Total duration: {}", utils.days_hours_mins_secs_str(time.time() - time_start))

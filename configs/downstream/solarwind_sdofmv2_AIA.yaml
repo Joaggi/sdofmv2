@@ -147,6 +147,7 @@ model:
     norm_layer: LayerNorm
     masking_ratio: 0.0
     mask_only_inner: false
+    noise: 0.0
 
   # ML optimization arguments:
   loss:

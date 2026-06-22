@@ -229,25 +229,30 @@ class Predictor:
         return self.load_from_ckpt(model_hyperparams)
 
     def load_from_ckpt(self, model_hyperparams: dict[str, Any]) -> MAE:
-        """Loads the MAE model from a checkpoint if available, otherwise initializes from scratch.
+        """Loads the MAE model from a checkpoint with a dual-loading fallback.
 
         Args:
             model_hyperparams (dict[str, Any]): The hyperparameters for the model.
 
-        Returns:
-            MAE: The loaded or newly initialized MAE model.
-        """
-        if self.ckpt_path and os.path.exists(self.ckpt_path):
-            lgr_logger.info(f"Loading weights from checkpoint: {self.ckpt_path}")
-            # ckpt = torch.load(self.ckpt_path, map_location="cpu", weights_only=False)
-            # model = MAE(**model_hyperparams)
-            # model.load_state_dict(ckpt["state_dict"], strict=False)
-            model = MAE.load_from_checkpoint(self.ckpt_path, weights_only=False, map_location="cpu")
-        else:
-            lgr_logger.warning("No checkpoint found! Initializing model from scratch.")
-            model = MAE(**model_hyperparams)
+        Raises:
+            FileNotFoundError: If the checkpoint path is missing or invalid.
 
-        return model
+        Returns:
+            MAE: The loaded MAE model.
+        """
+        if not self.ckpt_path or not os.path.exists(self.ckpt_path):
+            lgr_logger.error("Failed to find checkpoint at: {}", self.ckpt_path)
+            raise FileNotFoundError(f"Checkpoint not found at: {self.ckpt_path}")
+
+        lgr_logger.info("Loading weights from checkpoint: {}", self.ckpt_path)
+        try:
+            return MAE.load_from_checkpoint(self.ckpt_path, weights_only=False, map_location="cpu")
+        except Exception as e:
+            lgr_logger.warning("load_from_checkpoint failed ({}), falling back to manual load", e)
+            ckpt = torch.load(self.ckpt_path, map_location="cpu", weights_only=False)
+            model = MAE(**model_hyperparams)
+            model.load_state_dict(ckpt["state_dict"], strict=False)
+            return model
 
     def run(self) -> None:
         """Executes the prediction loop."""

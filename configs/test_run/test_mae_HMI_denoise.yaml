@@ -5,7 +5,7 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/HMI/
-    weight_name: id_hzh2v9pi_mae_epoch=2-step=79900-val_loss=0.07.ckpt
+    weight_name: id_hzh2v9pi_mae_epoch=4-step=165900-val_loss=0.06.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
@@ -105,7 +105,7 @@ model:
     decoder_num_heads: 16
     mlp_ratio: 4.0
     norm_layer: LayerNorm
-    masking_ratio: 0.25
+    masking_ratio: 0.0
     mask_only_inner: true
     noise: 0.0
 

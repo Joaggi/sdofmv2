@@ -5,7 +5,7 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/AIA/
-    weight_name: id_v44bflc4_mae_epoch=0-step=12700-val_loss=0.00.ckpt
+    weight_name: id_v44bflc4_mae_epoch=5-step=159600-val_loss=0.03.ckpt
     weights_only: false
   seed: 0
   disable_cuda: false
@@ -102,7 +102,7 @@ model:
     decoder_num_heads: 16
     mlp_ratio: 4.0
     norm_layer: LayerNorm
-    masking_ratio: 0.5
+    masking_ratio: 0.0
     mask_only_inner: false
     noise: 0.0
 

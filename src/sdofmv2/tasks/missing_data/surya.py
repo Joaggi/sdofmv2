@@ -328,14 +328,28 @@ class SuryaReconstructionModel(pl.LightningModule):
         for i, channel_name in enumerate(self.channels):
             if hasattr(self, "scalers") and self.scalers and channel_name in self.scalers:
                 scaler_params = self.scalers[channel_name]
-                min_val = scaler_params["min"]
-                max_val = scaler_params["max"]
 
-                if max_val - min_val > 0:
-                    real_denorm[:, i, ...] = real_denorm[:, i, ...] * (max_val - min_val) + min_val
-                    generated_denorm[:, i, ...] = (
-                        generated_denorm[:, i, ...] * (max_val - min_val) + min_val
-                    )
+                # Extract the Log-Z-score statistics
+                mean = scaler_params["mean"]
+                std = scaler_params["std"]
+                epsilon = scaler_params["epsilon"]
+                sl_scale_factor = scaler_params["sl_scale_factor"]
+
+                def inverse_log_zscore(data_array):
+                    # Reverse Z-score standardization
+                    data_unscaled = data_array * (std + epsilon) + mean
+
+                    # Reverse np.log1p using np.expm1 (exp(x) - 1)
+                    data_exp = torch.sign(data_unscaled) * torch.expm1(torch.abs(data_unscaled))
+
+                    # Reverse the sl_scale_factor multiplier
+                    data_orig = data_exp / sl_scale_factor
+
+                    return data_orig
+
+                # Apply the inverse transformation
+                real_denorm[:, i, ...] = inverse_log_zscore(real_denorm[:, i, ...])
+                generated_denorm[:, i, ...] = inverse_log_zscore(generated_denorm[:, i, ...])
 
         metrics_denorm = compute_metrics_pytorch(
             real_denorm, generated_denorm, mask_ones, self.channels

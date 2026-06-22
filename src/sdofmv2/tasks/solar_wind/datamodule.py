@@ -83,7 +83,7 @@ class SWDataset(SDOMLDataset):
     ):
         # Load aligndata from Parquet
         aligndata = pd.read_parquet(aligndata_path)
-        
+
         # Apply undersampling for training set
         if is_train and sampling_ratio is not None:
             dfs = []
@@ -94,7 +94,7 @@ class SWDataset(SDOMLDataset):
                 dfs.append(class_df)
             if dfs:
                 aligndata = pd.concat(dfs).sort_index()
-                
+
         super().__init__(
             aligndata=aligndata,
             hmi_path=hmi_path,
@@ -140,7 +140,9 @@ class SWDataset(SDOMLDataset):
     def __getitem__(self, idx):
         # start = time.time()
         label = self.aligndata.iloc[idx, self.id_label].astype("int64")  # make it start from 0
-        position = np.radians(self.aligndata.iloc[idx, self.position_list].to_numpy(dtype=np.float32))
+        position = np.radians(
+            self.aligndata.iloc[idx, self.position_list].to_numpy(dtype=np.float32)
+        )
         r_distance = self.aligndata.iloc[idx, self.r_dist_list].to_numpy(dtype=np.float32)
         timestamps = self.aligndata.index[idx].value
 
@@ -278,70 +280,66 @@ class SWDataModule(SDOMLDataModule):
         self.merged_file_prefix = merged_file_prefix
         os.makedirs(self.merged_splits_dir, exist_ok=True)
 
-    def setup(self, stage=None):
+    def _merge_and_filter(self, sdoml_df, psp_df):
+        # Merge
+        df_merge = pd.merge_asof(
+            psp_df,
+            sdoml_df.reset_index().rename(columns={"Time": "Time_sdoml"}),
+            left_on="time_sdo_loc_est",
+            right_on="Time_sdoml",
+            direction="nearest",
+            allow_exact_matches=True,
+            tolerance=pd.Timedelta(minutes=int(self.cfg.data.in_situ.match_tolerance)),
+        )
 
-        # Load mask (bypassing super().setup() to save time if parquets exist)
-        if self.apply_mask and getattr(self, "hmi_mask", None) is None:
-            if os.path.exists(self.hmi_mask_path):
-                self.hmi_mask = torch.Tensor(np.load(self.hmi_mask_path))
-            else:
-                logger.warning(f"HMI mask not found at {self.hmi_mask_path}, applying no mask.")
-                self.hmi_mask = None
-        elif not getattr(self, "apply_mask", True):
-            self.hmi_mask = None
+        # Filtering
+        if "lon_footpoint" in self.latlon_parameters:
+            df_merge = df_merge.loc[
+                df_merge["lon_footpoint"].abs() < self.cfg.data.in_situ.lon_cutoff
+            ]
+        elif "sc_pos_SH_lon" in self.latlon_parameters:
+            df_merge = df_merge.loc[
+                df_merge["sc_pos_SH_lon"].abs() < self.cfg.data.in_situ.lon_cutoff
+            ]
+        df_merge = df_merge.loc[df_merge["vp_fit_RTN_0_mean"] >= 100]
+        df_merge.dropna(subset=["Time_sdoml"], inplace=True)
 
-        def _merge_and_filter(sdoml_df, psp_df):
-            # Merge
-            df_merge = pd.merge_asof(
-                psp_df,
-                sdoml_df.reset_index().rename(columns={"Time": "Time_sdoml"}),
-                left_on="time_sdo_loc_est",
-                right_on="Time_sdoml",
-                direction="nearest",
-                allow_exact_matches=True,
-                tolerance=pd.Timedelta(minutes=int(self.cfg.data.in_situ.match_tolerance)),
+        # Normalization
+        if self.radial_norm:
+            for col in self.radial_parameters:
+                mean, std = df_merge[col].mean(), df_merge[col].std()
+                df_merge[f"{col}_norm"] = (df_merge[col] - mean) / std
+                if getattr(self, "radial_mean", None) is None:
+                    self.radial_mean = mean
+                    self.radial_std = std
+
+        return df_merge.set_index("time_sdo_loc_est")
+
+    def prepare_data(self):
+        """
+        Runs ONLY on Global Rank 0.
+        Do all your downloading, merging, and writing to disk here.
+        """
+        # Ensure directories exist
+        os.makedirs(self.merged_splits_dir, exist_ok=True)
+
+        # Determine splits (you might want to hardcode train/val/test here or check stage)
+        splits_to_process = [
+            ("train", self.train_index),
+            ("val", self.val_index),
+            ("test", self.test_index),
+        ]
+
+        df_psp = None
+        for split, split_index_path in splits_to_process:
+            save_path = os.path.join(
+                self.merged_splits_dir, f"{self.merged_file_prefix}_{split}.parquet"
             )
 
-            # Filtering
-            if "lon_footpoint" in self.latlon_parameters:
-                df_merge = df_merge.loc[
-                    df_merge["lon_footpoint"].abs() < self.cfg.data.in_situ.lon_cutoff
-                ]
-            elif "sc_pos_SH_lon" in self.latlon_parameters:
-                df_merge = df_merge.loc[
-                    df_merge["sc_pos_SH_lon"].abs() < self.cfg.data.in_situ.lon_cutoff
-                ]
-            df_merge = df_merge.loc[df_merge["vp_fit_RTN_0_mean"] >= 100]
-            df_merge.dropna(subset=["Time_sdoml"], inplace=True)
-
-            # Normalization
-            if self.radial_norm:
-                for col in self.radial_parameters:
-                    mean, std = df_merge[col].mean(), df_merge[col].std()
-                    df_merge[f"{col}_norm"] = (df_merge[col] - mean) / std
-                    if getattr(self, "radial_mean", None) is None:
-                        self.radial_mean = mean
-                        self.radial_std = std
-
-            return df_merge.set_index("time_sdo_loc_est")
-
-        # Process splits
-        df_psp = None
-        
-        # Determine which splits to process based on stage
-        splits_to_process = [("train", self.train_index), ("val", self.val_index), ("test", self.test_index)]
-        if stage == "predict":
-            splits_to_process.append(("predict", self.test_index))
-
-        for split, split_index_path in splits_to_process:
-            save_path = os.path.join(self.merged_splits_dir, f"{self.merged_file_prefix}_{split}.parquet")
-
-            if os.path.exists(save_path):
-                logger.info(f"Loading existing merged {split} data from {save_path}")
-            else:
+            # Only do the heavy lifting if the file doesn't exist
+            if not os.path.exists(save_path):
                 if df_psp is None:
-                    # Load PSP data
-                    logger.info("Loading and preprocessing PSP data...")
+                    # Load PSP data once
                     path = os.path.join(
                         self.cfg.data.in_situ.base_data_directory,
                         self.cfg.data.in_situ.psp_interpolated_path,
@@ -361,9 +359,35 @@ class SWDataModule(SDOMLDataModule):
                     )
                     df_psp.sort_values(by="time_sdo_loc_est", inplace=True)
 
-                merged_df = _merge_and_filter(self._load_aligndata(split_index_path), df_psp)
+                # Merge and save. Because this is prepare_data, NO OTHER GPU is trying to read this yet.
+                merged_df = self._merge_and_filter(self._load_aligndata(split_index_path), df_psp)
                 merged_df.to_parquet(save_path)
-                logger.info(f"Generated and saved merged {split} data to {save_path}")
+
+    def setup(self, stage=None):
+
+        # Load mask (bypassing super().setup() to save time if parquets exist)
+        if self.apply_mask and getattr(self, "hmi_mask", None) is None:
+            if os.path.exists(self.hmi_mask_path):
+                self.hmi_mask = torch.Tensor(np.load(self.hmi_mask_path))
+            else:
+                logger.warning(f"HMI mask not found at {self.hmi_mask_path}, applying no mask.")
+                self.hmi_mask = None
+        elif not getattr(self, "apply_mask", True):
+            self.hmi_mask = None
+
+        splits_to_process = [
+            ("train", self.train_index),
+            ("val", self.val_index),
+            ("test", self.test_index),
+        ]
+        if stage == "predict":
+            splits_to_process.append(("predict", "test"))
+
+        for split, split_index_path in splits_to_process:
+            file_split_name = "test" if split == "predict" else split
+            save_path = os.path.join(
+                self.merged_splits_dir, f"{self.merged_file_prefix}_{file_split_name}.parquet"
+            )
 
             # Re-instantiate SWDataset with Parquet path
             setattr(

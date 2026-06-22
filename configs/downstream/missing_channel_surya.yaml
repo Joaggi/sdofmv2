@@ -1,0 +1,93 @@
+defaults:
+  - _self_
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+data:
+  _target_: sdofmv2.tasks.missing_data.surya_reconstruction_zarr_datamodule.SuryaReconstructionZarrDataModule
+  sdo_data_root_path: /nobackupnfs1/sroy14/processed_data/Helio/nc
+  zarr_root_path: /home/jinsu/surya-bench.zarr
+  train_data_path: ./assets/cache/surya/surya_missing_channel_train.csv
+  valid_data_path: ./assets/cache/surya/surya_missing_channel_validation.csv
+  test_data_path: ./assets/cache/surya/surya_missing_channel_test.csv
+  channels: ['aia94', 'aia131', 'aia171', 'aia193', 'aia211', 'aia304', 'aia335', 'aia1600', 'hmi_m', 'hmi_bx', 'hmi_by', 'hmi_bz', 'hmi_v']
+  time_delta_input_minutes: [-60, 0]
+  time_delta_target_minutes: 0
+  n_input_timestamps: 2
+  batch_size: 1
+  num_data_workers: 16
+  pin_memory: true
+  prefetch_factor: 2
+  persistent_workers: true
+  pooling: 1
+  random_vert_flip: false
+  scalers_path: ./assets/cache/surya/scalers.yaml
+
+backbone:
+  img_size: 4096
+  patch_size: 16
+  embed_dim: 1280
+  depth: 10
+  n_spectral_blocks: 2
+  num_heads: 16
+  mlp_ratio: 4.0
+  drop_rate: 0.0
+  window_size: 2
+  dp_rank: 4
+  learned_flow: false
+  use_latitude_in_learned_flow: false
+  rpe: false
+  ensemble: null
+  finetune: True
+  time_embedding:
+    type: linear
+    time_dim: 2
+  init_weights: false
+  checkpoint_layers: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  path_weights: ./assets/checkpoints/surya/surya.366m.v1.pt
+
+optimizer:
+  type: adamw
+  lr: 1e-6
+  weight_decay: 0.05
+
+etc:
+  precision: bf16-mixed
+  accelerator: gpu
+  devices: 1
+  max_epochs: 30
+  accumulate_grad_batches: 64
+  gradient_clip_val: 1.0
+  ckpt_dir: ./assets/checkpoints/surya
+  ckpt_name: null
+  limit_train_batches: null
+  limit_val_batches: null
+  limit_test_batches: null
+
+wandb:
+  enable: true
+  name: surya_missing_channel
+  run_id: null
+  entity: allshaman
+  project: sdofmv2_missing_channel
+  group: ""
+  job_type: finetune
+  tags: []
+  notes: surya missing channel
+  output_directory: ./assets/wandb
+  log_model: False # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
+  offline: false
+
+lora:
+  use: true
+  config:
+    r: 8
+    lora_alpha: 8
+    target_modules: ['q_proj', 'v_proj', 'k_proj', 'out_proj', 'fc1', 'fc2']
+    lora_dropout: 0.1
+    bias: 'none'

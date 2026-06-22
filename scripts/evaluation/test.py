@@ -1,0 +1,107 @@
+import datetime
+import os
+import random
+import time
+import warnings
+from pathlib import Path
+
+import hydra
+import numpy as np
+import torch
+import wandb
+from loguru import logger as lgr_logger
+from omegaconf import DictConfig, OmegaConf
+
+import lightning.pytorch as pl
+from lightning.pytorch import seed_everything
+from lightning.pytorch.loggers.wandb import WandbLogger
+
+from sdofmv2 import utils
+from sdofmv2.utils import flatten_dict
+from sdofmv2.core import Pretrainer
+
+
+@hydra.main(
+    config_path="../../configs/test_run/",
+    config_name="test_mae_ALL_denoise_small",
+    version_base=None,
+)
+def main(cfg: DictConfig) -> None:
+    """Sets up and executes the pretraining experiment using the Hydra configuration.
+
+    The function handles environment preparation, including random seed initialization
+    and tensor precision settings. It manages Weights & Biases logging setup by
+    creating directories and initializing the logger when specified in the config.
+    After preparation, it starts the pretrainer test process.
+
+    Args:
+        cfg (DictConfig): Configuration dictionary containing experiment, model,
+            and logging settings.
+
+    Returns:
+        None
+    """
+    # set seed
+    torch.manual_seed(cfg.experiment.seed)
+    np.random.seed(cfg.experiment.seed)
+    random.seed(cfg.experiment.seed)
+    seed_everything(cfg.experiment.seed)
+
+    # run experiment
+    print(f"\nRunning with config:")
+    print(OmegaConf.to_yaml(cfg, resolve=False, sort_keys=False))
+    print("\n")
+
+    print(f"Using device: {cfg.experiment.accelerator}")
+
+    # set up wandb logging
+    if cfg.experiment.wandb.enable:
+        wandb.login()
+        output_dir = Path(cfg.experiment.wandb.output_directory)
+        output_dir.mkdir(exist_ok=True, parents=True)
+        print(f"Created directory for storing results: {cfg.experiment.wandb.output_directory}")
+        cache_dir = Path(f"{cfg.experiment.wandb.output_directory}/.cache")
+        cache_dir.mkdir(exist_ok=True, parents=True)
+
+        os.environ["WANDB_CACHE_DIR"] = f"{cfg.experiment.wandb.output_directory}/.cache"
+
+        logger = WandbLogger(
+            # WandbLogger params
+            name=cfg.experiment.wandb.name,
+            project=cfg.experiment.wandb.project,
+            dir=cfg.experiment.wandb.output_directory,
+            log_model=cfg.experiment.wandb.log_model,
+            # kwargs for wandb.init
+            tags=cfg.experiment.wandb.tags,
+            notes=cfg.experiment.wandb.notes,
+            group=cfg.experiment.wandb.group,
+            save_code=True,
+            job_type=cfg.experiment.wandb.job_type,
+            config=flatten_dict(cfg),
+            id=cfg.experiment.wandb.run_id,
+            resume="allow",
+            mode="offline" if cfg.experiment.wandb.offline else "online",
+        )
+
+    else:
+        logger = None
+
+    pretrainer = Pretrainer(
+        cfg,
+        logger=logger,
+    )
+    pretrainer.test()
+
+
+if __name__ == "__main__":
+    time_start = time.time()
+
+    # errors
+    os.environ["HYDRA_FULL_ERROR"] = "1"  # Produce a complete stack trace
+
+    main()
+    print(
+        "\nTotal duration: {}".format(
+            utils.days_hours_mins_secs_str(time.time() - time_start)
+        )
+    )

@@ -11,7 +11,8 @@ from .utils import (
     patchify,
     unpatchify,
     norm_target,
+    spatial_to_patch_mask,
     AttributeDict,
 )
-
+from .data_utils import safe_collate
 from .constants import ALL_COMPONENTS, ALL_IONS, ALL_WAVELENGTHS

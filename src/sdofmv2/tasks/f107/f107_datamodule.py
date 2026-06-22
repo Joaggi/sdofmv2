@@ -1,4 +1,7 @@
+from typing import cast
+
 import pandas as pd
+import numpy as np
 import torch
 from loguru import logger
 
@@ -16,20 +19,15 @@ class EmbSolarProxyDataset(SDOMLDataset):
     Args:
         aligndata (pd.DataFrame): Aligned temporal indexes and proxy values.
             Must contain a 'f107_norm' column for the target variable.
-        hmi_data (zarr.hierarchy.Group): Zarr dataset containing HMI magnetogram
-            observations.
-        aia_data (zarr.hierarchy.Group): Zarr dataset containing AIA EUV/UV
-            image observations.
-        eve_data (zarr.hierarchy.Group): Zarr dataset containing EVE irradiance
-            observations.
-        components (list[str]): List of magnetic components to load for HMI
+            Must be pre-filtered for the specific data split.
+        hmi_path (str | None): Path to the HMI Zarr dataset.
+        aia_path (str | None): Path to the AIA Zarr dataset.
+        eve_path (str | None): Path to the EVE Zarr dataset.
+        components (list[str] | None): List of magnetic components to load for HMI
             (e.g., ['Bx', 'By', 'Bz']).
-        wavelengths (list[str] or list[int]): List of channels to load for AIA
+        wavelengths (list[str] | list[int] | None): List of channels to load for AIA
             (e.g., [171, 193, 211]).
-        ions (list[str]): List of spectral lines/ions to load for EVE.
-        freq (str): The temporal cadence used for rounding and aligning the
-            time series (e.g., '12min').
-        months (list[int]): List of valid months (1-12) to include in the dataset.
+        ions (list[str] | None): List of spectral lines/ions to load for EVE.
         normalization (dict, optional): The normalization strategy to apply
             during data loading. Defaults to None.
         normalization_stat (dict, optional): Pre-computed statistics required
@@ -40,66 +38,51 @@ class EmbSolarProxyDataset(SDOMLDataset):
             to load per sequence sample. Defaults to 1.
         drop_frame_dim (bool, optional): If True and `num_frames` is 1, drops
             the temporal dimension. Defaults to False.
-        min_date (str or datetime, optional): The earliest date boundary to
-            include in the dataset. Defaults to None.
-        max_date (str or datetime, optional): The latest date boundary to
-            include in the dataset. Defaults to None.
-        get_header (bool or list, optional): Whether to retrieve and return
+        get_header (bool | list, optional): Whether to retrieve and return
             header metadata alongside the image tensors. Defaults to False.
         precision (str, optional): The floating-point precision for the output
             tensors (e.g., "32", "16"). Defaults to "32".
-
-    Returns:
-        tuple: A tuple containing:
-            - image_stack (torch.Tensor): Multimodal image data tensor.
-            - timestamps (int or np.ndarray): Unix timestamps for the frames.
-            - target (torch.Tensor): Normalized F10.7 solar proxy values.
     """
 
     def __init__(
         self,
-        aligndata,
-        hmi_data,
-        aia_data,
-        eve_data,
-        components,
-        wavelengths,
-        ions,
-        freq,
-        months,
-        normalization=None,
-        normalization_stat=None,
-        mask=None,
-        num_frames=1,
-        drop_frame_dim=False,
-        min_date=None,
-        max_date=None,
-        get_header=False,  # Optional[list] = [],
-        precision="32",
-    ):
+        aligndata: pd.DataFrame,
+        hmi_path: str | None,
+        aia_path: str | None,
+        eve_path: str | None,
+        components: list[str] | None,
+        wavelengths: list[str] | list[int] | None,
+        ions: list[str] | None,
+        mask: np.ndarray | None = None,
+        normalization: dict | None = None,
+        normalization_stat: dict | None = None,
+        num_frames: int = 1,
+        drop_frame_dim: bool = False,
+        get_header: bool = False,
+        precision: str = "32",
+    ) -> None:
         super().__init__(
             aligndata=aligndata,
-            hmi_data=hmi_data,
-            aia_data=aia_data,
-            eve_data=eve_data,
+            hmi_path=hmi_path,
+            aia_path=aia_path,
+            eve_path=eve_path,
             components=components,
             wavelengths=wavelengths,
             ions=ions,
-            freq=freq,
-            months=months,
+            mask=mask,
             normalization=normalization,
             normalization_stat=normalization_stat,
-            mask=mask,
             num_frames=num_frames,
             drop_frame_dim=drop_frame_dim,
-            min_date=min_date,
-            max_date=max_date,
-            get_header=get_header,  # Optional[list] = [],
+            get_header=get_header,
             precision=precision,
         )
 
-    def __getitem__(self, idx):
-        image_stack, timestamps = super().__getitem__(idx=idx)
+    def __getitem__(self, idx: int):
+        # SDOMLDataset.__getitem__ returns (image_stack, timestamps)
+        # OR (image_stack, timestamps, eve_data) if EVE is present.
+        data = super().__getitem__(idx=idx)
+        image_stack, timestamps = data[0], data[1]
 
         # define target with normalization
         target = torch.tensor(
@@ -111,89 +94,35 @@ class EmbSolarProxyDataset(SDOMLDataset):
 
 
 class EmbSolarProxyDataModule(SDOMLDataModule):
-    """PyTorch Lightning DataModule for solar proxy prediction using SDO data.
-
-    This class manages the loading, preprocessing, and splitting of multi-instrument
-    SDO data (HMI, AIA, EVE) paired with F10.7 solar proxy values. It handles
-    temporal alignment between the SDO observations and the proxy data provided
-    in a CSV file.
-
-    Args:
-        hmi_path (str): Path to the HMI Zarr dataset.
-        aia_path (str): Path to the AIA Zarr dataset.
-        eve_path (str): Path to the EVE Zarr dataset.
-        components (list[str]): List of HMI magnetic components to load.
-        wavelengths (list[str] or list[int]): List of AIA wavelengths to load.
-        ions (list[str]): List of EVE spectral lines/ions to load.
-        frequency (str): Temporal cadence for data alignment (e.g., '12min').
-        batch_size (int, optional): Number of samples per batch. Defaults to 32.
-        num_workers (int, optional): Number of subprocesses for data loading.
-            Defaults to None.
-        pin_memory (bool, optional): If True, copies tensors into CUDA pinned
-            memory before returning them. Defaults to False.
-        persistent_workers (bool, optional): If True, the data loader will not
-            shutdown the worker processes after a dataset has been consumed once.
-            Defaults to False.
-        val_months (list[int], optional): Months to use for the validation set.
-            Defaults to [10, 1].
-        test_months (list[int], optional): Months to use for the test set.
-            Defaults to [11, 12].
-        holdout_months (list[int], optional): Months to exclude from all sets.
-            Defaults to [].
-        normalization (bool or str, optional): Normalization strategy to apply.
-            Defaults to False.
-        cache_dir (str, optional): Directory to store cached normalization
-            statistics. Defaults to "".
-        norm_stat_tag (str, optional): Tag for identifying specific normalization
-            statistics. Defaults to "".
-        apply_mask (bool, optional): Whether to apply the HMI limb mask.
-            Defaults to True.
-        num_frames (int, optional): Number of consecutive frames per sample.
-            Defaults to 1.
-        drop_frame_dim (bool, optional): Whether to drop the temporal dimension
-            if num_frames is 1. Defaults to False.
-        min_date (str or datetime, optional): Earliest date to include.
-            Defaults to None.
-        max_date (str or datetime, optional): Latest date to include.
-            Defaults to None.
-        precision (str, optional): Floating-point precision ("32" or "16").
-            Defaults to "32".
-        ds_data_path (str, optional): Path to the CSV file containing F10.7
-            proxy data. Defaults to None.
-
-    Returns:
-        DataLoader: The class provides methods (train_dataloader, val_dataloader,
-            test_dataloader) that return PyTorch DataLoaders yielding batches
-            of (image_stack, timestamps, target).
-    """
+    """PyTorch Lightning DataModule for solar proxy prediction using SDO data."""
 
     def __init__(
         self,
-        hmi_path,
-        aia_path,
-        eve_path,
-        components,
-        wavelengths,
-        ions,
-        frequency,
+        hmi_path: str | None,
+        aia_path: str | None,
+        eve_path: str | None,
+        components: list[str],
+        wavelengths: list[str] | list[int],
+        ions: list[str],
         batch_size: int = 32,
-        num_workers=None,
-        pin_memory=False,
-        persistent_workers=False,
-        val_months=[10, 1],
-        test_months=[11, 12],
-        holdout_months=[],
-        normalization=False,
-        cache_dir="",
-        norm_stat_tag="",
-        apply_mask=True,
-        num_frames=1,
-        drop_frame_dim=False,
-        min_date=None,
-        max_date=None,
-        precision="32",
-        ds_data_path=None,
-    ):
+        num_workers: int | None = None,
+        pin_memory: bool = False,
+        persistent_workers: bool = False,
+        multiprocessing_context: str | None = None,
+        normalization: dict | None = None,
+        normalization_stat_path: str = "",
+        train_index: str = "",
+        val_index: str = "",
+        test_index: str = "",
+        hmi_mask_path: str = "hmi_mask_512x512.npy",
+        apply_mask: bool = True,
+        num_frames: int = 1,
+        drop_frame_dim: bool = False,
+        precision: str = "32",
+        ds_data_path: str = "",
+    ) -> None:
+        if normalization is None:
+            normalization = {}
         super().__init__(
             hmi_path=hmi_path,
             aia_path=aia_path,
@@ -201,22 +130,20 @@ class EmbSolarProxyDataModule(SDOMLDataModule):
             components=components,
             wavelengths=wavelengths,
             ions=ions,
-            frequency=frequency,
             batch_size=batch_size,
             num_workers=num_workers,
             pin_memory=pin_memory,
             persistent_workers=persistent_workers,
-            val_months=val_months,
-            test_months=test_months,
-            holdout_months=holdout_months,
+            multiprocessing_context=multiprocessing_context,
             normalization=normalization,
-            cache_dir=cache_dir,
-            norm_stat_tag=norm_stat_tag,
+            normalization_stat_path=normalization_stat_path,
+            train_index=train_index,
+            val_index=val_index,
+            test_index=test_index,
+            hmi_mask_path=hmi_mask_path,
             apply_mask=apply_mask,
             num_frames=num_frames,
             drop_frame_dim=drop_frame_dim,
-            min_date=min_date,
-            max_date=max_date,
             precision=precision,
         )
 
@@ -233,83 +160,76 @@ class EmbSolarProxyDataModule(SDOMLDataModule):
         self.df = self.df[~self.df[" f107"].isna()]
         self.max_norm = self.df[" f107"].max()
         self.df["f107_norm"] = self.df[" f107"] / self.max_norm
-        self.aligndata = pd.merge_asof(
-            self.aligndata,
+
+    def _merge_f107(self, aligndata: pd.DataFrame) -> pd.DataFrame:
+        aligndata = pd.merge_asof(
+            aligndata,
             self.df,
             left_index=True,
             right_index=True,
-            tolerance=pd.Timedelta(12, "min"),
+            tolerance=cast(pd.Timedelta, pd.Timedelta(minutes=12)),
         )
+        aligndata.drop_duplicates(subset=["date"], inplace=True)
+        aligndata.dropna(subset=[" f107", "f107_norm"], inplace=True)
+        return aligndata
 
-        self.aligndata = self.aligndata.dropna(subset=[" f107", "f107_norm"])
-
-    def setup(self, stage=None):
-        self.train_ds = EmbSolarProxyDataset(
-            self.aligndata,
-            self.hmi_data,
-            self.aia_data,
-            self.eve_data,
-            self.components,
-            self.wavelengths,
-            self.ions,
-            self.cadence,
-            self.train_months,
-            normalization=self.normalization,
-            normalization_stat=self.normalization_stat,
-            mask=self.hmi_mask.numpy() if self.apply_mask else None,
-            num_frames=self.num_frames,
-            drop_frame_dim=self.drop_frame_dim,
-            min_date=self.min_date,
-            max_date=self.max_date,
-            precision=self.precision,
-        )
+    def setup(self, stage: str = "fit") -> None:
+        super().setup(stage=stage)
+        # Prepare HMI mask (base class loads HMI mask as a Tensor)
+        
         if stage == "fit" or stage is None:
+            self.train_ds = EmbSolarProxyDataset(
+                self._merge_f107(self._load_aligndata(self.train_index)),
+                hmi_path=self.hmi_path,
+                aia_path=self.aia_path,
+                eve_path=self.eve_path,
+                components=self.components,
+                wavelengths=self.wavelengths,
+                ions=self.ions,
+                mask=self.mask_np,
+                normalization=self.normalization,
+                normalization_stat=self.normalization_stat,
+                num_frames=self.num_frames,
+                drop_frame_dim=self.drop_frame_dim,
+                precision=self.precision,
+            )
             logger.info("Train dataloader is ready!")
             logger.info(f"Dataset size: {len(self.train_ds)}")
 
-        self.valid_ds = EmbSolarProxyDataset(
-            self.aligndata,
-            self.hmi_data,
-            self.aia_data,
-            self.eve_data,
-            self.components,
-            self.wavelengths,
-            self.ions,
-            self.cadence,
-            self.val_months,
-            normalization=self.normalization,
-            normalization_stat=self.normalization_stat,
-            mask=self.hmi_mask.numpy() if self.apply_mask else None,
-            num_frames=self.num_frames,
-            drop_frame_dim=self.drop_frame_dim,
-            min_date=self.min_date,
-            max_date=self.max_date,
-            precision=self.precision,
-        )
-        if stage == "fit" or stage is None:
+            self.valid_ds = EmbSolarProxyDataset(
+                self._merge_f107(self._load_aligndata(self.val_index)),
+                hmi_path=self.hmi_path,
+                aia_path=self.aia_path,
+                eve_path=self.eve_path,
+                components=self.components,
+                wavelengths=self.wavelengths,
+                ions=self.ions,
+                mask=self.mask_np,
+                normalization=self.normalization,
+                normalization_stat=self.normalization_stat,
+                num_frames=self.num_frames,
+                drop_frame_dim=self.drop_frame_dim,
+                precision=self.precision,
+            )
             logger.info("Validation dataloader is ready!")
             logger.info(f"Dataset size: {len(self.valid_ds)}")
 
-        self.test_ds = EmbSolarProxyDataset(
-            self.aligndata,
-            self.hmi_data,
-            self.aia_data,
-            self.eve_data,
-            self.components,
-            self.wavelengths,
-            self.ions,
-            self.cadence,
-            self.test_months,
-            normalization=self.normalization,
-            normalization_stat=self.normalization_stat,
-            mask=self.hmi_mask.numpy() if self.apply_mask else None,
-            num_frames=self.num_frames,
-            drop_frame_dim=self.drop_frame_dim,
-            min_date=self.min_date,
-            max_date=self.max_date,
-            precision=self.precision,
-        )
-        if stage == "fit" or stage is None:
+        if stage == "test" or stage is None:
+            self.test_ds = EmbSolarProxyDataset(
+                self._merge_f107(self._load_aligndata(self.test_index)),
+                hmi_path=self.hmi_path,
+                aia_path=self.aia_path,
+                eve_path=self.eve_path,
+                components=self.components,
+                wavelengths=self.wavelengths,
+                ions=self.ions,
+                mask=self.mask_np,
+                normalization=self.normalization,
+                normalization_stat=self.normalization_stat,
+                num_frames=self.num_frames,
+                drop_frame_dim=self.drop_frame_dim,
+                precision=self.precision,
+            )
             logger.info("test dataloader is ready!")
             logger.info(f"Dataset size: {len(self.test_ds)}")
 

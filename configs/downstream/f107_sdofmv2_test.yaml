@@ -1,0 +1,221 @@
+# general
+experiment:
+  model: mae
+  backbone:
+    model: mae
+    is_backbone: true
+    ckpt_dir: ./assets/checkpoints/backbone/AIA/
+    weight_name: id_v9slx6hk_mae_epoch=171-val_loss=0.00.ckpt
+    weights_only: false
+    freeze: true
+  seed: 0
+  disable_cuda: false
+  
+  wandb:
+    enable: true
+    name: f10.7-AIA-test2
+    run_id: null
+    entity: allshaman
+    project: sdofmv2-downstream-f10.7
+    group: sdofmv2
+    job_type: finetune
+    tags: []
+    notes: AIA-base
+    output_directory: ./assets/wandb
+    log_model: false # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
+    offline: false
+  fold: null
+
+  # save checkpoints/results
+  ds_ckpt_dir: ./assets/checkpoints/f107
+  output_dir: ./assets/ds_results/f107/
+  ckpt_tag: sdofmv2-aia-test2
+  ckpt_filename: sdofmv2-aia-test2-epoch=64-val_loss=0.0010.ckpt
+  test_results_filename: f107_results_AIA_test2.csv
+
+  # Dataloader
+  profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
+  # lightining pretrainer
+  precision: 32 #-true'       # (32, 64) for cuda, ('32-true', '16-true', 'bf16-true') for tpu
+  log_every_n_steps: 1
+  accelerator: gpu  # options are "auto", "gpu", "tpu", "ipu", or "cpu"
+  distributed:
+    enabled: true
+    devices: [0] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
+
+# dataset configuration
+data:
+  # data split information
+  min_date: 2010-05-01 00:00:00  # NOT IMPLEMENTED # minimum is '2010-09-09 00:00:11.08'
+  max_date: 2018-12-31 23:59:59  # NOT IMPLEMENTED # maximum is '2023-05-26 06:36:08.072' '2025-07-22 23:59:59.99'
+  year_splits:
+    train: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
+    val: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
+    test: [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018]
+
+  month_splits: # non selected months will form training set 
+    train: [1,2,3,4,5,6,7,8]
+    val: [9]
+    test: [10, 11, 12]
+    holdout: []
+  
+  # index path
+  index_save_path: ./assets/cache/f107/
+  train_index: ./assets/cache/f107/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv
+  val_index: ./assets/cache/f107/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv
+  test_index: ./assets/cache/f107/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv
+  hmi_mask: ./assets/cache/hmi_mask_512x512.npy
+  normalization_stat_path: ./assets/cache/f107/
+
+  # f10.7 data
+  ds_data_path: ./assets/cache/f10.7.csv
+
+  # for dataloader
+  num_workers: 8    # set appropriately for your machine
+  pin_memory: false
+  prefetch_factor: 2
+  persistent_workers: false
+  multiprocessing_context: spawn
+  num_frames: 1 # WARNING: This is only read for FINETUNING, model num_frames overrides in BACKBONE
+  drop_frame_dim: false
+  # output_directory: "wandb_output"
+  sdoml:
+    base_directory: /mnt/jade
+    sub_directory:
+      hmi: null
+      aia: AIA.zarr
+      eve: null
+      cache: cache
+    components: null # null for select all magnetic components ["Bx", "By", "Bz"]
+    wavelengths: null # null for select all wavelengths channels ["131A","1600A","1700A","171A","193A","211A","304A","335A","94A"]
+    ions: null # null to select all ion channels ["C III", "Fe IX", "Fe VIII", "Fe X", "Fe XI", "Fe XII", "Fe XIII", "Fe XIV", "Fe XIX", "Fe XV", "Fe XVI", "Fe XVIII", "Fe XVI_2", "Fe XX", "Fe XX_2", "Fe XX_3", "H I", "H I_2", "H I_3", "He I", "He II", "He II_2", "He I_2", "Mg IX", "Mg X", "Mg X_2", "Ne VII", "Ne VIII", "O II", "O III", "O III_2", "O II_2", "O IV", "O IV_2", "O V", "O VI", "S XIV", "Si XII", "Si XII_2"]
+    frequency: 12min # smallest is 12min
+    # mask_with_hmi_threshold: null # None/null for no mask, float for threshold
+    apply_mask: true
+    feature_engineering:
+      enabled: false
+      dclass: Log
+    normalization:
+      enabled: true
+      type: log #log, zscore, min-max
+      scaler_factor: 1
+
+# model configurations
+model:
+  # PRETRAINERS
+  mae:
+    img_size: 512
+    patch_size: 16
+    num_frames: 1
+    tubelet_size: 1
+    in_chans: 9
+    embed_dim: 768
+    depth: 12
+    num_heads: 12
+    decoder_embed_dim: 512
+    decoder_depth: 8
+    decoder_num_heads: 16
+    mlp_ratio: 4.0
+    norm_layer: LayerNorm
+    masking_ratio: 0.0
+    mask_only_inner: true
+
+  head:
+    pooling_type: cross_attention # mean_max, disk_masked_mean_max, cross_attention
+    input_dim: 1024
+    mask_ratio: 0.0
+    output_dim: 1
+    hidden_layer_dims: [512, 512, 512]
+    dropout: 0.5
+
+  # for loss
+  loss:
+    space: patch # pixel, patch
+    type: bright_patch_weighted_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
+    bright_patch_weighted_loss:
+      weight_inner: 0.6
+      weight_outer_bright: 0.3
+      weight_outer_dark: 0.1
+      zero_threshold: 0.9
+      base_type: huber
+      huber_delta: 1.0
+      corner_size: 4
+      corner_ratio: 0.75
+
+    # exclude_limb: true
+    norm_pix_loss: false
+    # only_masked_patches: true # patch space
+
+    pixel_weight_loss:
+      base_loss: mae
+      threshold: 0.3
+      ar_weight_ratio: 1.0
+    
+    vector_aware_loss:
+      base_loss: mag
+
+    patch_weight_loss:
+      base_loss:
+        type: huber
+        delta: 1.0
+      weight_on_patches: [0.75, 0.2, 0.05]
+
+    split_pixel_loss:
+      alpha: 0.8
+      beta: 0.2
+      base_type: huber
+      huber_delta: 1.0
+      use_4corner_detection: true
+      corner_size: 16
+      corner_ratio: 0.9
+
+    sparse_dense_loss:
+      alpha: 0.8
+      beta: 0.2
+      base_type: huber
+      huber_delta: 1.0
+      use_4corner_detection: true
+      corner_size: 16
+      corner_ratio: 0.9
+
+  # for optimizer
+  optimizer: 
+    use: adamw
+    learning_rate: 5e-4
+    weight_decay: 0.001
+  
+  # for scheduler
+  scheduler: 
+    use: cosine_warmup # other options: "cosine", "plateau", "exp"
+    monitor: val_loss
+    cosine:
+      T_max: 100
+      eta_min: 1e-6
+    cosine_warmup:
+      total_steps: 3000
+      warmup_ratio: 0.1
+    plateau:
+      mode: min
+      factor: 0.5
+      min_lr: 1e-6
+      patience: 2
+    exp:
+      gamma: 0.95
+    
+  misc:
+    limb_mask: true
+    epochs: 100
+    batch_size: 16
+    accumulate_grad_batches: 16 # accumulate grad for 32 steps
+    limit_train_batches: null
+    gradient_clip_algorithm: norm
+    gradient_clip_val: 1.0
+
+defaults:
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .

@@ -24,7 +24,7 @@ from sdofmv2.utils import ALL_COMPONENTS, ALL_IONS, ALL_WAVELENGTHS
 
 
 @hydra.main(
-    version_base=None, config_path="../configs/pretrain", config_name="pretrain_mae_AIA.yaml"
+    version_base=None, config_path="../../configs/pretrain", config_name="pretrain_mae_AIA.yaml"
 )
 def main(cfg: DictConfig):
     """Main preprocessing function."""
@@ -52,6 +52,7 @@ def main(cfg: DictConfig):
     base_dir = sdoml_cfg.base_directory
     sub_dir = sdoml_cfg.sub_directory
     output_dir = cfg.data.index_save_path
+    mask_path = cfg.data.hmi_mask
 
     hmi_path = os.path.join(base_dir, sub_dir.hmi) if sub_dir.hmi else None
     aia_path = os.path.join(base_dir, sub_dir.aia) if sub_dir.aia else None
@@ -182,7 +183,11 @@ def main(cfg: DictConfig):
 
     # 2. Compute HMI Mask
     logger.info("Computing HMI mask...")
-    hmi_mask = make_hmi_mask(hmi_data, output_dir)
+
+    if not os.path.exists(mask_path):
+        hmi_mask = make_hmi_mask(hmi_data, output_dir)
+    else:
+        hmi_mask = np.load(mask_path)
 
     # 3. Compute Normalizations (on training data only)
     if normalization.enabled:

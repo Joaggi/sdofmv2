@@ -1,16 +1,12 @@
-import os
-import h5py
-import torch
+import lightning.pytorch as pl
 import numpy as np
 import pandas as pd
-import lightning.pytorch as pl
-import torch.nn.functional as F
-from skimage.measure import block_reduce
+import torch
 
-from . import reconstruction as bench_recon
-from .mae3d import MaskedAutoencoderViT3D
-from .basemodule import BaseModule
-from ..utils import unpatchify, patchify
+from sdofmv2.core.basemodule import BaseModule
+from sdofmv2.core.mae3d import MaskedAutoencoderViT3D
+from sdofmv2.core.reconstruction import compute_metrics_pytorch
+from sdofmv2.utils import spatial_to_patch_mask, unpatchify
 from sdofmv2.utils.constants import ALL_WAVELENGTHS
 
 
@@ -42,6 +38,7 @@ class MAE(BaseModule):
         loss_dict: Configuration for reconstruction losses.
         optimizer_dict: Configuration for the optimizer.
         scheduler_dict: Configuration for the learning rate scheduler.
+        noise: Percentage of added noise (by default 0)
         *args: Variable length argument list passed to BaseModule.
         **kwargs: Arbitrary keyword arguments passed to BaseModule.
 
@@ -85,42 +82,53 @@ class MAE(BaseModule):
         mlp_ratio=4.0,
         norm_layer="LayerNorm",
         masking_ratio=0.75,
+        mask_only_inner=True,
         limb_mask=None,
-        loss_dict={},
-        optimizer_dict={},
-        scheduler_dict={},
+        loss_dict=None,
+        optimizer_dict=None,
+        scheduler_dict=None,
+        save_test_results_csv=None,
+        zarr_path="embeddings.zarr",
+        noise=0.0,
         # pass to BaseModule
         *args,
         **kwargs,
     ):
         super().__init__(
-            optimizer_dict=optimizer_dict,
-            scheduler_dict=scheduler_dict,
             *args,
+            optimizer_dict=optimizer_dict if optimizer_dict is not None else {},
+            scheduler_dict=scheduler_dict if scheduler_dict is not None else {},
             **kwargs,
         )
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["limb_mask"])
         self.img_size = img_size
         self.patch_size = patch_size
         self.tubelet_size = tubelet_size
+        self.num_frames = num_frames
         self.validation_metrics = []
         self.masking_ratio = masking_ratio
+        self.mask_only_inner = mask_only_inner
         self.chan_types = chan_types
         self.limb_mask = limb_mask
-        self.loss_dict = loss_dict
+        self.loss_dict = loss_dict if loss_dict is not None else {}
         self.test_results = []
+        self.zarr_path = zarr_path
+        self.save_test_results_csv = save_test_results_csv
+        self.noise = noise
 
-        # block reduce limb_mask
+        # compute limb_mask_ids
         limb_mask_ids = None
+        if self.mask_only_inner and limb_mask is not None:
+            mask_bool = spatial_to_patch_mask(
+                torch.as_tensor(limb_mask), self.patch_size, num_frames
+            )
+            limb_mask_ids = torch.where(mask_bool)[0]
+
+        # Register circular mask for metrics
         if limb_mask is not None:
-            new_matrix = block_reduce(
-                limb_mask.numpy(),
-                block_size=(self.patch_size, self.patch_size),
-                func=np.max,
-            )
-            limb_mask_ids = torch.tensor(
-                np.argwhere(new_matrix.reshape((img_size // self.patch_size) ** 2) == 0).reshape(-1)
-            )
+            self.register_buffer("disk_mask", torch.as_tensor(limb_mask, dtype=torch.float32))
+        else:
+            self.register_buffer("disk_mask", torch.ones((img_size, img_size), dtype=torch.float32))
 
         self.autoencoder = MaskedAutoencoderViT3D(
             img_size,
@@ -139,87 +147,9 @@ class MAE(BaseModule):
             limb_mask,
             limb_mask_ids,
             loss_dict,
+            chan_types=self.chan_types,
+            noise=self.noise
         )
-
-    def training_step(self, batch, batch_idx):
-        """Perform a single training step.
-
-        Args:
-            batch: A tuple containing (images, timestamps).
-            batch_idx: The index of the current batch.
-
-        Returns:
-            torch.Tensor: The training loss value.
-        """
-        x, timestamps = batch[:2]
-
-        loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
-
-        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        """Perform a single validation step.
-
-        Args:
-            batch: A tuple containing (images, timestamps).
-            batch_idx: The index of the current batch.
-        """
-        x, timestamps = batch[:2]
-
-        loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
-        x_hat_reconstructed = unpatchify(x_hat, self.img_size, self.patch_size, self.tubelet_size)
-
-        # Transfer both tensors to CPU once, outside all loops
-        x_np = x.detach().cpu().numpy()  # [B, C, T, H, W]
-        x_hat_np = x_hat_reconstructed.detach().cpu().numpy()
-
-        batch_size = mask.shape[0]
-        num_frames = x.shape[2]
-        if self.limb_mask is not None:
-
-            # Build full-resolution mask once for the entire batch: [B, 512, 512]
-            grid_size = self.img_size // self.patch_size
-            mask_full = (
-                mask.reshape(batch_size, grid_size, grid_size)
-                .detach()
-                .cpu()
-                .numpy()
-                .repeat(self.patch_size, axis=1)
-                .repeat(self.patch_size, axis=2)
-                .astype(bool)
-            )
-
-            step_metrics = [
-                bench_recon.get_metrics_for_masked_patches(
-                    x_np[i, :, frame, mask_full[i]],
-                    x_hat_np[i, :, frame, mask_full[i]],
-                    self.chan_types,
-                )
-                for i in range(batch_size)
-                for frame in range(num_frames)
-            ]
-
-            x_patchified = patchify(x, self.patch_size, self.tubelet_size)
-            active_mask = mask == 1
-            masked_mse = F.mse_loss(x_patchified[active_mask], x_hat[active_mask])
-
-        else:
-            step_metrics = [
-                bench_recon.get_metrics(
-                    x_np[i, :, frame, :, :],
-                    x_hat_np[i, :, frame, :, :],
-                    self.chan_types,
-                )
-                for i in range(batch_size)
-                for frame in range(num_frames)
-            ]
-
-        self.validation_metrics.extend(step_metrics)
-
-        self.log("val_loss", loss)
-        if self.limb_mask is not None:
-            self.log("val_MSEloss_in_masked_patches", masked_mse)
 
     def forward(self, x, mask_ratio=None):
         """Perform a forward pass through the MAE.
@@ -240,141 +170,265 @@ class MAE(BaseModule):
         x_hat = unpatchify(x_hat, self.img_size, self.patch_size, self.tubelet_size)
         return x_hat, mask
 
-    def forward_encoder(self, x, mask_ratio):
-        """Perform a forward pass through the encoder only.
-
-        Args:
-            x (torch.Tensor): Input images.
-            mask_ratio (float): Fraction of patches to mask.
-
-        Returns:
-            torch.Tensor: Encoded features from the encoder.
-        """
-        return self.autoencoder.forward_encoder(x, mask_ratio=mask_ratio)
-
-    def on_validation_epoch_end(self):
-        """Called at the end of the validation epoch.
-
-        Aggregates validation metrics, logs them to the logger (WandB or default),
-        and clears the metrics buffer.
-        """
-        merged_metrics = bench_recon.merge_metrics(self.validation_metrics)
-        batch_metrics = bench_recon.mean_metrics(merged_metrics)
-
-        if isinstance(self.logger, pl.loggers.wandb.WandbLogger):
-            # this only occurs on rank zero only
-            df = pd.DataFrame(batch_metrics)
-            df["mean"] = df.mean(numeric_only=True, axis=1)
-            df["metric"] = df.index
-            cols = df.columns.tolist()
-            self.logger.log_table(
-                key="val_reconstruction",
-                dataframe=df[cols[-1:] + cols[:-1]],
-                step=self.validation_step,
-            )
-            for k, v in batch_metrics.items():
-                for i, j in v.items():
-                    self.log(f"val_{k}_{i}", j)
-
-        else:
-            for k in batch_metrics.keys():
-                batch_metrics[k]["channel"] = k
-            for k, v in batch_metrics.items():
-                self.log_dict(v, sync_dist=True)
-
-        # reset
-        self.validation_metrics.clear()
-
-    def test_step(self, batch, batch_idx):
-        """Perform a single test step.
+    def training_step(self, batch, batch_idx):
+        """Perform a single training step.
 
         Args:
             batch: A tuple containing (images, timestamps).
             batch_idx: The index of the current batch.
+
+        Returns:
+            torch.Tensor: The training loss value.
         """
         x, timestamps = batch[:2]
 
         loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
+
+        self.log("train_loss", loss.detach(), on_step=True, on_epoch=True, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        """Perform a single validation step."""
+        x, _ = batch[:2]
+
+        loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
         x_hat_reconstructed = unpatchify(x_hat, self.img_size, self.patch_size, self.tubelet_size)
 
-        # Transfer both tensors to CPU once, outside all loops
-        x_np = x.detach().cpu().numpy()  # [B, C, T, H, W]
-        x_hat_np = x_hat_reconstructed.detach().cpu().numpy()
+        # Vectorized metrics on GPU
+        batch_size, num_channels, num_frames_in, height, width = x.shape
+        grid_size = self.img_size // self.patch_size
+        num_frames_p = num_frames_in // self.tubelet_size
 
-        batch_size = mask.shape[0]
-        num_frames = x.shape[2]
+        # [batch_size, num_frames_p, grid_size, grid_size]
+        mask_full = mask.view(batch_size, num_frames_p, grid_size, grid_size)
 
+        # [batch_size, num_frames_in, height, width]
+        mask_full = (
+            mask_full.repeat_interleave(self.tubelet_size, dim=1)
+            .repeat_interleave(self.patch_size, dim=2)
+            .repeat_interleave(self.patch_size, dim=3)
+            .bool()
+        )
+
+        # Intersect with limb_mask if present
+        # disk_mask is [height, width]
         if self.limb_mask is not None:
-            # Build full-resolution mask once for the entire batch: [B, 512, 512]
-            grid_size = self.img_size // self.patch_size
-            mask_full = (
-                mask.reshape(batch_size, grid_size, grid_size)
-                .detach()
-                .cpu()
-                .numpy()
-                .repeat(self.patch_size, axis=1)
-                .repeat(self.patch_size, axis=2)
-                .astype(bool)
+            mask_full = mask_full & (self.disk_mask.bool().unsqueeze(0).unsqueeze(1))
+
+        # Compute metrics
+        step_metrics = compute_metrics_pytorch(x, x_hat_reconstructed, mask_full, self.chan_types)
+
+        self.validation_metrics.append(step_metrics)
+        self.log("val_loss", loss.detach(), sync_dist=True)
+
+    def on_validation_epoch_end(self):
+        """Called at the end of the validation epoch."""
+        # Aggregate metrics
+        averaged_metrics = {}
+        for chan in self.chan_types:
+            averaged_metrics[chan] = {}
+            for met in [
+                "rmse_intensity",
+                "flux_difference",
+                "ppe10s",
+                "ppe50s",
+                "r2_score",
+                "pixel_correlation",
+            ]:
+                averaged_metrics[chan][met] = np.mean(
+                    [m[chan][met] for m in self.validation_metrics]
+                )
+
+        # Logging
+        if isinstance(self.logger, pl.loggers.wandb.WandbLogger):
+            for chan, metrics in averaged_metrics.items():
+                for m_name, val in metrics.items():
+                    self.log(f"val_{chan}_{m_name}", val, sync_dist=True)
+        else:
+            for metrics in averaged_metrics.values():
+                self.log_dict(metrics, sync_dist=True)
+
+        self.validation_metrics.clear()
+
+    def test_step(self, batch, batch_idx):
+        """Perform a single test step."""
+        x, _ = batch[:2]
+
+        loss, x_hat, mask = self.autoencoder(x, mask_ratio=self.masking_ratio)
+        x_hat_reconstructed = unpatchify(x_hat, self.img_size, self.patch_size, self.tubelet_size)
+
+        # Vectorized metrics on GPU
+        batch_size, num_channels, num_frames_in, height, width = x.shape
+
+        # [batch_size, num_frames_in, height, width]
+        mask_full = torch.ones(
+                (batch_size, num_frames_in, height, width),
+                dtype=torch.bool,
+                device=x.device
             )
 
-            step_metrics = [
-                bench_recon.get_metrics_for_masked_patches(
-                    x_np[i, :, frame, mask_full[i]],
-                    x_hat_np[i, :, frame, mask_full[i]],
-                    self.chan_types,
-                )
-                for i in range(batch_size)
-                for frame in range(num_frames)
-            ]
-
-            x_patchified = patchify(x, self.patch_size, self.tubelet_size)
-            active_mask = mask == 1
-            masked_mse = F.mse_loss(x_patchified[active_mask], x_hat[active_mask])
-
-        else:
-            step_metrics = [
-                bench_recon.get_metrics(
-                    x_np[i, :, frame, :, :],
-                    x_hat_np[i, :, frame, :, :],
-                    self.chan_types,
-                )
-                for i in range(batch_size)
-                for frame in range(num_frames)
-            ]
-
-        self.test_results.extend(step_metrics)
-
-        self.log("test_loss", loss)
+        # Intersect with limb_mask if present
         if self.limb_mask is not None:
-            self.log("test_MSEloss_in_masked_patches", masked_mse)
+            mask_full = mask_full & (self.disk_mask.bool().unsqueeze(0).unsqueeze(1))
+
+        # Compute metrics
+        step_metrics_norm = compute_metrics_pytorch(x, x_hat_reconstructed, mask_full, self.chan_types)
+
+        step_metrics = {}
+        for c in self.chan_types:
+            step_metrics[c] = {}
+            for met, val in step_metrics_norm[c].items():
+                step_metrics[c][f"{met}_norm"] = val
+
+        # Determine if we have datamodule and normalization stats
+        dm = getattr(self.trainer, "datamodule", None)
+
+        has_norm = False
+        try:
+            if dm is not None and getattr(dm, "normalization", None) is not None and getattr(dm, "normalization_stat", None) is not None and getattr(dm.normalization, "enabled", False):
+                has_norm = True
+        except Exception:
+            pass
+
+        if has_norm:
+            try:
+                norm_type = dm.normalization.type
+                scaler_factor = getattr(dm.normalization, "scaler_factor", None)
+                norm_bool = getattr(dm.normalization, "norm", True)
+
+                x_unnorm = torch.zeros_like(x)
+                x_hat_unnorm = torch.zeros_like(x_hat_reconstructed)
+
+                for c_idx, chan in enumerate(self.chan_types):
+                    mean = dm.normalization_stat[chan]["mean"]
+                    std = dm.normalization_stat[chan]["std"]
+
+                    if norm_type == "log":
+                        x_log = (x[:, c_idx] * (std + 1e-8)) + mean if norm_bool else x[:, c_idx]
+                        x_orig = torch.sign(x_log) * torch.expm1(torch.abs(x_log))
+                        if scaler_factor is not None:
+                            x_orig = x_orig / scaler_factor
+                        x_unnorm[:, c_idx] = x_orig
+
+                        x_hat_log = (x_hat_reconstructed[:, c_idx] * (std + 1e-8)) + mean if norm_bool else x_hat_reconstructed[:, c_idx]
+                        x_hat_orig = torch.sign(x_hat_log) * torch.expm1(torch.abs(x_hat_log))
+                        if scaler_factor is not None:
+                            x_hat_orig = x_hat_orig / scaler_factor
+                        x_hat_unnorm[:, c_idx] = x_hat_orig
+
+                    elif norm_type == "zscore":
+                        x_unnorm[:, c_idx] = x[:, c_idx] * std + mean
+                        x_hat_unnorm[:, c_idx] = x_hat_reconstructed[:, c_idx] * std + mean
+
+                    elif norm_type == "min-max":
+                        min_val = dm.normalization_stat[chan]["min"]
+                        max_val = dm.normalization_stat[chan]["max"]
+                        diff = max_val - min_val
+                        x_unnorm[:, c_idx] = x[:, c_idx] * diff + min_val
+                        x_hat_unnorm[:, c_idx] = x_hat_reconstructed[:, c_idx] * diff + min_val
+                    else:
+                        x_unnorm[:, c_idx] = x[:, c_idx]
+                        x_hat_unnorm[:, c_idx] = x_hat_reconstructed[:, c_idx]
+
+                step_metrics_unnorm = compute_metrics_pytorch(x_unnorm, x_hat_unnorm, mask_full, self.chan_types)
+                for c in self.chan_types:
+                    for met, val in step_metrics_unnorm[c].items():
+                        step_metrics[c][f"{met}_unnorm"] = val
+            except Exception as e:
+                import warnings
+                warnings.warn(f"Failed to unnormalize data: {e}", stacklevel=2)
+                for c in self.chan_types:
+                    for met, val in step_metrics_norm[c].items():
+                        step_metrics[c][f"{met}_unnorm"] = val
+        else:
+            for c in self.chan_types:
+                for met, val in step_metrics_norm[c].items():
+                    step_metrics[c][f"{met}_unnorm"] = val
+
+        self.test_results.append(step_metrics)
+        self.log("test_loss", loss.detach(), sync_dist=True)
 
     def on_test_epoch_end(self):
-        """Called at the end of the test epoch.
+        """Called at the end of the test epoch."""
+        # Average metrics across samples
+        averaged_metrics = {}
+        metrics_names = [
+            "mse_norm",
+            "rmse_intensity_norm",
+            "mae_norm",
+            "r2_score_norm",
+            "pixel_correlation_norm",
+            "mse_unnorm",
+            "rmse_intensity_unnorm",
+            "mae_unnorm",
+            "r2_score_unnorm",
+            "pixel_correlation_unnorm",
+        ]
+        for chan in self.chan_types:
+            averaged_metrics[chan] = {}
+            for met in metrics_names:
+                averaged_metrics[chan][met] = np.mean([m[chan][met] for m in self.test_results])
 
-        Aggregates test metrics, saves them to a CSV file, logs to the logger,
-        and clears the results buffer.
-        """
-        if not self.test_results:
-            return
+        # Save metrics to CSV
+        if getattr(self.trainer, "global_rank", 0) == 0:
+            df = pd.DataFrame.from_dict(averaged_metrics, orient="index")
+            df.index.name = "channel"
+            df.to_csv(self.save_test_results_csv)
 
-        merged_metrics = bench_recon.merge_metrics(self.test_results)
-        batch_metrics = bench_recon.mean_metrics(merged_metrics)
-
-        df = pd.DataFrame(batch_metrics)
-        df["mean"] = df.mean(numeric_only=True, axis=1)
-        df["metric"] = df.index
-
-        cols = df.columns.tolist()
-        final_df = df[[cols[-1]] + cols[:-1]]
-
-        output_path = os.path.join(self.trainer.default_root_dir, "test_metrics_summary.csv")
-        final_df.to_csv(output_path, index=False)
-        print(f"\n[INFO] Test results saved to: {output_path}")
-
+        # Logging to WandB if enabled, otherwise just log to trainer
         if isinstance(self.logger, pl.loggers.wandb.WandbLogger):
-            self.logger.log_table(key="test_reconstruction_summary", dataframe=final_df)
-            for chan, metrics in batch_metrics.items():
+            for chan, metrics in averaged_metrics.items():
                 for m_name, val in metrics.items():
-                    self.log(f"test_{chan}_{m_name}", val)
+                    self.log(f"test_{chan}_{m_name}", val, sync_dist=True)
+        else:
+            for metrics in averaged_metrics.values():
+                self.log_dict(metrics, sync_dist=True)
 
         self.test_results.clear()
+
+    def predict_step(self, batch, batch_idx, dataloader_idx=0):
+        """Perform a single prediction step to extract and save encoder embeddings."""
+        x, timestamps = batch[:2]
+
+        # Extract embeddings using the encoder (no masking during prediction)
+        embeddings, _, _ = self.autoencoder.forward_encoder(x, mask_ratio=0.0)
+
+        # Convert timestamps to strings
+        if isinstance(timestamps, torch.Tensor):
+            ts_list = timestamps.detach().cpu().tolist()
+            ts_list = [str(t) for t in ts_list]
+        else:
+            ts_list = [str(t) for t in timestamps]
+
+        embeddings_np = embeddings.detach().cpu().numpy()
+        timestamps_np = np.array(ts_list, dtype="<U64")
+
+        # Warning: Direct Zarr append in predict_step is safe for single-device prediction.
+        # For DDP (multi-GPU), consider using Trainer(devices=1) for prediction or
+        # implementing a custom PyTorch Lightning BasePredictionWriter to gather tensors.
+        if getattr(self.trainer, "global_rank", 0) == 0:
+            import zarr
+            root = zarr.open_group(self.zarr_path, mode="a")
+
+            if "embeddings" not in root:
+                root.create_dataset(  # type: ignore
+                    "embeddings",
+                    data=embeddings_np,
+                    shape=embeddings_np.shape,
+                    chunks=(1, *embeddings_np.shape[1:]),
+                    dtype=embeddings_np.dtype,
+                    maxshape=(None, *embeddings_np.shape[1:])
+                )
+                root.create_dataset(  # type: ignore
+                    "timestamps",
+                    data=timestamps_np,
+                    shape=timestamps_np.shape,
+                    chunks=(1,),
+                    dtype=timestamps_np.dtype,
+                    maxshape=(None,)
+                )
+            else:
+                root["embeddings"].append(embeddings_np)  # type: ignore
+                root["timestamps"].append(timestamps_np)  # type: ignore
+
+        return embeddings

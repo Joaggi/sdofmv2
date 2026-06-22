@@ -34,23 +34,27 @@ class TestGetDtypeFromPrecision:
 class TestZscoreNorm:
     def test_zscore_norm_basic(self):
         data = np.array([[1.0, 2.0], [3.0, 4.0]])
-        normalization_stat = {"AIA": {"171": {"mean": 1.0, "std": 2.0}}}
-        result = zscore_norm(data, "AIA", "171", normalization_stat, clip_value=None)
+        # Assuming the function expects channel to be the key in the dict
+        normalization_stat = {"171": {"mean": 1.0, "std": 2.0}}
+        result = zscore_norm(data, "171", normalization_stat, clip_value=None)
         expected = np.array([[0.0, 0.5], [1.0, 1.5]])
         np.testing.assert_array_almost_equal(result, expected)
 
     def test_zscore_norm_with_clipping(self):
         data = np.array([[0.0, 5.0], [10.0, 15.0]])
-        normalization_stat = {"AIA": {"171": {"mean": 5.0, "std": 5.0}}}
-        result = zscore_norm(data, "AIA", "171", normalization_stat, clip_value=(2.0, 12.0))
-        np.testing.assert_array_almost_equal(result[1, 0], 1.4)
+        normalization_stat = {"171": {"mean": 5.0, "std": 5.0}}
+        result = zscore_norm(data, "171", normalization_stat, clip_value=(2.0, 12.0))
+        # Clipping (0, 5, 10, 15) to (2, 12) -> (2, 5, 10, 12)
+        # Normalizing (2-5)/5 = -0.6, (5-5)/5 = 0.0, (10-5)/5 = 1.0, (12-5)/5 = 1.4
+        expected = np.array([[-0.6, 0.0], [1.0, 1.4]])
+        np.testing.assert_array_almost_equal(result, expected)
 
 
 class TestMinMaxNorm:
     def test_min_max_norm_basic(self):
         data = np.array([[0.0, 50.0], [100.0, 150.0]])
-        normalization_stat = {"AIA": {"171": {"min": 0.0, "max": 150.0}}}
-        result = min_max_norm(data, "AIA", "171", normalization_stat)
+        normalization_stat = {"171": {"min": 0.0, "max": 150.0}}
+        result = min_max_norm(data, "171", normalization_stat)
         expected = np.array([[0.0, 1.0 / 3.0], [2.0 / 3.0, 1.0]])
         np.testing.assert_array_almost_equal(result, expected)
 
@@ -58,21 +62,24 @@ class TestMinMaxNorm:
 class TestLogNorm:
     def test_log_norm_basic(self):
         data = np.array([[1.0, 2.0], [3.0, 4.0]])
-        normalization_stat = {"AIA": {"171": {"mean": 0.5, "std": 0.5}}}
-        result = log_norm(data, normalization_stat, "AIA", "171", scaler_factor=1.0)
+        normalization_stat = {"171": {"mean": 0.5, "std": 0.5}}
+        result = log_norm(data, normalization_stat, "171", scaler_factor=1.0)
         assert result.shape == data.shape
         assert not np.any(np.isnan(result))
 
     def test_log_norm_without_scaler(self):
         data = np.array([[1.0, 2.0], [3.0, 4.0]])
-        normalization_stat = {"AIA": {"171": {"mean": 0.5, "std": 0.5}}}
-        result = log_norm(data, normalization_stat, "AIA", "171", scaler_factor=None)
+        normalization_stat = {"171": {"mean": 0.5, "std": 0.5}}
+        result = log_norm(data, normalization_stat, "171", scaler_factor=None)
         assert result.shape == data.shape
 
 
 class TestInverseZscoreNorm:
     def test_inverse_zscore_norm(self):
         data = np.array([[0.0, 0.5], [1.0, 1.5]])
+        # Note: definition of inverse_zscore_norm is:
+        # def inverse_zscore_norm(data, instrument, channel, normalization_stat):
+        # This seems to be the ONLY one that still expects instrument
         normalization_stat = {"AIA": {"171": {"mean": 1.0, "std": 2.0}}}
         result = inverse_zscore_norm(data, "AIA", "171", normalization_stat)
         expected = np.array([[1.0, 2.0], [3.0, 4.0]])
@@ -82,17 +89,17 @@ class TestInverseZscoreNorm:
 class TestInverseLogNorm:
     def test_inverse_log_norm_basic(self):
         data_transformed = np.array([[0.0, 0.5], [1.0, 1.5]])
-        normalization_stat = {"AIA": {"171": {"mean": 0.5, "std": 0.5}}}
+        normalization_stat = {"171": {"mean": 0.5, "std": 0.5}}
         result = inverse_log_norm(
-            data_transformed, normalization_stat, "AIA", "171", scaler_factor=1.0
+            data_transformed, normalization_stat, "171", scaler_factor=1.0, norm=True,
         )
         assert result.shape == data_transformed.shape
         assert np.all(result >= 0)
 
     def test_inverse_log_norm_without_scaler(self):
         data_transformed = np.array([[0.0, 0.5], [1.0, 1.5]])
-        normalization_stat = {"AIA": {"171": {"mean": 0.5, "std": 0.5}}}
+        normalization_stat = {"171": {"mean": 0.5, "std": 0.5}}
         result = inverse_log_norm(
-            data_transformed, normalization_stat, "AIA", "171", scaler_factor=None
+            data_transformed, normalization_stat, "171", scaler_factor=None, norm=True,
         )
         assert result.shape == data_transformed.shape

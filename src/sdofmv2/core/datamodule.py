@@ -1,23 +1,18 @@
 # Adapted to be general from https://github.com/FrontierDevelopmentLab/2023-FDL-X-ARD-EVE/blob/main/src/irradiance/utilities/data_loader.py
 import os
-from pathlib import Path
 import re
 import time
 from pathlib import Path
 from loguru import logger
 
-import torch
-import yaml
-
-import dask.array as da
-from dask.diagnostics import ProgressBar
-
 import lightning.pytorch as pl
+import numcodecs
 import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-from tqdm import tqdm
+import torch.multiprocessing as mp
+import yaml
 import zarr
 
 from ..utils import ALL_COMPONENTS, ALL_IONS, ALL_WAVELENGTHS
@@ -34,10 +29,7 @@ def get_dtype_from_precision(precision):
         return torch.float32
 
 
-def zscore_norm(data, channel, normalization_stat, clip_value):
-    if clip_value is not None:
-        low, high = clip_value
-        data = np.clip(data, low, high)
+def zscore_norm(data, channel, normalization_stat):
     data -= normalization_stat[channel]["mean"]
     data /= normalization_stat[channel]["std"]
     return data
@@ -49,26 +41,28 @@ def min_max_norm(data, channel, normalization_stat):
     return data
 
 
-def log_norm(data, normalization_stat, channel, scaler_factor):
+def log_norm(data, normalization_stat, channel, scaler_factor, norm=True):
     x = data * scaler_factor if scaler_factor is not None else data
 
     # Log transform
     x_log = np.sign(x) * np.log1p(np.abs(x))
 
     # zscore norm
-    x_transformed = (x_log - normalization_stat[channel]["mean"]) / (
-        normalization_stat[channel]["std"] + 1e-8
-    )
-
+    if norm:
+        x_transformed = (x_log - normalization_stat[channel]["mean"]) / (
+            normalization_stat[channel]["std"] + 1e-8
+        )
+    else:
+        return x_log
     return x_transformed
 
 
 def inverse_zscore_norm(data, instrument, channel, normalization_stat):
     # Reverse the division
-    data = data * normalization_stat[instrument][channel]["std"]
+    data = data * normalization_stat[channel]["std"]
 
     # Reverse the subtraction
-    data = data + normalization_stat[instrument][channel]["mean"]
+    data = data + normalization_stat[channel]["mean"]
 
     return data
 
@@ -78,14 +72,18 @@ def inverse_log_norm(
     normalization_stat,
     channel,
     scaler_factor=None,
+    norm=True,
 ):
     # Retrieve the exact log-domain statistics used during forward normalization
     mean = normalization_stat[channel]["mean"]
     std = normalization_stat[channel]["std"]
 
-    # Reverse the Z-score standardization
-    # x_transformed = (x_log - mean) / std  ->  x_log = (x_transformed * std) + mean
-    x_log = (data_transformed * (std + 1e-8)) + mean
+    if norm:
+        # Reverse the Z-score standardization
+        # x_transformed = (x_log - mean) / std  ->  x_log = (x_transformed * std) + mean
+        x_log = (data_transformed * (std + 1e-8)) + mean
+    else:
+        x_log = data_transformed
 
     # Reverse the SymLog Transform
     # The inverse of y = sign(x) * log(1 + |x|) is x = sign(y) * (exp(|y|) - 1)
@@ -137,10 +135,6 @@ class SDOMLDataset(Dataset):
             to load per sequence sample. Defaults to 1.
         drop_frame_dim (bool, optional): If True and `num_frames` is 1, drops
             the temporal dimension. Defaults to False.
-        min_date (str or datetime, optional): The earliest date boundary to
-            include in the dataset. Defaults to None.
-        max_date (str or datetime, optional): The latest date boundary to
-            include in the dataset. Defaults to None.
         get_header (bool or list, optional): Whether to retrieve and return header metadata alongside the image tensors. Defaults to False.
         precision (str, optional): The floating-point precision for the output
             tensors (e.g., "32" for float32, "16" for float16). Defaults to "32".
@@ -149,9 +143,9 @@ class SDOMLDataset(Dataset):
     def __init__(
         self,
         aligndata,
-        hmi_data,
-        aia_data,
-        eve_data,
+        hmi_path,
+        aia_path,
+        eve_path,
         components,
         wavelengths,
         ions,
@@ -166,9 +160,9 @@ class SDOMLDataset(Dataset):
         super().__init__()
 
         self.aligndata = aligndata
-        self.aia_data = aia_data
-        self.eve_data = eve_data
-        self.hmi_data = hmi_data
+        self.aia_path = aia_path
+        self.eve_path = eve_path
+        self.hmi_path = hmi_path
         self.mask = mask
         self.get_header = get_header
         self.precision = precision
@@ -177,25 +171,13 @@ class SDOMLDataset(Dataset):
         self.components = components
         self.wavelengths = wavelengths
         self.ions = ions
-
-        # Loading data
-        # HMI
-        if self.hmi_data is not None:
-            if self.components is None:
-                self.components = ALL_COMPONENTS
-            self.components.sort()
-        # AIA
-        if self.aia_data is not None:
-            if self.wavelengths is None:
-                self.wavelengths = ALL_WAVELENGTHS
-            self.wavelengths.sort()
-        # EVE
-        if self.eve_data is not None:
-            if self.ions is None:
-                self.ions = ALL_IONS
-            self.ions.sort()
         self.normalization = normalization
         self.normalization_stat = normalization_stat
+
+        # zarr data
+        self.aia_data = None
+        self.hmi_data = None
+        self.eve_data = None
 
         # number of frames to return per sample
         self.num_frames = num_frames
@@ -207,7 +189,37 @@ class SDOMLDataset(Dataset):
         # report slightly smaller such that all frame sets requested are available
         return len(self.aligndata) - (self.num_frames - 1)
 
+    def _init_zarr(self):
+        # OS-level thread lockdown BEFORE importing zarr/numcodecs
+        import os
+
+        os.environ["BLOSC_NTHREADS"] = "1"
+        os.environ["OMP_NUM_THREADS"] = "1"
+        os.environ["MKL_NUM_THREADS"] = "1"
+
+        # PyTorch and Blosc strict single-thread mode
+        torch.set_num_threads(1)  # Stops PyTorch's OpenMP from colliding with Blosc
+        numcodecs.blosc.use_threads = False
+        numcodecs.blosc.set_nthreads(1)  # CRITICAL: Frequently missed secondary thread limit!
+
+        # Change PyTorch sharing strategy to avoid shared memory (/dev/shm) C-level limits
+        try:
+            mp.set_sharing_strategy("file_system")
+        except RuntimeError:
+            pass  # Strategy already set
+
+        if self.aia_path is not None and self.aia_data is None:
+            self.aia_data = zarr.open(self.aia_path, mode="r")
+
+        if self.hmi_path is not None and self.hmi_data is None:
+            self.hmi_data = zarr.open(self.hmi_path, mode="r")
+
+        if self.eve_path is not None and self.eve_data is None:
+            self.eve_data = zarr.open(self.eve_path, mode="r")
+
     def __getitem__(self, idx):
+        self._init_zarr()
+
         image_stack = None
         header_stack = {}
 
@@ -229,6 +241,12 @@ class SDOMLDataset(Dataset):
         timestamps = self.aligndata.index[idx : idx + self.num_frames].astype("int")
         timestamps = timestamps[0] if self.num_frames <= 1 else timestamps
 
+        # remove large numpy array
+        if "aia_images" in locals():
+            del aia_images
+        if "hmi_images" in locals():
+            del hmi_images
+
         if not self.get_header:
             if self.eve_data is not None:
                 eve_data = self.get_eve(idx)
@@ -247,7 +265,7 @@ class SDOMLDataset(Dataset):
             else:
                 return image_stack, timestamps, header_stack
 
-    def _data_norm(self, data, instrument, channel):
+    def _data_norm(self, data, channel):
         """
         data: numpy array of shape H W
         """
@@ -257,6 +275,7 @@ class SDOMLDataset(Dataset):
                 self.normalization_stat,
                 channel,
                 self.normalization.scaler_factor,
+                self.normalization.norm,
             )
 
         elif self.normalization.type == "zscore":
@@ -264,11 +283,6 @@ class SDOMLDataset(Dataset):
                 data,
                 channel,
                 self.normalization_stat,
-                (
-                    self.normalization.clipping[channel]
-                    if self.normalization.clipping.enabled
-                    else None
-                ),
             )
 
         elif self.normalization.type == "min-max":
@@ -346,7 +360,7 @@ class SDOMLDataset(Dataset):
 
                 if self.normalization.enabled:
                     aia_image_dict[wavelength][-1] = self._data_norm(
-                        aia_image_dict[wavelength][-1], "AIA", wavelength
+                        aia_image_dict[wavelength][-1], wavelength
                     )
 
         aia_image = np.array(list(aia_image_dict.values()))
@@ -392,7 +406,7 @@ class SDOMLDataset(Dataset):
 
                 if self.normalization.enabled:
                     hmi_image_dict[component][-1] = self._data_norm(
-                        hmi_image_dict[component][-1], "HMI", component
+                        hmi_image_dict[component][-1], component
                     )
 
         hmi_image = np.array(list(hmi_image_dict.values()))
@@ -414,7 +428,7 @@ class SDOMLDataset(Dataset):
                 idx_eve = self.aligndata.iloc[idx + frame]["idx_eve"]
                 eve_ion_dict[ion].append(self.eve_data[ion][idx_eve])
                 if self.normalization.enabled:
-                    eve_ion_dict[ion][-1] = self._data_norm(eve_ion_dict[ion][-1], "EVE", ion)
+                    eve_ion_dict[ion][-1] = self._data_norm(eve_ion_dict[ion][-1], ion)
 
         eve_data = np.array(list(eve_ion_dict.values()), dtype=np.float32)
 
@@ -481,12 +495,13 @@ class SDOMLDataModule(pl.LightningDataModule):
         num_workers=None,
         pin_memory=False,
         persistent_workers=False,
+        multiprocessing_context=None,
         normalization={},
         normalization_stat_path="",
         train_index="",
         val_index="",
         test_index="",
-        hmi_mask="hmi_mask_512x512.npy",
+        hmi_mask_path="hmi_mask_512x512.npy",
         apply_mask=True,
         num_frames=1,
         drop_frame_dim=False,
@@ -496,6 +511,7 @@ class SDOMLDataModule(pl.LightningDataModule):
         self.num_workers = num_workers if num_workers is not None else os.cpu_count() // 2
         self.pin_memory = pin_memory
         self.persistent_workers = persistent_workers
+        self.multiprocessing_context = multiprocessing_context
         self.hmi_path = hmi_path
         self.aia_path = aia_path
         self.eve_path = eve_path
@@ -521,7 +537,7 @@ class SDOMLDataModule(pl.LightningDataModule):
 
         # checking if AIA is in the dataset
         if self.isAIA:
-            self.aia_data = zarr.group(zarr.DirectoryStore(self.aia_path))
+            # self.aia_data = zarr.group(zarr.DirectoryStore(self.aia_path))
             if self.wavelengths is None:
                 self.wavelengths = ALL_WAVELENGTHS
         else:
@@ -529,7 +545,7 @@ class SDOMLDataModule(pl.LightningDataModule):
 
         # checking if HMI is in the dataset
         if self.isHMI:
-            self.hmi_data = zarr.group(zarr.DirectoryStore(self.hmi_path))
+            # self.hmi_data = zarr.group(zarr.DirectoryStore(self.hmi_path))
             if self.components is None:
                 self.components = ALL_COMPONENTS
         else:
@@ -537,14 +553,15 @@ class SDOMLDataModule(pl.LightningDataModule):
 
         # checking if EVE is in the dataset
         if self.isEVE:
-            self.eve_data = zarr.group(zarr.DirectoryStore(self.eve_path))
+            # self.eve_data = zarr.group(zarr.DirectoryStore(self.eve_path))
             if self.ions is None:
                 self.ions = ALL_IONS
         else:
             self.eve_data = None
 
         # Preprocessed data paths
-        self.hmi_mask = hmi_mask
+        self.hmi_mask_path = hmi_mask_path
+        self.hmi_mask = None
         self.normalization = normalization
         self.normalization_stat_path = normalization_stat_path
         self.timeinterval = re.compile(
@@ -562,7 +579,7 @@ class SDOMLDataModule(pl.LightningDataModule):
         base_path = Path(self.normalization_stat_path)
         pattern = f"*{time_range}_norm-{self.normalization.type}*.json"
 
-        files = list(base_path.glob(pattern))
+        files = list(base_path.rglob(pattern))
         if not files:
             raise FileNotFoundError(f"No normalization stats found for {time_range}")
 
@@ -584,32 +601,32 @@ class SDOMLDataModule(pl.LightningDataModule):
     def setup(self, stage=None):
 
         # Load mask
-        if self.apply_mask:
-            if os.path.exists(self.hmi_mask):
-                self.hmi_mask = torch.Tensor(np.load(self.hmi_mask))
+        if self.apply_mask and self.hmi_mask is None:
+            if os.path.exists(self.hmi_mask_path):
+                self.hmi_mask = torch.Tensor(np.load(self.hmi_mask_path))
             else:
-                logger.warning(f"HMI mask not found at {self.hmi_mask}, applying no mask.")
+                logger.warning(f"HMI mask not found at {self.hmi_mask_path}, applying no mask.")
                 self.hmi_mask = None
         else:
             self.hmi_mask = None
 
         # Define mask for dataset (numpy array or None)
-        mask_np = self.hmi_mask.numpy() if self.hmi_mask is not None else None
+        self.mask_np = self.hmi_mask.numpy() if self.hmi_mask is not None else None
 
         # Note: Dataset now expects a single aligndata and no months filtering (pre-split)
         # We pass the specific split aligndata and None for months to disable filtering
 
         self.train_ds = SDOMLDataset(
             self._load_aligndata(self.train_index),
-            self.hmi_data,
-            self.aia_data,
-            self.eve_data,
+            self.hmi_path,
+            self.aia_path,
+            self.eve_path,
             self.components,
             self.wavelengths,
             self.ions,
             normalization=self.normalization,
             normalization_stat=self.normalization_stat,
-            mask=mask_np,
+            mask=self.mask_np,
             num_frames=self.num_frames,
             drop_frame_dim=self.drop_frame_dim,
             precision=self.precision,
@@ -620,15 +637,15 @@ class SDOMLDataModule(pl.LightningDataModule):
 
         self.valid_ds = SDOMLDataset(
             self._load_aligndata(self.val_index),
-            self.hmi_data,
-            self.aia_data,
-            self.eve_data,
+            self.hmi_path,
+            self.aia_path,
+            self.eve_path,
             self.components,
             self.wavelengths,
             self.ions,
             normalization=self.normalization,
             normalization_stat=self.normalization_stat,
-            mask=mask_np,
+            mask=self.mask_np,
             num_frames=self.num_frames,
             drop_frame_dim=self.drop_frame_dim,
             precision=self.precision,
@@ -639,15 +656,15 @@ class SDOMLDataModule(pl.LightningDataModule):
 
         self.test_ds = SDOMLDataset(
             self._load_aligndata(self.test_index),
-            self.hmi_data,
-            self.aia_data,
-            self.eve_data,
+            self.hmi_path,
+            self.aia_path,
+            self.eve_path,
             self.components,
             self.wavelengths,
             self.ions,
             normalization=self.normalization,
             normalization_stat=self.normalization_stat,
-            mask=mask_np,
+            mask=self.mask_np,
             num_frames=self.num_frames,
             drop_frame_dim=self.drop_frame_dim,
             precision=self.precision,
@@ -661,15 +678,15 @@ class SDOMLDataModule(pl.LightningDataModule):
         if stage == "predict":
             self.predict_ds = SDOMLDataset(
                 self._load_aligndata(self.test_index),
-                self.hmi_data,
-                self.aia_data,
-                self.eve_data,
+                self.hmi_path,
+                self.aia_path,
+                self.eve_path,
                 self.components,
                 self.wavelengths,
                 self.ions,
                 normalization=self.normalization,
                 normalization_stat=self.normalization_stat,
-                mask=mask_np,
+                mask=self.mask_np,
                 num_frames=self.num_frames,
                 drop_frame_dim=self.drop_frame_dim,
                 precision=self.precision,
@@ -687,6 +704,7 @@ class SDOMLDataModule(pl.LightningDataModule):
         return df
 
     def train_dataloader(self):
+        spawn_ctx = mp.get_context("spawn") if self.multiprocessing_context == "spawn" else None
         return torch.utils.data.DataLoader(
             self.train_ds,
             batch_size=self.batch_size,
@@ -695,22 +713,38 @@ class SDOMLDataModule(pl.LightningDataModule):
             drop_last=True,
             pin_memory=self.pin_memory,
             persistent_workers=self.persistent_workers,
+            multiprocessing_context=spawn_ctx,
         )
 
     def val_dataloader(self):
+        spawn_ctx = mp.get_context("spawn") if self.multiprocessing_context == "spawn" else None
         return torch.utils.data.DataLoader(
             self.valid_ds,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             persistent_workers=self.persistent_workers,
+            multiprocessing_context=spawn_ctx,
         )
 
     def test_dataloader(self):
+        spawn_ctx = mp.get_context("spawn") if self.multiprocessing_context == "spawn" else None
         return torch.utils.data.DataLoader(
             self.test_ds,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
             persistent_workers=self.persistent_workers,
+            multiprocessing_context=spawn_ctx,
+        )
+    
+    def predict_dataloader(self):
+        spawn_ctx = mp.get_context("spawn") if self.multiprocessing_context == "spawn" else None
+        return torch.utils.data.DataLoader(
+            self.predict_ds,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+            persistent_workers=self.persistent_workers,
+            multiprocessing_context=spawn_ctx,
         )

@@ -1,0 +1,95 @@
+defaults:
+  - _self_
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled
+
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+data:
+  # _target_: sdofmv2.tasks.f107.helio_f107_zarr_datamodule.HelioF107ZarrDataModule
+  # zarr_root_path: <YOUR_ZARR_ROOT_PATH>
+  sdo_data_root_path: /nobackupnfs1/sroy14/processed_data/Helio/nc
+  train_data_path: ./assets/cache/surya/surya_f107_train.csv
+  valid_data_path: ./assets/cache/surya/surya_f107_validation.csv
+  test_data_path: ./assets/cache/surya/surya_f107_test.csv
+  f107_csv_path: ./assets/cache/f10.7.csv
+  channels: ['aia94', 'aia131', 'aia171', 'aia193', 'aia211', 'aia304', 'aia335', 'aia1600', 'hmi_m', 'hmi_bx', 'hmi_by', 'hmi_bz', 'hmi_v']
+  time_delta_input_minutes: [-60, 0]
+  time_delta_target_minutes: 0
+  n_input_timestamps: 2
+  batch_size: 1
+  num_data_workers: 6
+  pin_memory: true
+  prefetch_factor: 2
+  persistent_workers: true
+  pooling: 1
+  random_vert_flip: false
+  scalers_path: ./assets/cache/surya/scalers.yaml
+
+backbone:
+  img_size: 4096
+  patch_size: 16
+  embed_dim: 1280
+  depth: 10
+  n_spectral_blocks: 2
+  num_heads: 16
+  mlp_ratio: 4.0
+  drop_rate: 0.0
+  window_size: 2
+  dp_rank: 4
+  learned_flow: false
+  use_latitude_in_learned_flow: false
+  rpe: false
+  ensemble: null
+  finetune: True
+  time_embedding:
+    type: linear
+    time_dim: 2
+  init_weights: false
+  checkpoint_layers: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  path_weights: ./assets/checkpoints/surya/surya.366m.v1.pt
+
+model:
+  transformer_pooling: True
+  dropout: 0.1
+  penultimate_linear_layer: True
+  mlp_hidden_layer_dims: [512, 512, 512]
+
+optimizer:
+  type: adamw
+  lr: 1e-5
+  weight_decay: 0.05
+
+etc:
+  precision: bf16-mixed
+  accelerator: gpu
+  devices: 1
+  max_epochs: 30
+  limit_train_batches: null
+  limit_val_batches: null
+  limit_test_batches: null
+  log_every_n_steps: 1
+
+  # save checkpoints/results
+  ds_ckpt_dir: ./assets/checkpoints/f107
+  output_dir: ./assets/ds_results/f107/
+  checkpoint_filename: f107_best_validation_sdofmv2_all
+  test_results_filename: test_results_ALL.csv
+
+experiment:
+  wandb:
+    enable: true
+    name: f10.7-surya
+    run_id: null
+    entity: allshaman
+    project: sdofmv2-downstream-f10.7
+    group: surya
+    job_type: finetune
+    tags: []
+    notes: surya
+    output_directory: ./assets/wandb
+    log_model: false
+    offline: false

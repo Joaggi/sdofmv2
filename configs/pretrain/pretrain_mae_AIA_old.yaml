@@ -51,6 +51,15 @@ data:
     val: [11]
     test: [12]
     holdout: []
+
+    # index path
+  index_save_path: ./assets/cache/ALL/
+  train_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv
+  val_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv
+  test_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv
+  hmi_mask: ./assets/cache/ALL/hmi_mask_512x512.npy
+  normalization_stat_path: ./assets/cache/ALL/
+
   num_workers: 8    # set appropriately for your machine
   pin_memory: true
   prefetch_factor: 3
@@ -60,7 +69,7 @@ data:
   # output_directory: "wandb_output"
   sdoml:
     save_directory: ./assets/
-    base_directory: /mnt/baobab
+    base_directory: /mnt/jade
     sub_directory:
       hmi: null
       aia: AIA.zarr
@@ -87,6 +96,7 @@ data:
         By: 2500
         Bz: 3000
 
+
 # model configurations
 model:
   # PRETRAINERS
@@ -105,6 +115,7 @@ model:
     mlp_ratio: 4.0
     norm_layer: 'LayerNorm'
     masking_ratio: 0.5
+    mask_only_inner: false
   samae:
     # uses all parameters as in mae plus these
     masking_type: "solar_aware"  # 'random' or 'solar_aware'
@@ -152,7 +163,17 @@ model:
   # for loss
   loss:
     space: patch # pixel, patch
-    type: patch_weight_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
+    type: bright_patch_weighted_loss # "mae", "mse", "vector_aware_loss", "pixel_weight_loss", "huber", "patch_weight_loss"
+    bright_patch_weighted_loss:
+      weight_inner: 1.0
+      weight_outer_bright: 1.0
+      weight_outer_dark: 0.1
+      zero_threshold: 0.9
+      base_type: mse
+      huber_delta: 1.0
+      corner_size: 4
+      corner_ratio: 0.25
+
     exclude_limb: true
     norm_pix_loss: false
     only_masked_patches: false # patch space

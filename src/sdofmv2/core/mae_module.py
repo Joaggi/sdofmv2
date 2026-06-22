@@ -1,5 +1,6 @@
 import lightning.pytorch as pl
 import numpy as np
+from typing import Any
 import pandas as pd
 import torch
 
@@ -88,7 +89,6 @@ class MAE(BaseModule):
         optimizer_dict=None,
         scheduler_dict=None,
         save_test_results_csv=None,
-        zarr_path="embeddings.zarr",
         noise=0.0,
         # pass to BaseModule
         *args,
@@ -112,7 +112,6 @@ class MAE(BaseModule):
         self.limb_mask = limb_mask
         self.loss_dict = loss_dict if loss_dict is not None else {}
         self.test_results = []
-        self.zarr_path = zarr_path
         self.save_test_results_csv = save_test_results_csv
         self.noise = noise
 
@@ -386,49 +385,28 @@ class MAE(BaseModule):
 
         self.test_results.clear()
 
-    def predict_step(self, batch, batch_idx, dataloader_idx=0):
-        """Perform a single prediction step to extract and save encoder embeddings."""
+    def predict_step(self, batch: tuple[Any, ...], batch_idx: int, dataloader_idx: int = 0) -> dict[str, torch.Tensor | np.ndarray]:
+        """Extract unmasked embeddings and timestamps.
+
+        Args:
+            batch: A tuple containing (images, timestamps).
+            batch_idx: The index of the current batch.
+            dataloader_idx: The index of the dataloader.
+
+        Returns:
+            dict[str, torch.Tensor | np.ndarray]: Dictionary containing:
+                - "embeddings": The extracted unmasked embeddings tensor.
+                - "timestamps": Numpy array of string timestamps.
+        """
         x, timestamps = batch[:2]
 
-        # Extract embeddings using the encoder (no masking during prediction)
         embeddings, _, _ = self.autoencoder.forward_encoder(x, mask_ratio=0.0)
 
-        # Convert timestamps to strings
         if isinstance(timestamps, torch.Tensor):
-            ts_list = timestamps.detach().cpu().tolist()
-            ts_list = [str(t) for t in ts_list]
+            ts_list = [str(t) for t in timestamps.detach().cpu().tolist()]
         else:
             ts_list = [str(t) for t in timestamps]
 
-        embeddings_np = embeddings.detach().cpu().numpy()
         timestamps_np = np.array(ts_list, dtype="<U64")
 
-        # Warning: Direct Zarr append in predict_step is safe for single-device prediction.
-        # For DDP (multi-GPU), consider using Trainer(devices=1) for prediction or
-        # implementing a custom PyTorch Lightning BasePredictionWriter to gather tensors.
-        if getattr(self.trainer, "global_rank", 0) == 0:
-            import zarr
-            root = zarr.open_group(self.zarr_path, mode="a")
-
-            if "embeddings" not in root:
-                root.create_dataset(  # type: ignore
-                    "embeddings",
-                    data=embeddings_np,
-                    shape=embeddings_np.shape,
-                    chunks=(1, *embeddings_np.shape[1:]),
-                    dtype=embeddings_np.dtype,
-                    maxshape=(None, *embeddings_np.shape[1:])
-                )
-                root.create_dataset(  # type: ignore
-                    "timestamps",
-                    data=timestamps_np,
-                    shape=timestamps_np.shape,
-                    chunks=(1,),
-                    dtype=timestamps_np.dtype,
-                    maxshape=(None,)
-                )
-            else:
-                root["embeddings"].append(embeddings_np)  # type: ignore
-                root["timestamps"].append(timestamps_np)  # type: ignore
-
-        return embeddings
+        return {"embeddings": embeddings, "timestamps": timestamps_np}

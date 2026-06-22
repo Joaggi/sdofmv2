@@ -1,13 +1,15 @@
 import os
 import time
-from typing import Any
+from typing import Any, cast
 
 import hydra
 import lightning.pytorch as pl
 import numpy as np
 import torch
+import torch.distributed as dist
 import torch.multiprocessing as mp
-from lightning.pytorch.callbacks import RichProgressBar
+import zarr
+from lightning.pytorch.callbacks import BasePredictionWriter, RichProgressBar
 from loguru import logger as lgr_logger
 from omegaconf import DictConfig, OmegaConf
 
@@ -15,6 +17,76 @@ from sdofmv2 import utils
 from sdofmv2.core import MAE, SDOMLDataModule
 from sdofmv2.utils import ALL_COMPONENTS, ALL_WAVELENGTHS
 
+
+class ZarrPredictionWriter(BasePredictionWriter):
+    """Callback to gather and write embeddings to a Zarr file iteratively."""
+
+    def __init__(self, zarr_path: str) -> None:
+        """Initializes the Zarr prediction writer.
+
+        Args:
+            zarr_path: Path to the output Zarr file.
+        """
+        super().__init__("batch")
+        self.zarr_path = zarr_path
+
+    def write_on_batch_end(
+        self,
+        trainer: pl.Trainer,
+        pl_module: pl.LightningModule,
+        prediction: dict[str, Any],
+        batch_indices: list[int] | None,
+        batch: Any,
+        batch_idx: int,
+        dataloader_idx: int,
+    ) -> None:
+        """Gathers predictions from all ranks and writes to Zarr on rank 0."""
+        embeddings_tensor = prediction["embeddings"]
+        timestamps_np = prediction["timestamps"]
+
+        if trainer.world_size > 1:
+            embeddings_gathered = cast(torch.Tensor, pl_module.all_gather(embeddings_tensor))
+            if embeddings_gathered.dim() > embeddings_tensor.dim():
+                embeddings_gathered = embeddings_gathered.view(-1, *embeddings_gathered.shape[2:])
+        else:
+            embeddings_gathered = cast(torch.Tensor, embeddings_tensor)
+
+        embeddings_np = embeddings_gathered.detach().cpu().numpy()
+
+        if trainer.world_size > 1:
+            gathered_ts: list[Any] = [None for _ in range(trainer.world_size)]
+            dist.all_gather_object(gathered_ts, timestamps_np)
+            timestamps_gathered = np.concatenate(gathered_ts, axis=0)
+        else:
+            timestamps_gathered = timestamps_np
+
+        if trainer.global_rank == 0:
+            self._write_to_zarr(embeddings_np, timestamps_gathered)
+
+    def _write_to_zarr(self, embeddings_np: np.ndarray, timestamps_np: np.ndarray) -> None:
+        """Appends the gathered arrays to the Zarr archive."""
+        root = zarr.open_group(self.zarr_path, mode="a")
+
+        if "embeddings" not in root:
+            root.create_dataset(
+                "embeddings",
+                data=embeddings_np,
+                shape=embeddings_np.shape,
+                chunks=(1, *embeddings_np.shape[1:]),
+                dtype=embeddings_np.dtype,
+                maxshape=(None, *embeddings_np.shape[1:]),
+            )
+            root.create_dataset(
+                "timestamps",
+                data=timestamps_np,
+                shape=timestamps_np.shape,
+                chunks=(1,),
+                dtype=timestamps_np.dtype,
+                maxshape=(None,),
+            )
+        else:
+            root["embeddings"].append(embeddings_np)  # type: ignore
+            root["timestamps"].append(timestamps_np)  # type: ignore
 
 class Predictor:
     """Coordinates the prediction workflow for Masked Autoencoder (MAE) models.
@@ -31,7 +103,8 @@ class Predictor:
         """
         self.cfg = cfg
         self.ckpt_path = self._get_ckpt_path()
-        self.callbacks = [RichProgressBar()]
+        zarr_path = getattr(self.cfg.experiment, "zarr_path", "embeddings.zarr")
+        self.callbacks = [RichProgressBar(), ZarrPredictionWriter(zarr_path)]
         self.trainer = self._setup_trainer()
         self.chan_types = self._extract_channel_types()
         self.data_module = self._setup_datamodule()
@@ -144,8 +217,6 @@ class Predictor:
         Returns:
             MAE: The initialized MAE model.
         """
-        zarr_path = getattr(self.cfg.experiment, "zarr_path", "embeddings.zarr")
-
         model_hyperparams = {
             **self.cfg.model.mae,
             "chan_types": self.chan_types,
@@ -153,7 +224,6 @@ class Predictor:
             "loss_dict": self.cfg.model.loss,
             "optimizer_dict": self.cfg.model.optimizer,
             "scheduler_dict": self.cfg.model.scheduler,
-            "zarr_path": zarr_path,
         }
 
         return self.load_from_ckpt(model_hyperparams)

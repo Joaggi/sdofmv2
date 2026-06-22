@@ -2,7 +2,7 @@
 experiment:          # this is the wandb run_id of the checkpoint to load
   corrupted_channel_index: 5
   backbone:
-    model: mae_old
+    model: mae_v1
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/
     weight_name: pretrained_mae_e128.ckpt

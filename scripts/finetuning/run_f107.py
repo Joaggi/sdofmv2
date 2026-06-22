@@ -15,7 +15,7 @@ from lightning.pytorch.loggers.wandb import WandbLogger
 from loguru import logger as lgr_logger
 from omegaconf import DictConfig
 
-from sdofmv2.core import MAE, MAE_old
+from sdofmv2.core import MAE, MAE_v1
 from sdofmv2.tasks.f107 import EmbSolarProxyDataModule, MultiLayerPerceptron
 from sdofmv2.utils import flatten_dict
 
@@ -90,8 +90,8 @@ def main(cfg: DictConfig):
 
     # Load Backbone
     ckpt_path = os.path.join(cfg.experiment.backbone.ckpt_dir, cfg.experiment.backbone.weight_name)
-    if cfg.experiment.backbone.model == "mae_old":
-        backbone = MAE_old.load_from_checkpoint(
+    if cfg.experiment.backbone.model == "mae_v1":
+        backbone = MAE_v1.load_from_checkpoint(
             checkpoint_path=ckpt_path,
             map_location="cpu",
             weights_only=False,

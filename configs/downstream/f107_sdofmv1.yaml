@@ -1,8 +1,8 @@
 # General
 experiment:
-  model: mae_old
+  model: mae_v1
   backbone:
-    model: mae_old
+    model: mae_v1
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/
     weight_name: pretrained_mae_e128.ckpt # AIA_MSEloss_epoch=171-val_loss=0.00.ckpt

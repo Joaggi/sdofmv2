@@ -8,13 +8,13 @@ import torch.nn.functional as F
 import lightning.pytorch as pl
 
 from . import reconstruction as bench_recon
-from .mae3d_old import MaskedAutoencoderViT3D_old
+from .mae3d_v1 import MaskedAutoencoderViT3D_v1
 from .basemodule import BaseModule
 from ..utils import unpatchify, patchify
 from sdofmv2.utils.constants import ALL_WAVELENGTHS
 
 
-class MAE_old(BaseModule):
+class MAE_v1(BaseModule):
     def __init__(
         self,
         # MAE specific
@@ -62,7 +62,7 @@ class MAE_old(BaseModule):
                 np.argwhere(new_matrix.reshape(1024) == 0).reshape(-1)
             )
 
-        self.autoencoder = MaskedAutoencoderViT3D_old(
+        self.autoencoder = MaskedAutoencoderViT3D_v1(
             img_size,
             patch_size,
             num_frames,

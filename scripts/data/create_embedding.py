@@ -264,7 +264,7 @@ class Predictor:
 
 @hydra.main(
     config_path="../../configs/pretrain/",
-    config_name="pretrain_mae_ALL_create_embeddings.yaml",
+    config_name="pretrain_mae_ALL.yaml",
     version_base=None,
 )
 def main(cfg: DictConfig) -> None:

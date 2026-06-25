@@ -68,21 +68,27 @@ huggingface-cli download joseph-gallego/sdofmv2
 
 ```text
 .
+├── assets/                     # Output images, model results, and test artifacts
 ├── configs/                    # YAML configurations for experiments
 │   ├── downstream/             # Configs for downstream tasks (F10.7, solar wind)
-│   └── pretrain/               # Configs for MAE pretraining (AIA, HMI)
+│   ├── pretrain/               # Configs for MAE pretraining (AIA, HMI)
+│   └── test_run/               # Configs for testing and quick validation
+├── docs/                       # Sphinx documentation source files
 ├── notebooks/                  # Jupyter notebooks for analysis and visualization
 │   ├── analysis/               # Attention maps, PCA, and masking analysis
 │   └── downstream_apps/        # Downstream application demos (F10.7, missing data)
-├── scripts/                    # Executable training and evaluation scripts
-│   ├── data/                   # Data acquisition, conversion, and indexing
-│   ├── training/               # Training and finetuning scripts
-│   └── evaluation/             # Testing, inference, and visualization
+├── scripts/                    # Executable scripts for pipeline tasks
+│   ├── analysis/               # Scripts for evaluating and plotting results
+│   ├── data/                   # Data acquisition, conversion, and preprocessing
+│   ├── evaluation/             # Model evaluation and inference scripts
+│   ├── finetuning/             # Scripts for downstream finetuning
+│   └── training/               # Pretraining scripts
 ├── src/
 │   └── sdofmv2/
 │       ├── core/               # Base model architectures and modules
 │       ├── tasks/              # PyTorch Lightning modules for downstream tasks
 │       └── utils/              # Helper functions, physical constants, and metrics
+├── tests/                      # Unit tests (pytest)
 ├── pyproject.toml              # Project metadata and build dependencies
 └── sdofmv2_environment.yml     # Mamba environment definition
 ```
@@ -140,6 +146,20 @@ data/
 ```
 
 Unlike monolithic file formats (e.g., `.fits`), the chunked Zarr layout enables **high-speed random access** — data loaders can read specific time slices or channels without loading the full multi-terabyte dataset into memory.
+
+### Preprocessing
+
+Before training or evaluation, you must compute temporal alignments and dataset statistics (such as normalizations and masks). This step creates an index file that significantly speeds up the data loading process.
+
+```bash
+# Preprocess data for AIA (default)
+python scripts/data/preprocess.py --config-name pretrain_mae_AIA.yaml
+
+# Preprocess data for HMI
+python scripts/data/preprocess.py --config-name pretrain_mae_HMI.yaml
+```
+
+*Note: The preprocessing script will process the data and output the index files to the directory specified in your configuration file.*
 
 ---
 

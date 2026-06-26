@@ -4,10 +4,10 @@ experiment:
   name: "mae-pretrain-aia" # generate random name in wandb
   project: "sdofm"
   task: "pretrain" # options: train, evaluate (not implemented)
-  model: mae_old
+  model: mae_v1
   resuming: false
   backbone:
-    model: "mae_old"
+    model: mae_v1
     is_backbone: true
     ckpt_dir: ./assets/check_point/backbone/
     weight_name: pretrained_mae_e128.ckpt

@@ -68,21 +68,27 @@ huggingface-cli download joseph-gallego/sdofmv2
 
 ```text
 .
+├── assets/                     # Output images, model results, and test artifacts
 ├── configs/                    # YAML configurations for experiments
 │   ├── downstream/             # Configs for downstream tasks (F10.7, solar wind)
-│   └── pretrain/               # Configs for MAE pretraining (AIA, HMI)
+│   ├── pretrain/               # Configs for MAE pretraining (AIA, HMI)
+│   └── test_run/               # Configs for testing and quick validation
+├── docs/                       # Sphinx documentation source files
 ├── notebooks/                  # Jupyter notebooks for analysis and visualization
 │   ├── analysis/               # Attention maps, PCA, and masking analysis
 │   └── downstream_apps/        # Downstream application demos (F10.7, missing data)
-├── scripts/                    # Executable training and evaluation scripts
-│   ├── data/                   # Data acquisition, conversion, and indexing
-│   ├── training/               # Training and finetuning scripts
-│   └── evaluation/             # Testing, inference, and visualization
+├── scripts/                    # Executable scripts for pipeline tasks
+│   ├── analysis/               # Scripts for evaluating and plotting results
+│   ├── data/                   # Data acquisition, conversion, and preprocessing
+│   ├── evaluation/             # Model evaluation and inference scripts
+│   ├── finetuning/             # Scripts for downstream finetuning
+│   └── training/               # Pretraining scripts
 ├── src/
 │   └── sdofmv2/
 │       ├── core/               # Base model architectures and modules
 │       ├── tasks/              # PyTorch Lightning modules for downstream tasks
 │       └── utils/              # Helper functions, physical constants, and metrics
+├── tests/                      # Unit tests (pytest)
 ├── pyproject.toml              # Project metadata and build dependencies
 └── sdofmv2_environment.yml     # Mamba environment definition
 ```
@@ -101,6 +107,8 @@ SDOFMv2 uses the **SDOMLv2** dataset — a curated, multi-instrument dataset for
 | :--- | :--- | :--- | :--- | :--- |
 | `aia` | AIA | EUV Images | ~7.2 TB | 9 extreme ultraviolet channels capturing the solar atmosphere |
 | `hmi` | HMI | Magnetograms | ~713 GB | 3-component vector magnetic field (Bx, By, Bz) for the solar photosphere |
+| `all` | AIA + HMI | EUV Images & Magnetograms | ~7.9 TB | 13 channels combining AIA and HMI modalities |
+
 
 > **Storage:** Zarr datasets require significant local disk space. Verify your target drive has sufficient capacity before downloading.
 
@@ -110,13 +118,13 @@ The download script is **resumable** — it checks for existing local files and 
 
 ```bash
 # Download AIA only
-python scripts/data/download_data.py --target /path/to/your/storage --component aia
+python scripts/data/download_sdomlv2.py --target /path/to/your/storage --component aia
 
 # Download HMI only
-python scripts/data/download_data.py --target /path/to/your/storage --component hmi
+python scripts/data/download_sdomlv2.py --target /path/to/your/storage --component hmi
 
 # Download the full dataset
-python scripts/data/download_data.py --target /path/to/your/storage --component both
+python scripts/data/download_sdomlv2.py --target /path/to/your/storage --component both
 ```
 
 ### Zarr Directory Layout
@@ -141,6 +149,20 @@ data/
 
 Unlike monolithic file formats (e.g., `.fits`), the chunked Zarr layout enables **high-speed random access** — data loaders can read specific time slices or channels without loading the full multi-terabyte dataset into memory.
 
+### Preprocessing
+
+Before training or evaluation, you must compute temporal alignments and dataset statistics (such as normalizations and masks). This step creates an index file that significantly speeds up the data loading process.
+
+```bash
+# Preprocess data for AIA (default)
+python scripts/data/preprocess.py --config-name pretrain_mae_AIA.yaml
+
+# Preprocess data for HMI
+python scripts/data/preprocess.py --config-name pretrain_mae_HMI.yaml
+```
+
+*Note: The preprocessing script will process the data and output the index files to the directory specified in your configuration file.*
+
 ---
 
 ## Training & Evaluation
@@ -161,7 +183,7 @@ python scripts/evaluation/test.py --config-name pretrain_mae_AIA.yaml
 
 ```bash
 # Example: solar wind forecasting
-python scripts/training/finetuning_solarwind.py --config-name finetune_solarwind_config.yaml
+python scripts/finetuning/run_solarwind.py --config-name solarwind_sdofmv2_ALL.yaml
 ```
 
 Configuration files for all tasks are in `configs/downstream/`. Notebook-based walkthroughs are available in `notebooks/downstream_apps/`.

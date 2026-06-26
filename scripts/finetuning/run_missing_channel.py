@@ -15,7 +15,7 @@ from omegaconf import DictConfig, OmegaConf
 import lightning.pytorch as pl
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
-from sdofmv2.core import SDOMLDataModule, MAE, MAE_old
+from sdofmv2.core import SDOMLDataModule, MAE, MAE_v1
 from sdofmv2.tasks.missing_data import MissingDataModel
 
 
@@ -99,8 +99,8 @@ def main(cfg: DictConfig):
     # load checkpoint
     ckpt_path = os.path.join(cfg.experiment.backbone.ckpt_dir, cfg.experiment.backbone.weight_name)
     lgr_logger.info("Loading checkpoint...")
-    if cfg.experiment.backbone.model == "mae_old":
-        backbone = MAE_old.load_from_checkpoint(
+    if cfg.experiment.backbone.model == "mae_v1":
+        backbone = MAE_v1.load_from_checkpoint(
             checkpoint_path=ckpt_path,
             map_location="cpu",
             weights_only=False,

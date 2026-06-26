@@ -62,7 +62,7 @@ class PatchEmbed(nn.Module):
         return x
 
 
-class MaskedAutoencoderViT3D_old(nn.Module):
+class MaskedAutoencoderViT3D_v1(nn.Module):
     """Masked Autoencoder with VisionTransformer backbone"""
 
     def __init__(

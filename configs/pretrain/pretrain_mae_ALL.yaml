@@ -5,8 +5,8 @@ experiment:
     model: mae
     is_backbone: true
     ckpt_dir: ./assets/checkpoints/backbone/ALL/
-    weight_name: id_6c3hnvcm_mae_epoch=1-step=1100-val_loss=0.04.ckpt
-    weights_only: true
+    weight_name: id_tnzqmrb2_mae_epoch=4-step=3600-val_loss=0.06.ckpt
+    weights_only: false
   seed: 0
   disable_cuda: false
   save_test_results_csv: "./"
@@ -23,7 +23,7 @@ experiment:
     notes: ALL-pretrain
     output_directory: ./assets/wandb
     log_model: false # can be True (final checkpoint), False (no checkpointing), or "all" (for all epoches)
-    offline: true
+    offline: false
   fold: null
   profiler: null #'XLAProfiler' # 'XLAProfiler' # options are XLAProfiler/PyTorchProfiler Warning: XLA for TPUs only works on single world size
   # lightining pretrainer
@@ -33,6 +33,7 @@ experiment:
   distributed:
     enabled: true
     devices: [1] # The "auto" option recognizes the machine you are on, and selects the appropriate number of accelerators.
+  zarr_path: ./assets/embeddings/SDOFMV2_ALl_embeddings.zarr
 
 # dataset configuration
 data:
@@ -54,7 +55,7 @@ data:
   index_save_path: ./assets/cache/ALL/
   train_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_train.csv
   val_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_val.csv
-  test_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_test.csv
+  test_index: ./assets/cache/ALL/AIA_all_HMI_all_12min_2010-05-0100:00:00-2018-12-3123:59:59_aligndata_full.csv
   hmi_mask: ./assets/cache/ALL/hmi_mask_512x512.npy
   normalization_stat_path: ./assets/cache/ALL/
 

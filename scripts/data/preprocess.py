@@ -185,7 +185,7 @@ def main(cfg: DictConfig):
     logger.info("Computing HMI mask...")
 
     if not os.path.exists(mask_path):
-        hmi_mask = make_hmi_mask(hmi_data, output_dir)
+        hmi_mask = make_hmi_mask(hmi_data, output_dir).numpy()
     else:
         hmi_mask = np.load(mask_path)
 

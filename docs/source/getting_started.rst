@@ -71,13 +71,28 @@ The download script is **resumable** — it checks for existing local files and 
 .. code-block:: bash
 
     # Download AIA only
-    python scripts/data/download_data.py --target /path/to/your/storage --component aia
+    python scripts/data/download_sdomlv2.py --target /path/to/your/storage --component aia
 
     # Download HMI only
-    python scripts/data/download_data.py --target /path/to/your/storage --component hmi
+    python scripts/data/download_sdomlv2.py --target /path/to/your/storage --component hmi
 
     # Download the full dataset
-    python scripts/data/download_data.py --target /path/to/your/storage --component both
+    python scripts/data/download_sdomlv2.py --target /path/to/your/storage --component both
+
+Preprocessing
+-------------
+
+Before training or evaluation, you must compute temporal alignments and dataset statistics (such as normalizations and masks). This step creates an index file that significantly speeds up the data loading process.
+
+.. code-block:: bash
+
+    # Preprocess data for AIA (default)
+    python scripts/data/preprocess.py --config-name pretrain_mae_AIA.yaml
+
+    # Preprocess data for HMI
+    python scripts/data/preprocess.py --config-name pretrain_mae_HMI.yaml
+
+*Note: The preprocessing script will process the data and output the index files to the directory specified in your configuration file.*
 
 Training & Evaluation
 =====================
@@ -102,6 +117,6 @@ Downstream Finetuning
 .. code-block:: bash
 
     # Example: solar wind forecasting
-    python scripts/training/finetuning_solarwind.py --config-name finetune_solarwind_config.yaml
+    python scripts/finetuning/run_solarwind.py --config-name solarwind_sdofmv2_ALL.yaml
 
 Configuration files for all tasks are in ``configs/downstream/``. Notebook-based walkthroughs are available in ``notebooks/downstream_apps/``.

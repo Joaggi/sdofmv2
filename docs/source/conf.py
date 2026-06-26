@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 project = "sdofmv2"
 copyright = "2026, Hong, Jinsu and Martin, Daniela and Gallego, Joseph"
 author = "Hong, Jinsu and Martin, Daniela and Gallego, Joseph"
-release = "v0.1.0"
+release = "v0.2.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

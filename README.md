@@ -118,13 +118,13 @@ The download script is **resumable** — it checks for existing local files and 
 
 ```bash
 # Download AIA only
-python scripts/data/download_data.py --target /path/to/your/storage --component aia
+python scripts/data/download_sdomlv2.py --target /path/to/your/storage --component aia
 
 # Download HMI only
-python scripts/data/download_data.py --target /path/to/your/storage --component hmi
+python scripts/data/download_sdomlv2.py --target /path/to/your/storage --component hmi
 
 # Download the full dataset
-python scripts/data/download_data.py --target /path/to/your/storage --component both
+python scripts/data/download_sdomlv2.py --target /path/to/your/storage --component both
 ```
 
 ### Zarr Directory Layout
@@ -183,7 +183,7 @@ python scripts/evaluation/test.py --config-name pretrain_mae_AIA.yaml
 
 ```bash
 # Example: solar wind forecasting
-python scripts/training/finetuning_solarwind.py --config-name finetune_solarwind_config.yaml
+python scripts/finetuning/run_solarwind.py --config-name solarwind_sdofmv2_ALL.yaml
 ```
 
 Configuration files for all tasks are in `configs/downstream/`. Notebook-based walkthroughs are available in `notebooks/downstream_apps/`.

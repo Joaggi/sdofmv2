@@ -205,6 +205,19 @@ Our MAE trained on AIA data successfully reconstructs SDO solar images at high q
 If SDOFMv2 is useful in your research, please cite:
 
 ```bibtex
+@article{hong2026sdofmv2,
+  title={SDOFMv2: A Multi-Instrument Foundation Model for the Solar Dynamics Observatory with Transferable Downstream Applications},
+  author={Hong, Jinsu and Martin, Daniela and Gallego, Joseph},
+  journal={Solar Physics},
+  volume={301},
+  number={9},
+  pages={137},
+  year={2026},
+  publisher={Springer}
+}
+```
+
+```bibtex
 @misc{sdofmv2,
   author    = {Hong, Jinsu and Martin, Daniela and Gallego, Joseph},
   title     = {SDOFMv2: A Multi-Instrument Foundation Model for the Solar Dynamics Observatory with Transferable Downstream Applications},

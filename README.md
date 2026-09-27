@@ -1,3 +1,11 @@
+> 📄 **Published in Solar Physics | Springer Nature Link Journal. Volume 301, article number 137 (2026)**
+>
+> Read our open-access paper [SDOFMv2: A Multi-Instrument Foundation Model for the Solar Dynamics Observatory with Transferable Downstream Applications](https://link.springer.com/article/10.1007/s11207-026-02740-z)
+>
+> 💬 *Have questions, feedback, or ideas for collaboration? We'd love to hear from you—feel free to reach out or open an issue!*
+
+---
+
 # SDOFMv2: A Multi-Instrument Foundation Model for the Solar Dynamics Observatory with Transferable Downstream Applications
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
